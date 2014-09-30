@@ -15,12 +15,15 @@ endif
 
 src_libfabric_la_SOURCES = \
 	src/fabric.c \
+	prov/sockets/src/list.c \
 	prov/sockets/src/sock_av.c \
 	prov/sockets/src/sock_dom.c \
 	prov/sockets/src/sock_eq.c \
 	prov/sockets/src/sock_poll.c \
 	prov/sockets/src/sock_rdm.c \
-	prov/sockets/src/sock.c \
+	prov/sockets/src/sock_fabric.c \
+	prov/sockets/src/sock_ep.c \
+	prov/sockets/src/sock_buf.c \
 	prov/sockets/src/indexer.c
 
 if HAVE_VERBS

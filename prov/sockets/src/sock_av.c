@@ -101,9 +101,9 @@ static int sock_av_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 
 static int sock_av_close(struct fid *fid)
 {
-	struct sock_av *av;
+	sock_av_t *av;
 
-	av = container_of(fid, struct sock_av, av_fid.fid);
+	av = container_of(fid, sock_av_t, av_fid.fid);
 	if (atomic_get(&av->ref))
 		return -FI_EBUSY;
 
@@ -134,10 +134,10 @@ static struct fi_ops_av sock_am_ops = {
 //	.straddr = sock_av_straddr
 //};
 
-static int sock_open_am(struct sock_domain *dom, struct fi_av_attr *attr,
-			struct sock_av **av, void *context)
+static int sock_open_am(sock_domain_t *dom, struct fi_av_attr *attr,
+			sock_av_t **av, void *context)
 {
-	struct sock_av *_av;
+	sock_av_t *_av;
 
 	_av = calloc(1, sizeof(*_av));
 	if (!_av)
@@ -155,14 +155,14 @@ static int sock_open_am(struct sock_domain *dom, struct fi_av_attr *attr,
 int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		 struct fid_av **av, void *context)
 {
-	struct sock_domain *dom;
-	struct sock_av *_av;
+	sock_domain_t *dom;
+	sock_av_t *_av;
 	int ret;
 
 	if (attr->name || attr->flags)
 		return -FI_ENOSYS;
 
-	dom = container_of(domain, struct sock_domain, dom_fid);
+	dom = container_of(domain, sock_domain_t, dom_fid);
 	switch (attr->type) {
 	case FI_AV_MAP:
 		ret = sock_open_am(dom, attr, &_av, context);

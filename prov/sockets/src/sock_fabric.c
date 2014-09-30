@@ -39,6 +39,12 @@
 
 #include "sock.h"
 
+static struct fi_ops_fabric sock_fab_ops = {
+	.size = sizeof(struct fi_ops_fabric),
+	.domain = sock_domain,
+	/*.endpoint = sock_pendpoint,*/
+	/*.eq_open = sock_eq_open,*/
+};
 
 static int sock_fabric_close(fid_t fid)
 {
@@ -46,20 +52,40 @@ static int sock_fabric_close(fid_t fid)
 	return 0;
 }
 
+int sock_fabric_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_fabric_sync(struct fid *fid, uint64_t flags, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_fabric_control(struct fid *fid, int command, void *arg)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_fabric_ops_open(struct fid *fid, const char *name,
+		    uint64_t flags, void **ops, void *context)
+{
+	return -FI_ENOSYS;
+}
+
 static struct fi_ops sock_fab_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_fabric_close,
-};
-
-static struct fi_ops_fabric sock_fab_ops = {
-	.size = sizeof(struct fi_ops_fabric),
-	.domain = sock_domain,
+	.bind = sock_fabric_bind,
+	.sync = sock_fabric_sync,
+	.control = sock_fabric_control,
+	.ops_open = sock_fabric_ops_open,
 };
 
 static int sock_fabric(struct fi_fabric_attr *attr,
 		       struct fid_fabric **fabric, void *context)
 {
-	struct sock_fabric *fab;
+	sock_fabric_t *fab;
 
 	if (strcmp(attr->name, fab_name))
 		return -FI_ENODATA;
@@ -95,7 +121,6 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 
 	return -FI_ENODATA;
 }
-
 
 static struct fi_provider sock_prov = {
 	.name = "sockets",
