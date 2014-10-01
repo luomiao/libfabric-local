@@ -42,264 +42,168 @@
 
 #include "sock.h"
 
-static ssize_t sock_cq_read(struct fid_cq *cq, void *buf, size_t len)
+#define SOCK_EQ_DEF_LEN (128)
+
+ssize_t sock_eq_read(struct fid_eq *eq, void *buf, size_t len,
+		     uint64_t flags)
 {
-	return -FI_ENOSYS;
-}
+	void *entry;
+	size_t entry_len;
+	sock_eq_t *sock_eq;
 
-static ssize_t sock_cq_readfrom(struct fid_cq *cq, void *buf, size_t len,
-				fi_addr_t *src_addr)
-{
-	return -FI_ENOSYS;
-}
+	sock_eq = container_of(eq, sock_eq_t, eq);
+	if(!sock_eq)
+		return -FI_ENOENT;
 
-static ssize_t sock_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
-			       size_t len, uint64_t flags)
-{
-	return -FI_ENOSYS;
-}
+	if(peek_list(sock_eq->eq_error_list, &entry_len))
+		return -FI_EAVAIL;
 
-static ssize_t sock_cq_write(struct fid_cq *cq, const void *buf, size_t len)
-{
-	return -FI_ENOSYS;
-}
+	if(FI_PEEK & flags)
+		entry = peek_list(sock_eq->eq_list, &entry_len);
+	else
+		entry = dequeue_list(sock_eq->eq_list, &entry_len);
 
-static ssize_t sock_cq_condread(struct fid_cq *cq, void *buf, size_t len,
-				const void *cond, int timeout)
-{
-	return -FI_ENOSYS;
-}
-
-static ssize_t sock_cq_condreadfrom(struct fid_cq *cq, void *buf, size_t len,
-				    fi_addr_t *src_addr, const void *cond, int timeout)
-{
-	return -FI_ENOSYS;
-}
-
-static const char * sock_cq_strerror(struct fid_cq *cq, int prov_errno,
-				     const void *err_data, void *buf, size_t len)
-{
-	return NULL;
-}
-
-static int sock_cq_close(struct fid *fid)
-{
-	sock_cq_t *cq;
-
-	cq = container_of(fid, sock_cq_t, cq_fid.fid);
-	if (atomic_get(&cq->ref))
-		return -FI_EBUSY;
-
-	close(cq->fd[SOCK_WR_FD]);
-	close(cq->fd[SOCK_RD_FD]);
-	free(cq);
+	if(entry){
+		memcpy(buf, entry, MIN(len, entry_len));
+		free(entry);
+		return MIN(len, entry_len);
+	}
 	return 0;
 }
 
-static struct fi_ops_cq sock_cq_ops = {
-	.read = sock_cq_read,
-	.readfrom = sock_cq_readfrom,
-	.readerr = sock_cq_readerr,
-	.write = sock_cq_write,
-	.condread = sock_cq_condread,
-	.condreadfrom = sock_cq_condreadfrom,
-	.strerror = sock_cq_strerror,
-};
-
-static struct fi_ops sock_cq_fi_ops = {
-	.size = sizeof(struct fi_ops),
-	.close = sock_cq_close,
-};
-
-static int sock_cq_verify_attr(struct fi_cq_attr *attr)
+ssize_t sock_eq_readerr(struct fid_eq *eq, struct fi_eq_err_entry *buf,
+		     size_t len, uint64_t flags)
 {
-	switch (attr->format) {
-	case FI_CQ_FORMAT_CONTEXT:
-	case FI_CQ_FORMAT_MSG:
-	case FI_CQ_FORMAT_DATA:
-	case FI_CQ_FORMAT_TAGGED:
-		break;
-	default:
-		return -FI_ENOSYS;
+	void *entry;
+	size_t entry_len;
+	sock_eq_t *sock_eq;
+
+	sock_eq = container_of(eq, sock_eq_t, eq);
+	if(!sock_eq)
+		return -FI_ENOENT;
+
+	entry = dequeue_list(sock_eq->eq_error_list, &entry_len);
+
+	if(entry){
+		memcpy(buf, entry, MIN(len, entry_len));
+		free(entry);
+		return MIN(len, entry_len);
 	}
-
-	switch (attr->wait_obj) {
-	case FI_WAIT_NONE:
-	case FI_WAIT_FD:
-		break;
-	case FI_WAIT_UNSPECIFIED:
-		attr->wait_obj = FI_WAIT_FD;
-		break;
-	default:
-		return -FI_ENOSYS;
-	}
-
-	/*
-	if (flags)
-		return -FI_ENOSYS;
-	*/
-
 	return 0;
 }
 
-int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
-		 struct fid_cq **cq, void *context)
+static ssize_t _sock_eq_write(sock_eq_t *sock_eq, const void *buf, size_t len)
 {
-	sock_domain_t *dom;
-	sock_cq_t *_cq;
 	int ret;
-
-	ret = sock_cq_verify_attr(attr);
-	if (ret)
-		return ret;
-
-	_cq = calloc(1, sizeof(*_cq));
-	if (!_cq)
+	void *data = malloc(len);
+	if(!data)
 		return -FI_ENOMEM;
 
-	ret = socketpair(AF_UNIX, 0, 0, &_cq->fd);
-	if (ret)
-		goto err;
-
-	atomic_init(&_cq->ref);
-	_cq->cq_fid.fid.fclass = FI_CLASS_CQ;
-	_cq->cq_fid.fid.context = context;
-	_cq->cq_fid.fid.ops = &sock_cq_fi_ops;
-	_cq->cq_fid.ops = &sock_cq_ops;
-
-	dom = container_of(domain, sock_domain_t, dom_fid);
-	atomic_inc(&dom->ref);
-	_cq->dom = dom;
-	_cq->format = attr->format;
-	*cq = &_cq->cq_fid;
-	return 0;
-
-err:
-	free(_cq);
-	return -ret;
+	ret = enqueue_list(sock_eq->eq_list, data, len);
+	return (ret == 0) ? len : ret;
 }
+
+ssize_t sock_eq_write(struct fid_eq *eq, const void *buf, size_t len,
+		      uint64_t flags)
+{
+	sock_eq_t *sock_eq;
+	sock_eq = container_of(eq, sock_eq_t, eq);
+	if(!sock_eq)
+		return -FI_ENOENT;
+
+	if(!(sock_eq->attr.flags & FI_WRITE))
+		return -FI_EINVAL;
+	
+	return _sock_eq_write(sock_eq, buf, len);
+}
+
+ssize_t sock_eq_condread(struct fid_eq *eq, void *buf, size_t len,
+			  const void *cond, int timeout, uint64_t flags)
+{
+	/* TODO: This API has been converted to a blocking read. 
+	   cond is unused here. Need to update it after merge */
+	return -FI_ENOSYS;
+}
+
+const char * sock_eq_strerror(struct fid_eq *eq, int prov_errno,
+			      const void *err_data, void *buf, size_t len)
+{
+	if (buf && len)
+		strncpy(buf, strerror(prov_errno), len);
+	return strerror(prov_errno);
+}
+
+static struct fi_ops_eq sock_eq_ops = {
+	.size = sizeof(struct fi_ops_eq),
+	.read = sock_eq_read,
+	.readerr = sock_eq_readerr,
+	.write = sock_eq_write,
+	.condread = sock_eq_condread,
+	.strerror = sock_eq_strerror,
+};
+
+int sock_eq_fi_close(struct fid *fid)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_eq_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_eq_fi_sync(struct fid *fid, uint64_t flags, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_eq_fi_control(struct fid *fid, int command, void *arg)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_eq_fi_open(struct fid *fid, const char *name,
+		    uint64_t flags, void **ops, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+static struct fi_ops sock_eq_fi_ops = {
+	.size = sizeof(struct fi_ops),
+	.close = sock_eq_fi_close,
+	.bind = sock_eq_fi_bind,
+	.sync = sock_eq_fi_sync,
+	.control = sock_eq_fi_control,
+	.ops_open = sock_eq_fi_open,
+};
 
 int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 		 struct fid_eq **eq, void *context)
 {
-	return -FI_ENOSYS;
-}
-
-static uint64_t sock_cntr_read(struct fid_cntr *cntr)
-{
-	sock_cntr_t *_cntr;
-	_cntr = container_of(cntr, sock_cntr_t, cntr_fid);
-	return _cntr->value;
-}
-
-static int sock_cntr_add(struct fid_cntr *cntr, uint64_t value)
-{
-	sock_cntr_t *_cntr;
-
-	_cntr = container_of(cntr, sock_cntr_t, cntr_fid);
-	pthread_mutex_lock(&_cntr->mut);
-	_cntr->value += value;
-	if (_cntr->value >= _cntr->threshold)
-		pthread_cond_signal(&_cntr->cond);
-	pthread_mutex_unlock(&_cntr->mut);
-	return 0;
-}
-
-static int sock_cntr_set(struct fid_cntr *cntr, uint64_t value)
-{
-	sock_cntr_t *_cntr;
-
-	_cntr = container_of(cntr, sock_cntr_t, cntr_fid);
-	pthread_mutex_lock(&_cntr->mut);
-	_cntr->value = value;
-	if (_cntr->value >= _cntr->threshold)
-		pthread_cond_signal(&_cntr->cond);
-	pthread_mutex_unlock(&_cntr->mut);
-	return 0;
-}
-
-static int sock_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout)
-{
-	sock_cntr_t *_cntr;
-	int ret = 0;
-
-	_cntr = container_of(cntr, sock_cntr_t, cntr_fid);
-	pthread_mutex_lock(&_cntr->mut);
-	_cntr->threshold = threshold;
-	while (_cntr->value < _cntr->threshold && !ret)
-		ret = fi_wait_cond(&_cntr->cond, &_cntr->mut, timeout);
-	_cntr->threshold = ~0;
-	pthread_mutex_unlock(&_cntr->mut);
-	return ret;
-}
-
-static int sock_cntr_close(struct fid *fid)
-{
-	sock_cntr_t *cntr;
-
-	cntr = container_of(fid, sock_cntr_t, cntr_fid.fid);
-	if (atomic_get(&cntr->ref))
-		return -FI_EBUSY;
-	
-	pthread_mutex_destroy(&cntr->mut);
-	pthread_cond_destroy(&cntr->cond);
-	atomic_dec(&cntr->dom->ref);
-	free(cntr);
-	return 0;
-}
-
-static struct fi_ops_cntr sock_cntr_ops = {
-	.size = sizeof(struct fi_ops_cntr),
-	.read = sock_cntr_read,
-	.add = sock_cntr_add,
-	.set = sock_cntr_set,
-	.wait = sock_cntr_wait,
-};
-
-static struct fi_ops sock_cntr_fi_ops = {
-	.size = sizeof(struct fi_ops),
-	.close = sock_cntr_close,
-};
-
-int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
-		   struct fid_cntr **cntr, void *context)
-{
-	sock_domain_t *dom;
-	sock_cntr_t *_cntr;
-	int ret;
-
-	if ((attr->events != FI_CNTR_EVENTS_COMP) ||
-	    (attr->wait_obj != FI_WAIT_MUT_COND) || attr->flags)
+	if(attr && attr->wait_obj != FI_WAIT_UNSPECIFIED)
 		return -FI_ENOSYS;
 
-	_cntr = calloc(1, sizeof(*_cntr));
-	if (!_cntr)
+	sock_eq_t *sock_eq = (sock_eq_t *)calloc(1, sizeof(sock_eq_t));
+	if(!sock_eq)
 		return -FI_ENOMEM;
 
-	ret = pthread_cond_init(&_cntr->cond, NULL);
-	if (ret)
-		goto err1;
+	sock_eq->eq.fid.fclass = FI_CLASS_EQ;
+	sock_eq->eq.fid.context = context;
+	sock_eq->eq.fid.ops = &sock_eq_fi_ops;
 
-	ret = pthread_mutex_init(&_cntr->mut, NULL);
-	if (ret)
-		goto err2;
-
-	atomic_init(&_cntr->ref);
-	_cntr->cntr_fid.fid.fclass = FI_CLASS_CNTR;
-	_cntr->cntr_fid.fid.context = context;
-	_cntr->cntr_fid.fid.ops = &sock_cntr_fi_ops;
-	_cntr->cntr_fid.ops = &sock_cntr_ops;
-	_cntr->threshold = ~0;
-
-	dom = container_of(domain, sock_domain_t, dom_fid);
-	atomic_inc(&dom->ref);
-	_cntr->dom = dom;
-	*cntr = &_cntr->cntr_fid;
+	sock_eq->eq.ops = &sock_eq_ops;		
+	
+	sock_eq->context = context;
+	sock_eq->eq_list = new_list( (attr && attr->size >0)? attr->size :
+				     SOCK_EQ_DEF_LEN);
+	if(!sock_eq->eq_list)
+		goto err;
+	
+	memcpy(&(sock_eq->attr), attr, sizeof(struct fi_eq_attr));
 	return 0;
 
-err2:
-	pthread_cond_destroy(&_cntr->cond);
-err1:
-	free(_cntr);
-	return -ret;
+err:
+	free(sock_eq);
+	return -FI_EAVAIL;
 }
+

@@ -34,44 +34,47 @@
 #  include <config.h>
 #endif /* HAVE_CONFIG_H */
 
- //#include <errno.h>
- //#include <fcntl.h>
- //#include <netdb.h>
- //#include <netinet/in.h>
- //#include <netinet/tcp.h>
- //#include <poll.h>
- #include <pthread.h>
- //#include <stdarg.h>
- //#include <stddef.h>
- //#include <stdio.h>
- //#include <string.h>
- //#include <sys/select.h>
- //#include <sys/socket.h>
- //#include <sys/types.h>
- //#include <sys/time.h>
- //#include <unistd.h>
+//#include <errno.h>
+//#include <fcntl.h>
+//#include <netdb.h>
+//#include <netinet/in.h>
+//#include <netinet/tcp.h>
+//#include <poll.h>
+#include <pthread.h>
+//#include <stdarg.h>
+//#include <stddef.h>
+//#include <stdio.h>
+//#include <string.h>
+//#include <sys/select.h>
+//#include <sys/socket.h>
+//#include <sys/types.h>
+//#include <sys/time.h>
+//#include <unistd.h>
 
- #include <rdma/fabric.h>
- #include <rdma/fi_atomic.h>
- #include <rdma/fi_cm.h>
- #include <rdma/fi_domain.h>
- #include <rdma/fi_endpoint.h>
- #include <rdma/fi_eq.h>
- #include <rdma/fi_errno.h>
- #include <rdma/fi_prov.h>
- #include <rdma/fi_rma.h>
- #include <rdma/fi_tagged.h>
- #include <rdma/fi_trigger.h>
+#include <rdma/fabric.h>
+#include <rdma/fi_atomic.h>
+#include <rdma/fi_cm.h>
+#include <rdma/fi_domain.h>
+#include <rdma/fi_endpoint.h>
+#include <rdma/fi_eq.h>
+#include <rdma/fi_errno.h>
+#include <rdma/fi_prov.h>
+#include <rdma/fi_rma.h>
+#include <rdma/fi_tagged.h>
+#include <rdma/fi_trigger.h>
 
- #include "fi.h"
- #include "indexer.h"
+#include "fi.h"
+#include "indexer.h"
+#include "list.h"
 
- #define DEF_SOCK_EP_BACKLOG (8)
- #define DEF_SOCK_EP_NUM_BUFS (128)
+#define DEF_SOCK_EP_BACKLOG (8)
+#define DEF_SOCK_EP_NUM_BUFS (128)
 
- static const char const fab_name[] = "IP";
- static const char const dom_name[] = "sockets";
+#define MIN(_a, _b) (_a) < (_b) ? (_a):(_b)
+#define MAX(_a, _b) (_a) > (_b) ? (_a):(_b)
 
+static const char const fab_name[] = "IP";
+static const char const dom_name[] = "sockets";
 
 typedef struct _sock_fabric_t{
 	struct fid_fabric fab_fid;
@@ -150,7 +153,7 @@ typedef struct _recv_buf_t{
 typedef struct _sock_eq_t{
 	struct fid_eq eq;
 	struct fi_eq_attr attr;
-	void *user_data;
+	void *context;
 	list_t *eq_list;
 	list_t *eq_error_list;
 }sock_eq_t;
@@ -171,11 +174,6 @@ typedef struct _sock_ep_t {
 	sock_cntr_t 	*recv_cntr;
 	sock_cntr_t 	*put_cntr;
 	sock_cntr_t 	*get_cntr;
-
-	struct sock_send_context 	*send_imm_ctx;
-	struct sock_tsend_context	*tsend_imm_ctx;
-	struct sock_write_context	*write_imm_ctx;
-	struct sock_read_context	*read_ctx;
 
 	uint64_t			out_send;
 	uint64_t			out_tagged_send;
@@ -224,11 +222,6 @@ typedef struct _sock_pep_t {
 	sock_cntr_t 	*recv_cntr;
 	sock_cntr_t 	*put_cntr;
 	sock_cntr_t 	*get_cntr;
-
-	struct sock_send_context 	*send_imm_ctx;
-	struct sock_tsend_context	*tsend_imm_ctx;
-	struct sock_write_context	*write_imm_ctx;
-	struct sock_read_context	*read_ctx;
 
 	uint64_t			op_flags;
 	uint64_t			pep_cap;

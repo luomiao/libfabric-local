@@ -41,6 +41,7 @@
 typedef struct _list_element_t
 {
 	void *data;
+	size_t len;
 	list_t *list;
 	struct _list_element_t *next;
 }list_element_t;
@@ -141,7 +142,7 @@ void free_list(list_t *list)
 	free((void *)list);
 }
 
-int enqueue_list(list_t *list, void *data)
+int enqueue_list(list_t *list, void *data, size_t len)
 {
 	int ret;
 	list_element_t *elem = _list_dequeue_free_list(list);
@@ -176,22 +177,36 @@ int enqueue_list(list_t *list, void *data)
 	
 	elem->next = NULL;
 	elem->data = data;
+	elem->len = len;
 	ret = _list_enqueue(elem);
 	if(!ret)
 		list->curr_len++;
 	return ret;
 }
 
-void *dequeue_list(list_t *list)
+void *dequeue_list(list_t *list, size_t *len)
 {
 	if(list->curr_len > 0){
 		void *data;
 		list_element_t *element = _list_dequeue(list);
-
+		
 		list->curr_len--;
 		data = element->data;
+		if(len)
+			*len = element->len;
 		_list_enqueue_free_list(element);
 		return data;
+	}
+	return NULL;
+}
+
+void *peak_list(list_t *list, size_t *len)
+{
+	if(list->curr_len > 0){
+		list_element_t *element = _list_dequeue(list);
+		if(len)
+			*len = element->len;
+	        return element->data;
 	}
 	return NULL;
 }
