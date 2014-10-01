@@ -149,6 +149,7 @@ static struct fi_ops_cm sock_cm_ops = {
 static ssize_t sock_ep_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
 			void *context)
 {
+/*
 	sock_ep_t *sock_ep;
 	recv_buf_t *list_entry;
 	sock_ep = container_of(ep, struct _sock_ep_t, ep);
@@ -158,8 +159,9 @@ static ssize_t sock_ep_recv(struct fid_ep *ep, void *buf, size_t len, void *desc
 	
 	list_entry->buf = buf;
 	list_entry->buf_len = len;
-	enqueue_post_recv_list(sock_ep,  list_entry);
 
+	enqueue_post_recv_list(sock_ep,  list_entry);
+*/
 	return 0;
 }
 

@@ -200,7 +200,7 @@ void *dequeue_list(list_t *list, size_t *len)
 	return NULL;
 }
 
-void *peak_list(list_t *list, size_t *len)
+void *peek_list(list_t *list, size_t *len)
 {
 	if(list->curr_len > 0){
 		list_element_t *element = _list_dequeue(list);

@@ -250,15 +250,3 @@ int sock_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
 
 int sock_ep_connect(struct fid_ep *ep, const void *addr,
 		    const void *param, size_t paramlen);
-
-inline void enqueue_free_recv_list(sock_ep_t *sock_ep, recv_buf_t *item);
-inline void enqueue_post_recv_list(sock_ep_t *sock_ep, recv_buf_t *item);
-inline recv_buf_t *get_from_free_recv_list(sock_ep_t *sock_ep);
-inline recv_buf_t *dequeue_post_recv_list(sock_ep_t *sock_ep);
-int alloc_free_recv_buf_lists(sock_ep_t *sock_ep, int num_bufs);
-
-inline void enqueue_free_send_list(sock_ep_t *sock_ep, send_buf_t *item);
-inline void enqueue_post_send_list(sock_ep_t *sock_ep, send_buf_t *item);
-inline send_buf_t *get_from_free_send_list(sock_ep_t *sock_ep);
-inline send_buf_t *dequeue_post_send_list(sock_ep_t *sock_ep);
-int alloc_free_send_buf_lists(sock_ep_t *sock_ep, int num_bufs);

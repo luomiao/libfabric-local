@@ -103,10 +103,12 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		}
 	}
 
+/*
 	if(0 != alloc_free_recv_buf_lists(sock_ep, DEF_SOCK_EP_NUM_BUFS)){
 		free(sock_ep);
 		return -FI_EAVAIL;
 	}
+*/
 
 	return 0;
 }
