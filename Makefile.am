@@ -24,6 +24,7 @@ src_libfabric_la_SOURCES = \
 if HAVE_SOCKETS
 _sockets_files = \
 	prov/sockets/src/sock_av.c \
+	prov/sockets/src/sock_dgram.c \
 	prov/sockets/src/sock_dom.c \
 	prov/sockets/src/sock_eq.c \
 	prov/sockets/src/sock_cq.c \
