@@ -68,21 +68,36 @@ int sockd_supported(struct fi_info *hints)
 {
 	if (hints->ep_attr) {
 		switch (hints->ep_attr->protocol) {
-		case FI_PROTO_IB_RC:
-		case FI_PROTO_IWARP:
-		case FI_PROTO_IB_UC:
-		case FI_PROTO_IB_UD:
-		case FI_PROTO_IB_XRC:
-		case FI_PROTO_RAW:
-			return 0;
+		case FI_PROTO_UNSPEC:
 			break;
 		default:
-			break;
+			fprintf(stderr, "[sockd] %s: hints->ep_attr->protocol=%lu, supported=%d\n",
+					__func__, hints->ep_attr->protocol, FI_PROTO_UNSPEC);
+			return 0;
 		}
 	}
 
-	/* FIXME: check all the support */
+	if ((hints->ep_cap & SOCKD_EP_CAP) != hints->ep_cap) {
+		fprintf(stderr, "[sockd] %s: hints->ep_cap=0x%llx, supported=0x%llx\n",
+				__func__, hints->ep_cap, SOCKD_EP_CAP);
+		return 0;
+	}
 
+	if ((hints->op_flags & SOCKD_OP_FLAGS) != hints->op_flags) {
+		fprintf(stderr, "[sockd] %s: hints->op_flags=0x%llx, supported=0x%llx\n",
+				__func__, hints->op_flags, SOCKD_OP_FLAGS);
+		return 0;
+	}
+
+	if (hints->domain_attr && 
+			((hints->domain_attr->caps & SOCKD_DOMAIN_CAP) !=
+			 hints->domain_attr->caps)) {
+		fprintf(stderr, "[sockd] %s: hints->domain_attr->caps=0x%llx, supported=0x%llx\n",
+				__func__, hints->domain_attr->caps, SOCKD_DOMAIN_CAP);
+		return 0;
+	}
+
+	/* FIXME: check all the support */
 	return 1;
 }
 
@@ -98,9 +113,9 @@ int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 
 	*info = NULL;
 
-	if (!sockd_supported(hints)) {
-		errno = ENODATA;
-		return errno;
+	if (hints && !sockd_supported(hints)) {
+		err = -EINVAL;
+		goto err_out;
 	}
 
 	/* user specified name or address */
@@ -114,7 +129,8 @@ int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 		ret = getaddrinfo(node, service, &sock_hints, &res);
 		if (ret) {
 			fprintf(stderr, "%s: couldn't getaddrinfo for (%s:%s):%s\n", __func__, node, service, gai_strerror(ret));
-			return ret;
+			err = -EINVAL;
+			goto err_out;
 		}
 		freeaddrinfo(res);
 	}
@@ -122,7 +138,8 @@ int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sockfd < 0) {
 		fprintf(stderr, "%s: couldn't open DGRAM socket\n", __func__);
-		return -1;
+		err = -EINVAL;
+		goto err_out;
 	}
 
 	if (flags & FI_SOURCE) {
@@ -214,9 +231,6 @@ int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 	close(sockfd);
 	return ret;
 
-err_out:
-	return err;
-
 dupinfo_error:
 	if (sockd_info->dest_addr)    free(sockd_info->dest_addr);
 	if (sockd_info->src_addr)     free(sockd_info->src_addr);
@@ -224,6 +238,7 @@ dupinfo_error:
 	if (sockd_info->data)         free(sockd_info->data);
 	free(sockd_info);
 	err = -ENOMEM;
+err_out:
 	return err;
 }
 
