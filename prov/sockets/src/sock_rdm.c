@@ -53,11 +53,271 @@
 
 #include "sock.h"
 
+static int sock_check_hints(struct fi_info *hints)
+{
+	switch (hints->type) {
+	case FI_EP_UNSPEC:
+	case FI_EP_MSG:
+	case FI_EP_DGRAM:
+	case FI_EP_RDM:
+		break;
+	default:
+		return -FI_ENODATA;
+	}
+	
+	if (hints->ep_attr) {
+		switch (hints->ep_attr->protocol) {
+		case FI_PROTO_UNSPEC:
+			break;
+		default:
+			return -FI_ENODATA;
+		}
+	}
+
+	if ( !(hints->ep_cap & (FI_MSG)))
+		return -FI_ENODATA;
+
+	if (hints->fabric_attr && hints->fabric_attr->name &&
+	    strcmp(hints->fabric_attr->name, fab_name))
+		return -FI_ENODATA;
+
+	return 0;
+}
+
+
 int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		     uint64_t flags, struct fi_info *hints, struct fi_info **info)
 {
+	int ret;
+	if (hints){
+		ret = sock_check_hints(hints);
+		if(ret)
+			return ret;
+	}
+
+	if(version != SOCK_VERSION)
+		return -FI_ENODATA;
+
+	if(hints){
+	}
+
 	return -FI_ENODATA;
 }
+
+int sock_rdm_ep_fi_close(struct fid *fid)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_fi_sync(struct fid *fid, uint64_t flags, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_fi_control(struct fid *fid, int command, void *arg)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_fi_ops_open(struct fid *fid, const char *name,
+			uint64_t flags, void **ops, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+struct fi_ops sock_rdm_ep_fi_ops = {
+	.size = sizeof(struct fi_ops),
+	.close = sock_rdm_ep_fi_close,
+	.bind = sock_rdm_ep_fi_bind,
+	.sync = sock_rdm_ep_fi_sync,
+	.control = sock_rdm_ep_fi_control,
+	.ops_open = sock_rdm_ep_fi_ops_open,
+};
+
+int sock_rdm_ep_enable(struct fid_ep *ep)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_cancel(fid_t fid, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_getopt(fid_t fid, int level, int optname,
+		       void *optval, size_t *optlen)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_setopt(fid_t fid, int level, int optname,
+		       const void *optval, size_t optlen)
+{
+	return -FI_ENOSYS;
+}
+
+struct fi_ops_ep sock_rdm_ep_ops ={
+	.size = sizeof(struct fi_ops_ep),
+	.enable = sock_rdm_ep_enable,
+	.getopt = sock_rdm_ep_getopt,
+	.setopt = sock_rdm_ep_setopt,
+};
+
+int sock_rdm_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_cm_getpeer(struct fid_ep *ep, void *addr, size_t *addrlen)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_cm_connect(struct fid_ep *ep, const void *addr,
+			   const void *param, size_t paramlen)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_cm_listen(struct fid_pep *pep)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_cm_accept(struct fid_ep *ep, fi_connreq_t connreq,
+			   const void *param, size_t paramlen)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_cm_reject(struct fid_pep *pep, fi_connreq_t connreq,
+			   const void *param, size_t paramlen)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_cm_shutdown(struct fid_ep *ep, uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_cm_join(struct fid_ep *ep, void *addr, fi_addr_t *fi_addr,
+			 uint64_t flags, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_rdm_ep_cm_leave(struct fid_ep *ep, void *addr, fi_addr_t fi_addr,
+			  uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+
+struct fi_ops_cm sock_rdm_ep_cm_ops = {
+	.size = sizeof(struct fi_ops_cm),
+	.getname = sock_rdm_ep_cm_getname,
+	.getpeer = sock_rdm_ep_cm_getpeer,
+	.connect = sock_rdm_ep_cm_connect,
+	.listen = sock_rdm_ep_cm_listen,
+	.accept = sock_rdm_ep_cm_accept,
+	.reject = sock_rdm_ep_cm_reject,
+	.shutdown = sock_rdm_ep_cm_shutdown,
+	.join = sock_rdm_ep_cm_join,
+	.leave = sock_rdm_ep_cm_leave,
+};
+
+ssize_t sock_rdm_ep_msg_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
+			     void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+			      size_t count, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
+				 fi_addr_t src_addr, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
+				uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+			     void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+			      size_t count, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
+			       void *desc, fi_addr_t dest_addr, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
+				uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_inject(struct fid_ep *ep, const void *buf, size_t len)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_injectto(struct fid_ep *ep, const void *buf, size_t len,
+				 fi_addr_t dest_addr)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_senddata(struct fid_ep *ep, const void *buf, size_t len, 
+				 void *desc, uint64_t data, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ep_msg_senddatato(struct fid_ep *ep, const void *buf, size_t len, 
+				   void *desc, uint64_t data, fi_addr_t dest_addr, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+struct fi_ops_msg sock_rdm_ep_msg_ops = {
+	.size = sizeof(struct fi_ops_msg),
+	.recv = sock_rdm_ep_msg_recv,
+	.recvv = sock_rdm_ep_msg_recvv,
+	.recvfrom = sock_rdm_ep_msg_recvfrom,
+	.recvmsg = sock_rdm_ep_msg_recvmsg,
+	.send = sock_rdm_ep_msg_send,
+	.sendv = sock_rdm_ep_msg_sendv,
+	.sendto = sock_rdm_ep_msg_sendto,
+	.sendmsg = sock_rdm_ep_msg_sendmsg,
+	.inject = sock_rdm_ep_msg_inject,
+	.injectto = sock_rdm_ep_msg_injectto,
+	.senddata = sock_rdm_ep_msg_senddata,
+	.senddatato = sock_rdm_ep_msg_senddatato,
+};
 
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context)
@@ -72,14 +332,16 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep = (sock_ep_t*)calloc(1, sizeof(*sock_ep));
 	if(!sock_ep)
 		return -FI_ENOMEM;
-
-	sock_ep->ep.fid.fclass = FI_CLASS_EP;
-	sock_ep->ep.fid.context = context;
 	
-	sock_ep->ep.fid.ops = /*&sock_fi_ops*/NULL;
-	sock_ep->ep.ops = /*&sock_ep_ops*/ NULL;
-	sock_ep->ep.cm = /*&sock_cm_ops*/ NULL;
-	sock_ep->ep.msg = NULL;
+	sock_ep->ep.fid.fclass = FI_CLASS_EP;
+	sock_ep->ep.fid.context = context;	
+	sock_ep->ep.fid.ops = &sock_rdm_ep_fi_ops;
+
+	sock_ep->ep.ops = &sock_rdm_ep_ops;
+	sock_ep->ep.cm = &sock_rdm_ep_cm_ops;
+	sock_ep->ep.msg = &sock_rdm_ep_msg_ops;
+
+	/* TODO */
 	sock_ep->ep.rma = NULL;
 	sock_ep->ep.tagged = NULL;
 	sock_ep->ep.atomic = NULL;

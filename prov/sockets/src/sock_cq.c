@@ -134,11 +134,6 @@ static int sock_cq_verify_attr(struct fi_cq_attr *attr)
 		return -FI_ENOSYS;
 	}
 
-	/*
-	if (flags)
-		return -FI_ENOSYS;
-	*/
-
 	return 0;
 }
 
@@ -296,4 +291,47 @@ err2:
 err1:
 	free(_cntr);
 	return -ret;
+}
+
+#define SOCK_PROGRESS_CM       (0x1)
+#define SOCK_PROGRESS_SENDS (0x1<<1)
+#define SOCK_PROGRESS_RECVS (0x1<<2)
+
+int sock_progress_cm()
+{
+	return 0;
+}
+
+int sock_progress_recvs()
+{
+	return 0;
+}
+
+int sock_progress_sends()
+{
+	return 0;
+}
+
+int sock_progress_engine(uint64_t flags)
+{
+	int ret;
+	if(flags & SOCK_PROGRESS_CM){
+		ret = sock_progress_cm();
+		if(ret)
+			return ret;
+	}
+
+	if(flags & SOCK_PROGRESS_SENDS){
+		ret = sock_progress_sends();
+		if(ret)
+			return ret;
+	}
+		
+	if(flags & SOCK_PROGRESS_RECVS){
+		ret = sock_progress_recvs();
+		if(ret)
+			return ret;
+	}
+
+	return 0;
 }

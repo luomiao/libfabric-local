@@ -34,9 +34,10 @@
 #  include <config.h>
 #endif /* HAVE_CONFIG_H */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 
@@ -60,12 +61,21 @@ ssize_t sock_eq_read(struct fid_eq *eq, void *buf, size_t len,
 
 	if(FI_PEEK & flags)
 		entry = peek_list(sock_eq->eq_list, &entry_len);
-	else
+	else{
 		entry = dequeue_list(sock_eq->eq_list, &entry_len);
-
+		if(entry){
+			int read_done = 0;
+			do{
+				char tmp;
+				read_done = read(sock_eq->fd[SOCK_RD_FD], &tmp, 1);
+			}while(read_done == 1);
+		}
+	}
+	
 	if(entry){
 		memcpy(buf, entry, MIN(len, entry_len));
-		free(entry);
+		if(!(FI_PEEK & flags))
+			free(entry);
 		return MIN(len, entry_len);
 	}
 	return 0;
@@ -99,7 +109,21 @@ static ssize_t _sock_eq_write(sock_eq_t *sock_eq, const void *buf, size_t len)
 	if(!data)
 		return -FI_ENOMEM;
 
+	if((ret = write(sock_eq->fd[SOCK_WR_FD], data, 1)) < 0)
+		return ret;
+
 	ret = enqueue_list(sock_eq->eq_list, data, len);
+	return (ret == 0) ? len : ret;
+}
+
+static ssize_t _sock_eq_error_write(sock_eq_t *sock_eq, const void *buf, size_t len)
+{
+	int ret;
+	void *data = malloc(len);
+	if(!data)
+		return -FI_ENOMEM;
+	
+	ret = enqueue_list(sock_eq->eq_error_list, data, len);
 	return (ret == 0) ? len : ret;
 }
 
@@ -120,9 +144,26 @@ ssize_t sock_eq_write(struct fid_eq *eq, const void *buf, size_t len,
 ssize_t sock_eq_condread(struct fid_eq *eq, void *buf, size_t len,
 			  const void *cond, int timeout, uint64_t flags)
 {
-	/* TODO: This API has been converted to a blocking read. 
-	   cond is unused here. Need to update it after merge */
-	return -FI_ENOSYS;
+	int ret;
+	fd_set rfds;
+	struct timeval tv;
+	sock_eq_t *sock_eq;
+
+	sock_eq = container_of(eq, sock_eq_t, eq);
+	if(!sock_eq)
+		return -FI_ENOENT;
+
+	FD_ZERO(&rfds);
+	FD_SET(sock_eq->fd[SOCK_RD_FD], &rfds);
+	tv.tv_sec = timeout;
+	tv.tv_usec = 0;
+
+	ret = select(1, &rfds, NULL, NULL, &tv);
+	
+	if (ret == -1 || ret == 0)
+		return ret;
+	else
+		return sock_eq_read(eq, buf, len, flags);
 }
 
 const char * sock_eq_strerror(struct fid_eq *eq, int prov_errno,
@@ -144,7 +185,14 @@ static struct fi_ops_eq sock_eq_ops = {
 
 int sock_eq_fi_close(struct fid *fid)
 {
-	return -FI_ENOSYS;
+	sock_eq_t *sock_eq;
+	sock_eq = container_of(fid, sock_eq_t, eq.fid);
+	if(!sock_eq)
+		return -FI_ENOENT;
+
+	free_list(sock_eq->eq_list);
+	free(sock_eq);
+	return 0;
 }
 
 int sock_eq_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
@@ -159,6 +207,7 @@ int sock_eq_fi_sync(struct fid *fid, uint64_t flags, void *context)
 
 int sock_eq_fi_control(struct fid *fid, int command, void *arg)
 {
+	/* TODO: */
 	return -FI_ENOSYS;
 }
 
@@ -180,6 +229,9 @@ static struct fi_ops sock_eq_fi_ops = {
 int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 		 struct fid_eq **eq, void *context)
 {
+	int ret;
+	long flags;
+
 	if(attr && attr->wait_obj != FI_WAIT_UNSPECIFIED)
 		return -FI_ENOSYS;
 
@@ -191,19 +243,36 @@ int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 	sock_eq->eq.fid.context = context;
 	sock_eq->eq.fid.ops = &sock_eq_fi_ops;
 
-	sock_eq->eq.ops = &sock_eq_ops;		
-	
+	sock_eq->eq.ops = &sock_eq_ops;			
 	sock_eq->context = context;
+
+	ret = socketpair(AF_UNIX, 0, 0, &sock_eq->fd[0]);
+	if (ret)
+		goto err1;
+
+	fcntl(sock_eq->fd[SOCK_RD_FD], F_GETFL, &flags);
+	ret = fcntl(sock_eq->fd[SOCK_RD_FD], F_SETFL, flags | O_NONBLOCK);
+	if (ret) {
+		ret = -errno;
+		goto err1;
+	}
+
 	sock_eq->eq_list = new_list( (attr && attr->size >0)? attr->size :
 				     SOCK_EQ_DEF_LEN);
 	if(!sock_eq->eq_list)
-		goto err;
+		goto err1;
+
+	sock_eq->eq_error_list = new_list( (attr && attr->size >0)? attr->size :
+				     SOCK_EQ_DEF_LEN);
+	if(!sock_eq->eq_error_list)
+		goto err2;
 	
 	memcpy(&(sock_eq->attr), attr, sizeof(struct fi_eq_attr));
 	return 0;
 
-err:
+err2:
+	free_list(sock_eq->eq_list);
+err1:
 	free(sock_eq);
 	return -FI_EAVAIL;
 }
-

@@ -123,8 +123,8 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 }
 
 static struct fi_provider sock_prov = {
-	.name = "sockets",
-	.version = FI_VERSION(0, 2),
+	.name = fab_name,
+	.version = SOCK_VERSION, 
 	.getinfo = sock_getinfo,
 	.freeinfo = NULL, /* use default */
 	.fabric = sock_fabric,
