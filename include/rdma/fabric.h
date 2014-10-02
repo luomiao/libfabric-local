@@ -85,10 +85,10 @@ uint32_t fi_version(void);
  * 60 - 63	provider-domain specific
  */
 
-#define FI_BLOCK		(1ULL << 10)
 #define FI_INJECT		(1ULL << 11)
 #define FI_MULTI_RECV		(1ULL << 12)
 #define FI_SOURCE		(1ULL << 13)
+#define FI_SYMMETRIC		(1ULL << 14)
 
 #define FI_READ			(1ULL << 16)
 #define FI_WRITE		(1ULL << 17)
@@ -125,6 +125,7 @@ enum fi_addr_format {
 
 #define FI_ADDR_UNSPEC		UINT64_MAX
 typedef uint64_t		fi_addr_t;
+typedef void *			fi_connreq_t;
 
 enum fi_progress {
 	FI_PROGRESS_UNSPEC,
@@ -158,6 +159,8 @@ struct fi_ep_attr {
 	size_t			max_order_waw_size;
 	uint64_t		mem_tag_format;
 	uint64_t		msg_order;
+	size_t			tx_ctx_cnt;
+	size_t			rx_ctx_cnt;
 };
 
 struct fi_domain_attr {
@@ -168,6 +171,11 @@ struct fi_domain_attr {
 	enum fi_progress	data_progress;
 	size_t			mr_key_size;
 	size_t			eq_data_size;
+	size_t			ep_cnt;
+	size_t			tx_ctx_cnt;
+	size_t			rx_ctx_cnt;
+	size_t			max_ep_tx_ctx;
+	size_t			max_ep_rx_ctx;
 };
 
 struct fi_fabric_attr {
@@ -186,11 +194,10 @@ struct fi_info {
 	size_t			dest_addrlen;
 	void			*src_addr;
 	void			*dest_addr;
+	fi_connreq_t		connreq;
 	struct fi_ep_attr	*ep_attr;
 	struct fi_domain_attr	*domain_attr;
 	struct fi_fabric_attr	*fabric_attr;
-	size_t			datalen;
-	void			*data;
 };
 
 enum {
