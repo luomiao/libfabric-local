@@ -245,3 +245,4 @@ static struct fi_ops_msg sock_msg_ops = {
 		.senddata = NULL,
 		.senddatato = NULL,
 };
+

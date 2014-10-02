@@ -76,6 +76,13 @@
 static const char const fab_name[] = "IP";
 static const char const dom_name[] = "sockets";
 
+
+#define SOCK_EP_CAP ( FI_MSG | FI_INJECT | \
+		      FI_SEND | FI_RECV |  \
+		      FI_CANCEL )
+
+#define SOCK_VERSION FI_VERSION(0, 2),
+
 typedef struct _sock_fabric_t{
 	struct fid_fabric fab_fid;
 }sock_fabric_t;
@@ -154,26 +161,25 @@ typedef struct _sock_eq_t{
 	struct fid_eq eq;
 	struct fi_eq_attr attr;
 	void *context;
+	int fd[2];
 	list_t *eq_list;
 	list_t *eq_error_list;
 }sock_eq_t;
 
 typedef struct _sock_ep_t {
 	struct fid_ep		ep;
-	sock_domain_t	*dom;
-	sock_av_t	*av;
-	
+	sock_domain_t	*dom;	
 	int sock_fd;
 
 	sock_eq_t 	*send_cq;
 	sock_eq_t 	*recv_cq;
-	sock_eq_t 	*put_cq;
-	sock_eq_t 	*get_cq;
 
 	sock_cntr_t 	*send_cntr;
 	sock_cntr_t 	*recv_cntr;
-	sock_cntr_t 	*put_cntr;
-	sock_cntr_t 	*get_cntr;
+	sock_cntr_t 	*read_cntr;
+	sock_cntr_t 	*write_cntr;
+	sock_cntr_t 	*rem_read_cntr;
+	sock_cntr_t 	*rem_write_cntr;
 
 	uint64_t			out_send;
 	uint64_t			out_tagged_send;
@@ -188,22 +194,6 @@ typedef struct _sock_ep_t {
 	uint64_t			op_flags;
 	uint64_t			ep_cap;
 
-	uint64_t num_recv_buf_list;
-	void *recv_buf_list_mem;
-
-	recv_buf_t *free_recv_list_head;
-	recv_buf_t *free_recv_list_tail;
-	recv_buf_t *posted_recv_list_head;
-	recv_buf_t *posted_recv_list_tail;
-
-	uint64_t num_send_buf_list;
-	void *send_buf_list_mem;
-
-	send_buf_t *free_send_list_head;
-	send_buf_t *free_send_list_tail;
-	send_buf_t *posted_send_list_head;
-	send_buf_t *posted_send_list_tail;
-
 	int connected;
 }sock_ep_t;
 
@@ -215,13 +205,13 @@ typedef struct _sock_pep_t {
 
 	sock_eq_t 	*send_cq;
 	sock_eq_t 	*recv_cq;
-	sock_eq_t 	*put_cq;
-	sock_eq_t 	*get_cq;
 
 	sock_cntr_t 	*send_cntr;
 	sock_cntr_t 	*recv_cntr;
-	sock_cntr_t 	*put_cntr;
-	sock_cntr_t 	*get_cntr;
+	sock_cntr_t 	*read_cntr;
+	sock_cntr_t 	*write_cntr;
+	sock_cntr_t 	*rem_read_cntr;
+	sock_cntr_t 	*rem_write_cntr;
 
 	uint64_t			op_flags;
 	uint64_t			pep_cap;

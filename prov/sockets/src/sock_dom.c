@@ -40,16 +40,6 @@
 #include "sock.h"
 
 
-#define SOCK_EP_CAP_BASE (FI_TAGGED | FI_MSG | FI_ATOMICS | FI_INJECT | \
-			 FI_RMA | FI_BUFFERED_RECV | FI_MULTI_RECV | \
-                         FI_READ | FI_WRITE | FI_SEND | FI_RECV | \
-                         FI_REMOTE_READ | FI_REMOTE_WRITE | \
-                         FI_REMOTE_COMPLETE | FI_REMOTE_SIGNAL | \
-			  FI_CANCEL | FI_TRIGGER )
-
-#define SOCK_EP_CAP (SOCK_EP_CAP_BASE)
-
-
 static int sock_dom_close(struct fid *fid)
 {
 	sock_domain_t *dom;
@@ -68,17 +58,6 @@ static int sock_dom_query(struct fid_domain *domain, struct fi_domain_attr *attr
 	attr->mr_key_size = 2; /* IDX_MAX_INDEX bits */
 	attr->eq_data_size = sizeof(uint64_t);
 	return 0;
-}
-
-static int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
-			 struct fid_ep **ep, void *context)
-{
-	switch (info->type) {
-	case FI_EP_RDM:
-		return sock_rdm_ep(domain, info, ep, context);
-	default:
-		return -FI_ENOPROTOOPT;
-	}
 }
 
 static int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
@@ -220,6 +199,16 @@ int sock_dom_ops_open(struct fid *fid, const char *name,
 	return -FI_ENOSYS;
 }
 
+int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
+			 struct fid_ep **ep, void *context)
+{
+	switch (info->type) {
+	case FI_EP_RDM:
+		return sock_rdm_ep(domain, info, ep, context);
+	default:
+		return -FI_ENOPROTOOPT;
+	}
+}
 
 static struct fi_ops sock_dom_fi_ops = {
 	.size = sizeof(struct fi_ops),
