@@ -223,7 +223,7 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 	if (!fi->fabric_attr) {
 		goto err4;
 	}
-	fi->fabric_attr->name 		= strdup("socket"); /* FIXME: fabric name for socket */
+	fi->fabric_attr->name 		= strdup("IP"); /* FIXME: fabric name for socket */
 	fi->fabric_attr->prov_name 	= strdup("socket"); /* FIXME: fabric prov_name for socket */
 	/* fi->fabric_attr->prov_name 	= PROVIDER_VERSION; */
 
@@ -255,21 +255,7 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 		fi->dest_addrlen = 0;
 	}
 
-	if (hints && hints->data) {
-		fi->data = (uint8_t *) malloc(hints->datalen);
-		if (!fi->data) {
-			goto err7;
-		}
-		memcpy(fi->data, hints->data, hints->datalen);
-		fi->datalen = hints->datalen;
-	} else {
-		fi->datalen = 0;
-		fi->data = NULL;
-	}
-
 	return fi;
-err7:
-	free(fi->dest_addr);
 err6:
 	free(fi->src_addr);
 err5:

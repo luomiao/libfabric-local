@@ -44,7 +44,7 @@
 
 #define SOCK_EQ_DEF_LEN (128)
 
-ssize_t sock_eq_read(struct fid_eq *eq, void *buf, size_t len,
+ssize_t sock_eq_read(struct fid_eq *eq, enum fi_eq_event *event, void *buf, size_t len,
 		     uint64_t flags)
 {
 	void *entry;
@@ -103,8 +103,8 @@ static ssize_t _sock_eq_write(sock_eq_t *sock_eq, const void *buf, size_t len)
 	return (ret == 0) ? len : ret;
 }
 
-ssize_t sock_eq_write(struct fid_eq *eq, const void *buf, size_t len,
-		      uint64_t flags)
+ssize_t sock_eq_write(struct fid_eq *eq, enum fi_eq_event event, const void *buf, size_t len,
+		      int64_t flags)
 {
 	sock_eq_t *sock_eq;
 	sock_eq = container_of(eq, sock_eq_t, eq);
@@ -117,8 +117,8 @@ ssize_t sock_eq_write(struct fid_eq *eq, const void *buf, size_t len,
 	return _sock_eq_write(sock_eq, buf, len);
 }
 
-ssize_t sock_eq_condread(struct fid_eq *eq, void *buf, size_t len,
-			  const void *cond, int timeout, uint64_t flags)
+ssize_t sock_eq_sread(struct fid_eq *eq, enum fi_eq_event *event, 
+			  void *buf, size_t len, int timeout, uint64_t flags)
 {
 	/* TODO: This API has been converted to a blocking read. 
 	   cond is unused here. Need to update it after merge */
@@ -138,7 +138,7 @@ static struct fi_ops_eq sock_eq_ops = {
 	.read = sock_eq_read,
 	.readerr = sock_eq_readerr,
 	.write = sock_eq_write,
-	.condread = sock_eq_condread,
+	.sread = sock_eq_sread,
 	.strerror = sock_eq_strerror,
 };
 

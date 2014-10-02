@@ -64,13 +64,13 @@ static ssize_t sock_cq_write(struct fid_cq *cq, const void *buf, size_t len)
 	return -FI_ENOSYS;
 }
 
-static ssize_t sock_cq_condread(struct fid_cq *cq, void *buf, size_t len,
+static ssize_t sock_cq_sread(struct fid_cq *cq, void *buf, size_t len,
 				const void *cond, int timeout)
 {
 	return -FI_ENOSYS;
 }
 
-static ssize_t sock_cq_condreadfrom(struct fid_cq *cq, void *buf, size_t len,
+static ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t len,
 				    fi_addr_t *src_addr, const void *cond, int timeout)
 {
 	return -FI_ENOSYS;
@@ -101,8 +101,8 @@ static struct fi_ops_cq sock_cq_ops = {
 	.readfrom = sock_cq_readfrom,
 	.readerr = sock_cq_readerr,
 	.write = sock_cq_write,
-	.condread = sock_cq_condread,
-	.condreadfrom = sock_cq_condreadfrom,
+	.sread = sock_cq_sread,
+	.sreadfrom = sock_cq_sreadfrom,
 	.strerror = sock_cq_strerror,
 };
 
