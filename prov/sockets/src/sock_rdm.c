@@ -95,7 +95,8 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			return ret;
 	}
 
-	if(version != SOCK_VERSION)
+	if(version != FI_VERSION(SOCK_MAJOR_VERSION, 
+				 SOCK_MINOR_VERSION))
 		return -FI_ENODATA;
 
 	if(hints){

@@ -163,7 +163,7 @@ ssize_t sock_eq_sread(struct fid_eq *eq, enum fi_eq_event *event,
 	if (ret == -1 || ret == 0)
 		return ret;
 	else
-		return sock_eq_read(eq, buf, len, flags);
+		return sock_eq_read(eq, event, buf, len, flags);
 }
 
 const char * sock_eq_strerror(struct fid_eq *eq, int prov_errno,

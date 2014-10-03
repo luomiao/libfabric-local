@@ -81,7 +81,9 @@ static const char const dom_name[] = "sockets";
 		      FI_SEND | FI_RECV |  \
 		      FI_CANCEL )
 
-#define SOCK_VERSION FI_VERSION(0, 2),
+
+#define SOCK_MAJOR_VERSION 0
+#define SOCK_MINOR_VERSION 2
 
 typedef struct _sock_fabric_t{
 	struct fid_fabric fab_fid;

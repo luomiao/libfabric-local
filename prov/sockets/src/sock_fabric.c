@@ -127,7 +127,7 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 
 static struct fi_provider sock_prov = {
 	.name = fab_name,
-	.version = SOCK_VERSION, 
+	.version = FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION), 
 	.getinfo = sock_getinfo,
 	.freeinfo = NULL, /* use default */
 	.fabric = sock_fabric,
