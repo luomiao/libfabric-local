@@ -74,6 +74,9 @@ ssize_t sock_eq_read(struct fid_eq *eq, enum fi_eq_event *event, void *buf, size
 	
 	if(entry){
 		memcpy(buf, entry, MIN(len, entry_len));
+		if(event)
+			*event = *((enum fi_eq_event *)entry);
+
 		if(!(FI_PEEK & flags))
 			free(entry);
 		return MIN(len, entry_len);
