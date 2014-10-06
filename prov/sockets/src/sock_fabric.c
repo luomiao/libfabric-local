@@ -125,11 +125,25 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 	return -FI_ENODATA;
 }
 
+int sock_freeinfo(struct fi_info *info)
+{
+	if(info)
+		free(info);
+
+	return 0;
+}
+
+int sock_free_info(struct fi_info *info)
+{
+	free_fi_info(info);
+	return 0;
+}
+
 static struct fi_provider sock_prov = {
 	.name = fab_name,
 	.version = FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION), 
 	.getinfo = sock_getinfo,
-	.freeinfo = NULL, /* use default */
+	.freeinfo = sock_free_info,
 	.fabric = sock_fabric,
 };
 
