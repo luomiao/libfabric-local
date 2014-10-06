@@ -205,6 +205,8 @@ int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
 	switch (info->type) {
 	case FI_EP_RDM:
 		return sock_rdm_ep(domain, info, ep, context);
+	case FI_EP_DGRAM:
+		return sock_dgram_ep(domain, info, ep, context);
 	default:
 		return -FI_ENOPROTOOPT;
 	}
