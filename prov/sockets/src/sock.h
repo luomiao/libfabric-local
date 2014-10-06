@@ -64,6 +64,7 @@
 #include <rdma/fi_trigger.h>
 
 #include "fi.h"
+#include "fi_enosys.h"
 #include "indexer.h"
 #include "list.h"
 
