@@ -67,23 +67,34 @@
 #include "indexer.h"
 #include "list.h"
 
-#define DEF_SOCK_EP_BACKLOG (8)
-#define DEF_SOCK_EP_NUM_BUFS (128)
+#define SOCK_EP_MAX_MSG_SZ (1<<22)
+#define SOCK_EP_MAX_INJECT_SZ (1<<12)
+#define SOCK_EP_MAX_BUFF_RECV (1<<22)
+#define SOCK_EP_MAX_ORDER_RAW_SZ (0)
+#define SOCK_EP_MAX_ORDER_WAR_SZ (0)
+#define SOCK_EP_MAX_ORDER_WAW_SZ (0)
+#define SOCK_EP_MEM_TAG_FMT (0)
+#define SOCK_EP_MSG_ORDER (0)
+#define SOCK_EP_TX_CTX_CNT (0)
+#define SOCK_EP_RX_CTX_CNT (0)
+
+#define SOCK_EP_BACKLOG (8)
+#define SOCK_EP_SNDQ_LEN (128)
+#define SOCK_EP_RCVQ_LEN (128)
+
+#define SOCK_EP_CAP ( FI_PASSIVE | FI_MSG | \
+		      FI_INJECT | FI_SOURCE |		\
+		      FI_SEND | FI_RECV |		\
+		      FI_CANCEL )
+
+#define SOCK_MAJOR_VERSION 0
+#define SOCK_MINOR_VERSION 2
 
 #define MIN(_a, _b) (_a) < (_b) ? (_a):(_b)
 #define MAX(_a, _b) (_a) > (_b) ? (_a):(_b)
 
 static const char const fab_name[] = "IP";
 static const char const dom_name[] = "sockets";
-
-
-#define SOCK_EP_CAP ( FI_MSG | FI_INJECT | \
-		      FI_SEND | FI_RECV |  \
-		      FI_CANCEL )
-
-
-#define SOCK_MAJOR_VERSION 0
-#define SOCK_MINOR_VERSION 2
 
 typedef struct _sock_fabric_t{
 	struct fid_fabric fab_fid;
@@ -173,8 +184,9 @@ typedef struct _sock_ep_t {
 	sock_domain_t	*dom;	
 	int sock_fd;
 
-	sock_eq_t 	*send_cq;
-	sock_eq_t 	*recv_cq;
+	sock_eq_t        *eq;
+	sock_cq_t 	*send_cq;
+	sock_cq_t 	*recv_cq;
 
 	sock_cntr_t 	*send_cntr;
 	sock_cntr_t 	*recv_cntr;
@@ -196,7 +208,17 @@ typedef struct _sock_ep_t {
 	uint64_t			op_flags;
 	uint64_t			ep_cap;
 
+	list_t *send_list;
+	list_t *recv_list;
+
+	enum fi_ep_type ep_type;
+
 	int connected;
+	int enabled;
+
+	struct _sock_ep_t *next;
+	struct _sock_ep_t *alias;
+	struct _sock_ep_t *base;
 }sock_ep_t;
 
 typedef struct _sock_pep_t {
@@ -244,3 +266,5 @@ int sock_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
 
 int sock_ep_connect(struct fid_ep *ep, const void *addr,
 		    const void *param, size_t paramlen);
+
+void free_fi_info(struct fi_info *info);

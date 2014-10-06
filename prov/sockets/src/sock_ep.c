@@ -98,7 +98,7 @@ static int sock_ep_listen(struct fid_pep *pep)
 	sock_pep_t *sock_pep;
 
 	sock_pep = container_of(pep, sock_pep_t, pep);
-	ret = listen(sock_pep->sock_fd, DEF_SOCK_EP_BACKLOG);
+	ret = listen(sock_pep->sock_fd, SOCK_EP_BACKLOG);
 	if(ret)
 		return -errno;
 	return 0;
