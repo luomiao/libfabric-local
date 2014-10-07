@@ -5,7 +5,7 @@
  * licenses.  You may choose to be licensed under the terms of the GNU
  * General Public License (GPL) Version 2, available from the file
  * COPYING in the main directory of this source tree, or the
- * OpenFabrics.org BSD license below:
+ * BSD license below:
  *
  *     Redistribution and use in source and binary forms, with or
  *     without modification, are permitted provided that the following
@@ -353,5 +353,7 @@ struct fi_ops_msg psmx_msg_ops = {
 	.sendmsg = psmx_sendmsg,
 	.inject = psmx_inject,
 	.injectto = psmx_injectto,
+	.senddata = fi_no_msg_senddata,
+	.senddatato = fi_no_msg_senddatato,
 };
 

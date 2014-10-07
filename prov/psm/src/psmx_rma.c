@@ -5,7 +5,7 @@
  * licenses.  You may choose to be licensed under the terms of the GNU
  * General Public License (GPL) Version 2, available from the file
  * COPYING in the main directory of this source tree, or the
- * OpenFabrics.org BSD license below:
+ * BSD license below:
  *
  *     Redistribution and use in source and binary forms, with or
  *     without modification, are permitted provided that the following
@@ -890,5 +890,7 @@ struct fi_ops_rma psmx_rma_ops = {
 	.writemsg = psmx_writemsg,
 	.inject = psmx_inject,
 	.injectto = psmx_injectto,
+	.writedata = fi_no_rma_writedata,
+	.writedatato = fi_no_rma_writedatato,
 };
 

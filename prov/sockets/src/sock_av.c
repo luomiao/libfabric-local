@@ -5,7 +5,7 @@
  * licenses.  You may choose to be licensed under the terms of the GNU
  * General Public License (GPL) Version 2, available from the file
  * COPYING in the main directory of this source tree, or the
- * OpenIB.org BSD license below:
+ * BSD license below:
  *
  *     Redistribution and use in source and binary forms, with or
  *     without modification, are permitted provided that the following
@@ -116,6 +116,9 @@ static struct fi_ops sock_av_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_av_close,
 	.bind = sock_av_bind,
+	.sync = fi_no_sync,
+	.control = fi_no_control,
+	.ops_open = fi_no_ops_open,
 };
 
 static struct fi_ops_av sock_am_ops = {

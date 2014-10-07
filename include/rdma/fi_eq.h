@@ -5,7 +5,7 @@
  * licenses.  You may choose to be licensed under the terms of the GNU
  * General Public License (GPL) Version 2, available from the file
  * COPYING in the main directory of this source tree, or the
- * OpenFabrics.org BSD license below:
+ * BSD license below:
  *
  *     Redistribution and use in source and binary forms, with or
  *     without modification, are permitted provided that the following
@@ -319,7 +319,7 @@ fi_eq_readerr(struct fid_eq *eq, struct fi_eq_err_entry *buf,
 }
 
 static inline ssize_t
-fi_eq_write(struct fid_eq *eq, enum fi_eq_event event, void *buf,
+fi_eq_write(struct fid_eq *eq, enum fi_eq_event event, const void *buf,
 	    size_t len, uint64_t flags)
 {
 	return eq->ops->write(eq, event, buf, len, flags);
@@ -358,13 +358,13 @@ fi_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf, size_t len,
 	return cq->ops->readerr(cq, buf, len, flags);
 }
 
-static inline ssize_t fi_cq_write(struct fid_cq *cq, void *buf, size_t len)
+static inline ssize_t fi_cq_write(struct fid_cq *cq, const void *buf, size_t len)
 {
 	return cq->ops->write(cq, buf, len);
 }
 
 static inline ssize_t
-fi_cq_sread(struct fid_cq *cq, void *buf, size_t len, void *cond, int timeout)
+fi_cq_sread(struct fid_cq *cq, void *buf, size_t len, const void *cond, int timeout)
 {
 	return cq->ops->sread(cq, buf, len, cond, timeout);
 }
@@ -377,7 +377,7 @@ fi_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t len,
 }
 
 static inline const char *
-fi_cq_strerror(struct fid_cq *cq, int prov_errno, void *err_data,
+fi_cq_strerror(struct fid_cq *cq, int prov_errno, const void *err_data,
 	       void *buf, size_t len)
 {
 	return cq->ops->strerror(cq, prov_errno, err_data, buf, len);

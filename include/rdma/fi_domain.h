@@ -5,7 +5,7 @@
  * licenses.  You may choose to be licensed under the terms of the GNU
  * General Public License (GPL) Version 2, available from the file
  * COPYING in the main directory of this source tree, or the
- * OpenFabrics.org BSD license below:
+ * BSD license below:
  *
  *     Redistribution and use in source and binary forms, with or
  *     without modification, are permitted provided that the following
@@ -120,7 +120,6 @@ struct fi_cntr_attr;
 
 struct fi_ops_domain {
 	size_t	size;
-	int	(*query)(struct fid_domain *domain, struct fi_domain_attr *attr);
 	int	(*av_open)(struct fid_domain *domain, struct fi_av_attr *attr,
 			struct fid_av **av, void *context);
 	int	(*cq_open)(struct fid_domain *domain, struct fi_cq_attr *attr,

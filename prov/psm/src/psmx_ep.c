@@ -5,7 +5,7 @@
  * licenses.  You may choose to be licensed under the terms of the GNU
  * General Public License (GPL) Version 2, available from the file
  * COPYING in the main directory of this source tree, or the
- * OpenFabrics.org BSD license below:
+ * BSD license below:
  *
  *     Redistribution and use in source and binary forms, with or
  *     without modification, are permitted provided that the following
@@ -292,6 +292,8 @@ static struct fi_ops_ep psmx_ep_ops = {
 	.getopt = psmx_ep_getopt,
 	.setopt = psmx_ep_setopt,
 	.enable = psmx_ep_enable,
+	.tx_ctx = fi_no_tx_ctx,
+	.rx_ctx = fi_no_rx_ctx,
 };
 
 int psmx_ep_open(struct fid_domain *domain, struct fi_info *info,
