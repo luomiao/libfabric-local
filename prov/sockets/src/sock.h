@@ -123,7 +123,7 @@ typedef struct _sock_cntr_t {
 
 typedef struct _sock_cq_t {
 	struct fid_cq		cq_fid;
-	sock_domain_t	*dom;
+	sock_domain_t	*domain;
 	int			fd[2];
 	enum fi_cq_format	format;
 	atomic_t		ref;
@@ -181,12 +181,15 @@ typedef struct _sock_eq_t{
 
 typedef struct _sock_ep_t {
 	struct fid_ep		ep;
-	sock_domain_t	*dom;	
+	sock_domain_t	*domain;	
 	int sock_fd;
 
 	sock_eq_t        *eq;
 	sock_cq_t 	*send_cq;
 	sock_cq_t 	*recv_cq;
+
+	int send_cq_event_flag;
+	int recv_cq_event_flag;
 
 	sock_cntr_t 	*send_cntr;
 	sock_cntr_t 	*recv_cntr;
@@ -205,18 +208,23 @@ typedef struct _sock_ep_t {
 	uint64_t			cmpl_rma_put;
 	uint64_t			cmpl_rma_get;
 
-	uint64_t			op_flags;
-	uint64_t			ep_cap;
+	struct fi_info info;
+	struct fi_ep_attr ep_attr;
 
 	list_t *send_list;
 	list_t *recv_list;
+
+	struct sockaddr src_addr;
+	struct sockaddr dest_addr;
 
 	enum fi_ep_type ep_type;
 
 	int connected;
 	int enabled;
+	int is_alias;
 
 	struct _sock_ep_t *next;
+	struct _sock_ep_t *prev;
 	struct _sock_ep_t *alias;
 	struct _sock_ep_t *base;
 }sock_ep_t;

@@ -249,7 +249,7 @@ int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 	sock_eq->eq.ops = &sock_eq_ops;			
 	sock_eq->context = context;
 
-	ret = socketpair(AF_UNIX, 0, 0, &sock_eq->fd[0]);
+	ret = socketpair(AF_UNIX, 0, 0, sock_eq->fd);
 	if (ret)
 		goto err1;
 
