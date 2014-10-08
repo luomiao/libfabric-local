@@ -171,6 +171,19 @@ int sockd_check_hints(struct fi_info *hints)
 		/* FIXME: check name */
 	}
 
+	struct sockaddr_in *si_src;
+	if (!hints->src_addr || !hints->src_addrlen) {
+		sockd_debug("[sockd] src_addr and src_addrlen are required from hints\n");
+		return -FI_ENODATA;
+	} else {
+		si_src = (struct sockaddr_in *)(hints->src_addr);
+		if (ntohs(si_src->sin_port)<1024) {
+			sockd_debug("[sockd] port number should be above 1023\n");
+			return -FI_ENODATA;
+		}
+		sockd_debug("[sockd] port is set to %d\n", ntohs(si_src->sin_port));
+	}
+
 	return 0;
 }
 
@@ -242,8 +255,12 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 		memcpy(fi->src_addr, hints->src_addr, hints->src_addrlen);
 		fi->src_addrlen = hints->src_addrlen;
 	} else {
+		sockd_debug("[sockd] hints must have src_addr\n");
+#if 0
 		fi->src_addr = NULL;
 		fi->src_addrlen = 0;
+#endif
+		goto err6;
 	}
 	if (hints && hints->dest_addr) {
 		fi->dest_addr = malloc(hints->dest_addrlen);
@@ -282,6 +299,15 @@ int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 	socklen_t optlen;
 	*info = NULL;
 
+#if 0
+	if (!(flags & FI_SOURCE)) {
+		/* FIXME: FI_SOURCE is required for DGRAM */
+		fprintf(stderr, "[sockd] FI_SOURCE is required for EP_DGRAM\n");
+		errno = EINVAL;
+		return -errno;
+	}
+#endif
+
 	/* solve user specified name or address */
 	if (node || service) {
 		struct addrinfo *res;
@@ -312,11 +338,6 @@ int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 		ret = sockd_check_hints(hints);
 		if (ret)
 			return ret;
-	}
-
-	if (flags & FI_SOURCE) {
-		/* FIXME: what FI_SOURCE indicates? */
-		sockd_debug("[sockd] FI_SOURCE is set for hints\n");
 	}
 
 
@@ -352,15 +373,71 @@ static int sockd_ep_close(fid_t fid)
 static int sockd_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags) 
 {
 	sock_ep_t *ep;
+	sock_cntr_t *cntr;
+	sock_eq_t *eq;
+	sock_cq_t *cq;
 
 	ep = container_of(fid, sock_ep_t, ep.fid);
 
 	switch (bfid->fclass) {
 	case FI_CLASS_CNTR:
 		sockd_debug("[sockd] bind counter to ep\n");
+		cntr = container_of(bfid, sock_cntr_t, cntr_fid.fid);
+		if (!(flags &
+			(FI_WRITE | FI_READ | FI_SEND | FI_RECV))) {
+			sockd_debug("[sockd] Counter only support FI_WRITE | FI_READ | FI_SEND | FI_RECV\n");
+			errno = FI_EINVAL;
+			return -errno;
+		}
+		if (flags & FI_WRITE) {
+			if (ep->write_cntr)
+				return -EINVAL;
+			ep->write_cntr = cntr;
+		}
+		if (flags & FI_READ) {
+			if (ep->read_cntr)
+				return -EINVAL;
+			ep->read_cntr = cntr;
+		}
+		if (flags & FI_SEND) {
+			if (ep->send_cntr)
+				return -EINVAL;
+			ep->send_cntr = cntr;
+		}
+		if (flags & FI_RECV) {
+			if (ep->recv_cntr)
+				return -EINVAL;
+			ep->recv_cntr = cntr;
+		}
 		break;
 	case FI_CLASS_CQ:
 		sockd_debug("[sockd] bind CQ to ep\n");
+		cq = container_of(bfid, sock_cq_t, cq_fid.fid);
+		if (!(flags &
+			(FI_SEND | FI_RECV))) {
+			sockd_debug("[sockd] CQ only support FI_SEND | FI_RECV\n");
+			errno = FI_EINVAL;
+			return -errno;
+		}
+		if (flags & FI_SEND) {
+			if (ep->send_cq)
+				return -EINVAL;
+			ep->send_cq = cq;
+		}
+		if (flags & FI_RECV) {
+			if (ep->recv_cq)
+				return -EINVAL;
+			ep->recv_cq = cq;
+		}
+		break;
+	case FI_CLASS_EQ:
+		sockd_debug("[sockd] bind EQ to ep\n");
+		/* FIXME: bind EQ to sockd EP */
+		eq = container_of(bfid, sock_eq_t, eq.fid);
+		if (ep->eq) {
+			return -EINVAL;
+		}
+		ep->eq = eq;
 		break;
 	default:
 		return -FI_ENOSYS;
@@ -433,6 +510,7 @@ static int sockd_ep_rx_ctx(struct fid_ep *ep, int index,
 }
 
 /* sockd_ops_cm */
+
 static int sockd_cm_getname(fid_t fid, void *addr, size_t *addrlen)
 {
 	errno = FI_ENOSYS;
@@ -630,6 +708,7 @@ int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 	sockd_debug("[sockd] enter sock_dgram_ep\n");
 	sock_ep_t *_ep;
 	sock_domain_t *_dom;
+	struct sockaddr_in si_me;
 
 	_dom = container_of(domain, sock_domain_t, dom_fid);
 	if(!_dom)
@@ -656,6 +735,16 @@ int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 		free(_ep);
 		return -FI_ENODATA;
 	}
+
+	si_me.sin_family 	= AF_INET;
+	si_me.sin_port		= ((struct sockaddr_in *)(info->src_addr))->sin_port;
+	si_me.sin_addr.s_addr	= htonl(INADDR_ANY);
+	if (bind(_ep->sock_fd, &si_me, sizeof(si_me)) == -1) {
+		sockd_debug("[sockd] %s: failed to bind sock_fd to port %d\n", __func__, ntohs(si_me.sin_port));
+		return -errno;
+	}
+
+	_ep->port_num		= ntohs(si_me.sin_port);
 
 	*ep = &_ep->ep;
 

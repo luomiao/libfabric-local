@@ -222,7 +222,7 @@ int sock_eq_fi_open(struct fid *fid, const char *name,
 
 static struct fi_ops sock_eq_fi_ops = {
 	.size = sizeof(struct fi_ops),
-	.close = sock_cntr_close,
+	.close = sock_eq_fi_close,
 	.bind = fi_no_bind,
 	.sync = fi_no_sync,
 	.control = fi_no_control,

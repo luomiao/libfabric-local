@@ -220,6 +220,8 @@ typedef struct _sock_ep_t {
 	struct _sock_ep_t *next;
 	struct _sock_ep_t *alias;
 	struct _sock_ep_t *base;
+
+	int port_num;
 }sock_ep_t;
 
 typedef struct _sock_pep_t {
