@@ -152,7 +152,7 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	if (!_cq)
 		return -FI_ENOMEM;
 
-	ret = socketpair(AF_UNIX, 0, 0, &_cq->fd);
+	ret = socketpair(AF_UNIX, 0, 0, _cq->fd);
 	if (ret)
 		goto err;
 
@@ -164,7 +164,7 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 
 	dom = container_of(domain, sock_domain_t, dom_fid);
 	atomic_inc(&dom->ref);
-	_cq->dom = dom;
+	_cq->domain = dom;
 	_cq->format = attr->format;
 	*cq = &_cq->cq_fid;
 	return 0;

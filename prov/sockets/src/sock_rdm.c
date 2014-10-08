@@ -5,7 +5,7 @@
  * licenses.  You may choose to be licensed under the terms of the GNU
  * General Public License (GPL) Version 2, available from the file
  * COPYING in the main directory of this source tree, or the
- * OpenIB.org BSD license below:
+ * BSD license below:
  *
  *     Redistribution and use in source and binary forms, with or
  *     without modification, are permitted provided that the following
@@ -53,6 +53,10 @@
 
 #include "sock.h"
 
+typedef struct _sock_rdm_header_t{
+	size_t msg_len;
+}sock_rdm_header_t;
+
 static struct fi_ep_attr sock_ep_attr = {
 	.protocol = FI_PROTO_UNSPEC,
 	.max_msg_size = SOCK_EP_MAX_MSG_SZ,
@@ -67,8 +71,11 @@ static struct fi_ep_attr sock_ep_attr = {
 	.rx_ctx_cnt = SOCK_EP_RX_CTX_CNT,
 };
 
-static int sock_check_hints(struct fi_info *hints)
+static int sock_ep_check_hints(struct fi_info *hints)
 {
+	if(!hints)
+		return 0;
+
 	switch (hints->type) {
 	case FI_EP_UNSPEC:
 	case FI_EP_MSG:
@@ -89,15 +96,17 @@ static int sock_check_hints(struct fi_info *hints)
 	}
 
 	if(hints->ep_cap){
-		if(SOCK_EP_CAP | hints->ep_cap != SOCK_EP_CAP)
+		if((SOCK_EP_CAP | hints->ep_cap) != SOCK_EP_CAP)
 			return -FI_ENODATA;
+	}
+
+	if(hints->op_flags){
+		return -FI_ENODATA;
 	}
 
 	switch (hints->addr_format){
 	case FI_ADDR_PROTO:
 	case FI_SOCKADDR:
-	case FI_SOCKADDR_IN:
-	case FI_SOCKADDR_IN6:
 		break;
 	default:
 		return -FI_ENODATA;
@@ -112,7 +121,8 @@ static int sock_check_hints(struct fi_info *hints)
 
 static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type, 
 					enum fi_addr_format addr_format,
-					struct fi_info *hints)
+					struct fi_info *hints,
+					void *src_addr, void *dest_addr)
 {
 	struct fi_info *_info;
 	_info = (struct fi_info *)malloc(sizeof(struct fi_info));
@@ -124,6 +134,9 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 	_info->type = ep_type;
 	_info->op_flags = 0;
 	_info->addr_format = addr_format;
+
+	_info->src_addr = src_addr;
+	_info->dest_addr = dest_addr;
 
 	if(hints->ep_cap){
 		_info->ep_cap = hints->ep_cap;
@@ -144,7 +157,12 @@ void free_fi_info(struct fi_info *info)
 	
 	if(info->next)
 		free_fi_info(info->next);
-	
+	else{
+		if(info->src_addr)
+			free(info->src_addr);
+		if(info->dest_addr)
+			free(info->dest_addr);
+	}
 	free(info);
 }
 
@@ -153,7 +171,11 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 {
 	int ret;
 	struct fi_info *_info;
+	void *src_addr, *dest_addr;
 
+	struct addrinfo sock_hints;
+	struct addrinfo *result = NULL;
+	
 	if(!info)
 		return -FI_EBADFLAGS;
 
@@ -167,65 +189,206 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		return -FI_ENODATA;
 
 	if (hints){
-		ret = sock_check_hints(hints);
+		ret = sock_ep_check_hints(hints);
 		if(ret)
 			return ret;
 	}
 
-	if(node || service){
-		struct addrinfo sock_hints;
-		struct addrinfo *result = NULL;
+	src_addr = malloc(sizeof(struct sockaddr));
+	dest_addr = malloc(sizeof(struct sockaddr));
+
+			
+	memset(&sock_hints, 0, sizeof(struct addrinfo));
+	sock_hints.ai_family = PF_RDS;
+	sock_hints.ai_socktype = SOCK_STREAM;
 		
-		memset(&sock_hints, 0, sizeof(struct addrinfo));
-		sock_hints.ai_family = AF_INET;
-		sock_hints.ai_socktype = SOCK_STREAM;
+	if(flags & FI_SOURCE || flags & FI_PASSIVE)
+		sock_hints.ai_flags = AI_PASSIVE;
+	else
 		sock_hints.ai_flags = 0;
-		sock_hints.ai_protocol = 0;
-		sock_hints.ai_canonname = NULL;
-		sock_hints.ai_addr = NULL;
-		sock_hints.ai_next = NULL;
+
+	sock_hints.ai_protocol = 0;
+	sock_hints.ai_canonname = NULL;
+	sock_hints.ai_addr = NULL;
+	sock_hints.ai_next = NULL;
 		
-		ret = getaddrinfo(node, service, &sock_hints, &result);
-		if (ret != 0) {
-			return -FI_ENODATA;
-		}
-		freeaddrinfo(result); 
+	ret = getaddrinfo(node, service, &sock_hints, &result);
+	if (ret != 0) {
+		ret = FI_ENODATA;
+		goto err;
 	}
+		
+	memcpy(src_addr, result->ai_addr, sizeof(struct sockaddr));
+	if(AI_PASSIVE != sock_hints.ai_flags){
+		socklen_t len;
+		int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
+		if (0 != connect(udp_sock, result->ai_addr, result->ai_addrlen)){
+			ret = FI_ENODATA;
+			goto err;
+		}
+		if(0!= getsockname(udp_sock, (struct sockaddr *) dest_addr, &len)){
+			close(udp_sock);
+			ret = FI_ENODATA;
+			goto err;
+		}
+		close(udp_sock);
+	}
+	freeaddrinfo(result); 
 
 	if(hints && hints->type != FI_EP_UNSPEC){
-		_info = allocate_fi_info(hints->type, FI_SOCKADDR, hints);
-		if(!_info)
-			return -FI_ENOMEM;
+		_info = allocate_fi_info(hints->type, FI_SOCKADDR, hints, 
+					 src_addr, dest_addr);
+		if(!_info){
+			ret = FI_ENOMEM;
+			goto err;
+		}
 	}else{
-		_info = allocate_fi_info(FI_EP_MSG, FI_SOCKADDR, hints);
-		if(!_info)
-			return -FI_ENOMEM;
+		_info = allocate_fi_info(FI_EP_MSG, FI_SOCKADDR, hints,
+					 src_addr, dest_addr);
+		if(!_info){
+			ret = FI_ENOMEM;
+			goto err;
+		}
 
-		_info->next = allocate_fi_info(FI_EP_DGRAM, FI_SOCKADDR, hints);
+		_info->next = allocate_fi_info(FI_EP_DGRAM, FI_SOCKADDR, hints,
+					       src_addr, dest_addr);
 		if(!_info->next){
 			free_fi_info(_info);
-			return -FI_ENOMEM;
+			ret = FI_ENOMEM;
+			goto err;
 		}
 		
-		_info->next->next = allocate_fi_info(FI_EP_RDM, FI_SOCKADDR, hints);
+		_info->next->next = allocate_fi_info(FI_EP_RDM, FI_SOCKADDR, hints,
+						     src_addr, dest_addr);
 		if(!_info->next->next){
 			free_fi_info(_info);
-			return -FI_ENOMEM;
+			ret = FI_ENOMEM;
+			goto err;
 		}
 	}
 
 	*info = _info;
 	return 0;
+
+err:
+	free(src_addr);
+	free(dest_addr);
+	return ret;	
 }
 
 int sock_rdm_ep_fi_close(struct fid *fid)
 {
-	return -FI_ENOSYS;
+	sock_ep_t *sock_ep;
+	
+	sock_ep = container_of(fid, sock_ep_t, ep.fid);
+	if(!sock_ep)
+		return -FI_EINVAL;
+
+	if(sock_ep->alias)
+		return -FI_EINVAL;
+
+	if(!sock_ep->is_alias)
+		close(sock_ep->sock_fd);
+
+	free_list(sock_ep->send_list);
+	free_list(sock_ep->recv_list);
+	
+	if(sock_ep->prev)
+		sock_ep->prev->next = sock_ep->next;
+	
+	free(sock_ep);
+	return 0;
 }
 
 int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 {
-	return -FI_ENOSYS;
+	sock_ep_t *sock_ep;
+	sock_cq_t *sock_cq;
+
+	sock_ep = container_of(fid, sock_ep_t, ep.fid);
+	if(!sock_ep)
+		return -FI_EINVAL;
+
+	if (!bfid)
+		return -FI_EINVAL;
+	
+	switch (bfid->fclass) {
+	case FI_CLASS_EQ:
+		return -FI_ENOSYS;
+
+	case FI_CLASS_CQ:
+		sock_cq = container_of(bfid, sock_cq_t, cq_fid.fid);
+		if (sock_ep->domain != sock_cq->domain)
+			return -EINVAL;
+		
+		if (flags & (FI_SEND | FI_READ | FI_WRITE)) {
+			sock_ep->send_cq = sock_cq;
+			if (flags & FI_EVENT)
+				sock_ep->send_cq_event_flag = 1;
+		}
+		if (flags & FI_RECV) {
+			sock_ep->recv_cq = sock_cq;
+			if (flags & FI_EVENT)
+				sock_ep->recv_cq_event_flag = 1;
+		}
+		break;
+
+	case FI_CLASS_CNTR:
+		return -FI_ENOSYS;
+/*
+		cntr = container_of(bfid, struct psmx_fid_cntr, cntr.fid);
+		if (ep->domain != cntr->domain)
+			return -EINVAL;
+		if (flags & FI_SEND) {
+			ep->send_cntr = cntr;
+			if (flags & FI_EVENT)
+				ep->send_cntr_event_flag = 1;
+		}
+		if (flags & FI_RECV){
+			ep->recv_cntr = cntr;
+			if (flags & FI_EVENT)
+				ep->recv_cntr_event_flag = 1;
+		}
+		if (flags & FI_WRITE) {
+			ep->write_cntr = cntr;
+			if (flags & FI_EVENT)
+				ep->write_cntr_event_flag = 1;
+		}
+		if (flags & FI_READ){
+			ep->read_cntr = cntr;
+			if (flags & FI_EVENT)
+				ep->read_cntr_event_flag = 1;
+		}
+		break;
+*/
+
+	case FI_CLASS_AV:
+		return -FI_ENOSYS;
+/*
+		av = container_of(bfid,
+				struct psmx_fid_av, av.fid);
+		if (ep->domain != av->domain)
+			return -EINVAL;
+		ep->av = av;
+		break;
+*/
+
+	case FI_CLASS_MR:
+		return -FI_ENOSYS;
+/*
+		if (!bfid->ops || !bfid->ops->bind)
+			return -EINVAL;
+		err = bfid->ops->bind(bfid, fid, flags);
+		if (err)
+			return err;
+		break;
+*/
+
+	default:
+		return -ENOSYS;
+	}
+
+	return 0;
 }
 
 int sock_rdm_ep_fi_sync(struct fid *fid, uint64_t flags, void *context)
@@ -241,6 +404,7 @@ int sock_rdm_ep_fi_control(struct fid *fid, int command, void *arg)
 int sock_rdm_ep_fi_ops_open(struct fid *fid, const char *name,
 			uint64_t flags, void **ops, void *context)
 {
+	/* TODO */
 	return -FI_ENOSYS;
 }
 
@@ -255,7 +419,13 @@ struct fi_ops sock_rdm_ep_fi_ops = {
 
 int sock_rdm_ep_enable(struct fid_ep *ep)
 {
-	return -FI_ENOSYS;
+	sock_ep_t *sock_ep;
+	sock_ep = container_of(ep, sock_ep_t, ep);
+	if(!sock_ep)
+		return -FI_EINVAL;
+
+	sock_ep->enabled = 1;
+	return 0;
 }
 
 ssize_t sock_rdm_ep_cancel(fid_t fid, void *context)
@@ -266,12 +436,14 @@ ssize_t sock_rdm_ep_cancel(fid_t fid, void *context)
 int sock_rdm_ep_getopt(fid_t fid, int level, int optname,
 		       void *optval, size_t *optlen)
 {
+	/* TODO */
 	return -FI_ENOSYS;
 }
 
 int sock_rdm_ep_setopt(fid_t fid, int level, int optname,
 		       const void *optval, size_t optlen)
 {
+	/* TODO */
 	return -FI_ENOSYS;
 }
 
@@ -284,18 +456,81 @@ struct fi_ops_ep sock_rdm_ep_ops ={
 
 int sock_rdm_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
 {
-	return -FI_ENOSYS;
+	sock_ep_t *sock_ep;
+	
+	if (!addr || !addrlen)
+		return -FI_EINVAL;
+
+	sock_ep = container_of(fid, sock_ep_t, ep.fid);
+	if(!sock_ep)
+		return -FI_EINVAL;
+
+	*addrlen = MIN(*addrlen, sizeof(struct sockaddr));
+
+	memcpy(addr, &sock_ep->src_addr, *addrlen);
+	return 0;
 }
 
 int sock_rdm_ep_cm_getpeer(struct fid_ep *ep, void *addr, size_t *addrlen)
 {
-	return -FI_ENOSYS;
+	sock_ep_t *sock_ep;
+	
+	if (!addr || !addrlen)
+		return -FI_EINVAL;
+
+	sock_ep = container_of(ep, sock_ep_t, ep);
+	if(!sock_ep)
+		return -FI_EINVAL;
+
+	*addrlen = MIN(*addrlen, sizeof(struct sockaddr));
+
+	memcpy(addr, &sock_ep->dest_addr, *addrlen);
+	return 0;
 }
 
 int sock_rdm_ep_cm_connect(struct fid_ep *ep, const void *addr,
 			   const void *param, size_t paramlen)
 {
-	return -FI_ENOSYS;
+	sock_ep_t *sock_ep;
+
+	if(!addr)
+		return -FI_EINVAL;
+
+	sock_ep = container_of(ep, sock_ep_t, ep);
+	if(!sock_ep)
+		return -FI_EINVAL;
+
+	if(sock_ep->info.addr_format == FI_SOCKADDR){
+		if(memcmp((void*)&(sock_ep->dest_addr), 
+			  addr, sizeof(struct sockaddr)) != 0){
+			memcpy(&(sock_ep->dest_addr), addr, sizeof(struct sockaddr));
+		}
+	}else{
+		return -FI_EINVAL;
+	}
+
+	if(paramlen > 0){
+		int ret;
+		struct iovec msg_iov ={
+			.iov_base = (void*) param,
+			.iov_len = paramlen,
+		};
+		
+		struct msghdr msg = {
+			.msg_name = NULL,
+			.msg_namelen = 0,
+			.msg_iov = &msg_iov,
+			.msg_iovlen = 1,
+			.msg_control = NULL,
+			.msg_controllen = 0,
+			.msg_flags = 0,
+		};
+		ret = sendmsg(sock_ep->sock_fd, &msg, 0);
+		if(ret)
+			return -FI_EINVAL;
+	}
+	sock_ep->enabled = 1;
+	return 0;
 }
 
 int sock_rdm_ep_cm_listen(struct fid_pep *pep)
@@ -303,8 +538,9 @@ int sock_rdm_ep_cm_listen(struct fid_pep *pep)
 	return -FI_ENOSYS;
 }
 
-int sock_rdm_ep_cm_accept(struct fid_ep *ep, fi_connreq_t connreq,
-			   const void *param, size_t paramlen)
+int sock_rdm_ep_cm_accept(struct fid_ep *ep, 
+			  const void *param, 
+			  size_t paramlen)
 {
 	return -FI_ENOSYS;
 }
@@ -436,9 +672,10 @@ struct fi_ops_msg sock_rdm_ep_msg_ops = {
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context)
 {
+	int ret;
 	sock_ep_t *sock_ep;
 	sock_domain_t *sock_dom;
-
+	
 	sock_dom = container_of(domain, sock_domain_t, dom_fid);
 	if(!sock_dom)
 		return -FI_EINVAL;
@@ -454,41 +691,55 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep->ep.ops = &sock_rdm_ep_ops;
 	sock_ep->ep.cm = &sock_rdm_ep_cm_ops;
 	sock_ep->ep.msg = &sock_rdm_ep_msg_ops;
-
+	
 	/* TODO */
 	sock_ep->ep.rma = NULL;
 	sock_ep->ep.tagged = NULL;
 	sock_ep->ep.atomic = NULL;
 
-	sock_ep->dom = sock_dom;
+	sock_ep->domain = sock_dom;
 
-	sock_ep->sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+	sock_ep->sock_fd = socket(PF_RDS, SOCK_STREAM, 0);
 	if(sock_ep->sock_fd <0){
-		free(sock_ep);
-		return -FI_EAVAIL;
+		goto err1;
 	}
 	
-	*ep = &sock_ep->ep;
-	
+	*ep = &sock_ep->ep;	
 	if(info){
-		sock_ep->op_flags = info->op_flags;
-		sock_ep->ep_cap = info->ep_cap;
+		ret = sock_ep_check_hints(info);
+		if(ret)
+			goto err2;
+		
+		sock_ep->info.op_flags = info->op_flags;
+		sock_ep->info.ep_cap = info->ep_cap;
+		sock_ep->info.addr_format = FI_SOCKADDR;
+
+		if(info->src_addr){
+			memcpy(&sock_ep->src_addr, info->src_addr, 
+			       sizeof(struct sockaddr));
+			ret = bind(sock_ep->sock_fd, &sock_ep->src_addr, 
+				   sizeof(struct sockaddr));
+		}
 		
 		if(info->dest_addr){
-			return sock_ep_connect(*ep, info->dest_addr, NULL, 0);
+			ret = sock_ep_connect(*ep, info->dest_addr, NULL, 0);
+			sock_ep->enabled = 0;
 		}
 	}
 
 	if(0 != (sock_ep->send_list = new_list(SOCK_EP_SNDQ_LEN)))
-		goto err1;
+		goto err2;
 
 	if(0 != (sock_ep->recv_list = new_list(SOCK_EP_RCVQ_LEN)))
-		goto err2;
+		goto err3;
 
 	return 0;
 
-err2:
+err3:
 	free_list(sock_ep->send_list);
+
+err2:
+	close(sock_ep->sock_fd);
 
 err1:
 	free(sock_ep);
@@ -511,7 +762,7 @@ int sock_rdm_pep(struct fid_fabric *fabric, struct fi_info *info,
 	sock_pep->pep.ops = /*&sock_ep_ops*/ NULL;
 	sock_pep->pep.cm = /*&sock_cm_ops*/ NULL;
 	
-	sock_pep->sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+	sock_pep->sock_fd = socket(PF_RDS, SOCK_STREAM, 0);
 	if(sock_pep->sock_fd <0){
 		free(sock_pep);
 		return -FI_EAVAIL;
