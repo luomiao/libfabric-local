@@ -291,7 +291,8 @@ int sock_rdm_ep_fi_close(struct fid *fid)
 		close(sock_ep->sock_fd);
 
 	free_list(sock_ep->send_list);
-	free_list(sock_ep->recv_list);
+	free_list(sock_ep->posted_rcv_list);
+	free_list(sock_ep->completed_rcv_list);
 	
 	if(sock_ep->prev)
 		sock_ep->prev->next = sock_ep->next;
@@ -603,7 +604,33 @@ ssize_t sock_rdm_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void 
 ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
-	return -FI_ENOSYS;
+	sock_ep_t *sock_ep;
+	sock_comm_item_t *comm_item;
+	
+	sock_ep = container_of(ep, sock_ep_t, ep);
+	if(!sock_ep)
+		return -FI_EINVAL;
+	
+	if(!sock_ep->enabled)
+		return -FI_EINVAL;
+
+	comm_item = (sock_comm_item_t*)calloc(1, sizeof(sock_comm_item_t));
+	if(!comm_item)
+		return -FI_ENOMEM;
+	
+	comm_item->completed = 0;
+	comm_item->type = SOCK_SENDMSG;
+	comm_item->context = msg->context;
+	comm_item->done_len = 0;
+	comm_item->flags = flags;
+	memcpy(&comm_item->item.msg, msg, sizeof(struct fi_msg));
+
+	if(0 != enqueue_list(sock_ep->posted_rcv_list, comm_item)){
+		free(comm_item);
+		return -FI_ENOMEM;
+	}
+		
+	return 0;
 }
 
 ssize_t sock_rdm_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
@@ -627,7 +654,45 @@ ssize_t sock_rdm_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len,
 ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
-	return -FI_ENOSYS;
+	int i;
+	ssize_t total_len = 0, ret;
+	sock_ep_t *sock_ep;
+	sock_comm_item_t *send_item;
+
+	sock_ep = container_of(ep, sock_ep_t, ep);
+	if(!sock_ep)
+		return -FI_EINVAL;
+
+	send_item = calloc(1, sizeof(sock_comm_item_t));
+	if(!send_item)
+		return -FI_ENOMEM;
+	
+	memcpy(&send_item->item.msg, msg, sizeof(struct fi_msg));
+
+	send_item->type = SOCK_SENDMSG;
+	send_item->context = msg->context;
+	if(msg->addr){
+		send_item->addr = malloc(sizeof(struct sockaddr));
+		if(NULL == send_item){
+			free(send_item);
+			return -FI_ENOMEM;
+		}
+		memcpy(send_item->addr, msg->addr, sizeof(struct sockaddr));
+	}
+	
+	for(i=0; i< msg->iov_count; i++)
+		total_len += msg->msg_iov[i].iov_len;
+	
+	send_item->total_len = total_len;
+	send_item->completed = 0;
+	send_item->done_len = 0;
+
+	if(0 != enqueue_list(sock_ep->send_list, send_item)){
+		free(send_item->addr);
+		free(send_item);
+		return -FI_ENOMEM;	
+	}
+	return 0;
 }
 
 ssize_t sock_rdm_ep_msg_inject(struct fid_ep *ep, const void *buf, size_t len)
@@ -672,7 +737,7 @@ struct fi_ops_msg sock_rdm_ep_msg_ops = {
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context)
 {
-	int ret;
+	int ret, flags;
 	sock_ep_t *sock_ep;
 	sock_domain_t *sock_dom;
 	
@@ -703,6 +768,11 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	if(sock_ep->sock_fd <0){
 		goto err1;
 	}
+
+	flags = fcntl(sock_ep->sock_fd, F_GETFL, 0);
+	if(-1 == flags)
+		goto err1;
+	fcntl(sock_ep->sock_fd, F_SETFL, flags | O_NONBLOCK);
 	
 	*ep = &sock_ep->ep;	
 	if(info){
@@ -713,7 +783,7 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		sock_ep->info.op_flags = info->op_flags;
 		sock_ep->info.ep_cap = info->ep_cap;
 		sock_ep->info.addr_format = FI_SOCKADDR;
-
+		
 		if(info->src_addr){
 			memcpy(&sock_ep->src_addr, info->src_addr, 
 			       sizeof(struct sockaddr));
@@ -730,10 +800,16 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	if(0 != (sock_ep->send_list = new_list(SOCK_EP_SNDQ_LEN)))
 		goto err2;
 
-	if(0 != (sock_ep->recv_list = new_list(SOCK_EP_RCVQ_LEN)))
+	if(0 != (sock_ep->posted_rcv_list = new_list(SOCK_EP_RCVQ_LEN)))
 		goto err3;
+	
+	if(0 != (sock_ep->completed_rcv_list = new_list(SOCK_EP_RCVQ_LEN)))
+		goto err4;
 
 	return 0;
+
+err4:
+	free_list(sock_ep->posted_rcv_list);
 
 err3:
 	free_list(sock_ep->send_list);
@@ -785,4 +861,74 @@ int sock_rdm_pep(struct fid_fabric *fabric, struct fi_info *info,
 	return 0;
 }
 
+int sock_rdm_recv_progress(sock_ep_t *ep)
+{
+	return 0;
+}
 
+int sock_rdm_progress_send(sock_ep_t *ep)
+{
+	int ret;
+	sock_ep_t *sock_ep;
+	sock_comm_item_t *send_item, *item;
+	struct msghdr message;
+
+	sock_ep = container_of(ep, sock_ep_t, ep);
+	if(!sock_ep)
+		return -FI_EINVAL;
+
+	send_item = peek_list(sock_ep->send_list);
+	if(NULL == send_item)
+		return 0;
+
+	switch(send_item->type){
+	case SOCK_SEND:
+	{
+		struct msghdr message;
+		memset(&message, 0, sizeof(struct msghdr));
+
+		message.msg_name = send_item->addr;
+		message.msg_namelen = 
+			(send_item->addr) ? sizeof(struct sockaddr) : 0;
+		message.msg_iov = send_item->item.msg.msg_iov;
+		message.msg_iovlen = send_item->item.msg.iov_count;
+		message.msg_control = send_item->item.msg.data;
+		message.msg_controllen = sizeof(uint64_t);
+		message.msg_flags = 0;
+
+		ret = sendmsg(sock_ep->sock_fd, &message, 0);
+		if(ret == send_item->total_len){
+			send_item->completed = 1;
+			send_item->done_len = send_item->total_len;
+
+			item = dequeue_list(sock_ep->send_list);
+			assert(item == send_item);
+			sock_report_send_completion(sock_ep->send_cq, 
+						   SOCK_SENDMSG, send_item);
+			return 0;
+
+		}else if (ret > 0 || 
+			  (ret == -1 && 
+			   (errno == EAGAIN || errno == EWOULDBLOCK))){
+			send_item->completed = 0;
+			send_item->done_len += 
+				(ret > 0 ? ret : send_item->done_len);
+			return 0;
+		}else{
+			/* TODO: Report error to CQ */
+			return -FI_EINVAL;
+		}
+
+		break;
+	}
+	case SOCK_SENDV:
+	case SOCK_SENDTO:
+	case SOCK_SENDMSG:
+	case SOCK_SENDDATA:
+	case SOCK_SENDDATATO:
+	default:
+		return -1;
+	}
+
+	return 0;
+}

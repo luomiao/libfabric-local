@@ -48,21 +48,21 @@
 ssize_t sock_eq_read(struct fid_eq *eq, enum fi_eq_event *event, void *buf, size_t len,
 		     uint64_t flags)
 {
+/*
 	void *entry;
-	size_t entry_len;
 	sock_eq_t *sock_eq;
 
 	sock_eq = container_of(eq, sock_eq_t, eq);
 	if(!sock_eq)
 		return -FI_ENOENT;
 
-	if(peek_list(sock_eq->eq_error_list, &entry_len))
+	if(peek_list(sock_eq->eq_error_list)
 		return -FI_EAVAIL;
 
 	if(FI_PEEK & flags)
-		entry = peek_list(sock_eq->eq_list, &entry_len);
+		entry = peek_list(sock_eq->eq_list);
 	else{
-		entry = dequeue_list(sock_eq->eq_list, &entry_len);
+		entry = dequeue_list(sock_eq->eq_list);
 		if(entry){
 			int read_done = 0;
 			do{
@@ -81,12 +81,14 @@ ssize_t sock_eq_read(struct fid_eq *eq, enum fi_eq_event *event, void *buf, size
 			free(entry);
 		return MIN(len, entry_len);
 	}
+*/
 	return 0;
 }
 
 ssize_t sock_eq_readerr(struct fid_eq *eq, struct fi_eq_err_entry *buf,
 		     size_t len, uint64_t flags)
 {
+/*
 	void *entry;
 	size_t entry_len;
 	sock_eq_t *sock_eq;
@@ -103,10 +105,12 @@ ssize_t sock_eq_readerr(struct fid_eq *eq, struct fi_eq_err_entry *buf,
 		return MIN(len, entry_len);
 	}
 	return 0;
+*/
 }
 
 static ssize_t _sock_eq_write(sock_eq_t *sock_eq, const void *buf, size_t len)
 {
+/*
 	int ret;
 	void *data = malloc(len);
 	if(!data)
@@ -117,10 +121,12 @@ static ssize_t _sock_eq_write(sock_eq_t *sock_eq, const void *buf, size_t len)
 
 	ret = enqueue_list(sock_eq->eq_list, data, len);
 	return (ret == 0) ? len : ret;
+*/
 }
 
 static ssize_t _sock_eq_error_write(sock_eq_t *sock_eq, const void *buf, size_t len)
 {
+/*
 	int ret;
 	void *data = malloc(len);
 	if(!data)
@@ -128,6 +134,7 @@ static ssize_t _sock_eq_error_write(sock_eq_t *sock_eq, const void *buf, size_t 
 	
 	ret = enqueue_list(sock_eq->eq_error_list, data, len);
 	return (ret == 0) ? len : ret;
+*/
 }
 
 ssize_t sock_eq_write(struct fid_eq *eq, enum fi_eq_event event, const void *buf, size_t len,
