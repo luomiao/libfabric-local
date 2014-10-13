@@ -230,10 +230,10 @@ int sock_eq_fi_open(struct fid *fid, const char *name,
 static struct fi_ops sock_eq_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_eq_fi_close,
-	.bind = sock_eq_fi_bind,
-	.sync = sock_eq_fi_sync,
-	.control = sock_eq_fi_control,
-	.ops_open = sock_eq_fi_open,
+	.bind = fi_no_bind,
+	.sync = fi_no_sync,
+	.control = fi_no_control,
+	.ops_open = fi_no_ops_open,
 };
 
 int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,

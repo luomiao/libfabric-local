@@ -203,6 +203,8 @@ int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
 	switch (info->type) {
 	case FI_EP_RDM:
 		return sock_rdm_ep(domain, info, ep, context);
+	case FI_EP_DGRAM:
+		return sock_dgram_ep(domain, info, ep, context);
 	default:
 		return -FI_ENOPROTOOPT;
 	}
@@ -211,10 +213,10 @@ int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
 static struct fi_ops sock_dom_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_dom_close,
-	.bind = sock_dom_bind,
-	.sync = sock_dom_sync,
-	.control = sock_dom_control,
-	.ops_open = sock_dom_ops_open,
+	.bind = fi_no_bind,
+	.sync = fi_no_sync,
+	.control = fi_no_control,
+	.ops_open = fi_no_ops_open,
 };
 
 static struct fi_ops_domain sock_dom_ops = {
