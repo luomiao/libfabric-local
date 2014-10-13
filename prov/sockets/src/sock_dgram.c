@@ -150,19 +150,16 @@ int sockd_check_hints(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 
-	if ((hints->op_flags & SOCKD_OP_FLAGS) != hints->op_flags) {
-		sockd_debug("[sockd] %s: hints->op_flags=0x%llx, supported=0x%llx\n",
-				__func__, hints->op_flags, SOCKD_OP_FLAGS);
+	if (hints->tx_attr && ((hints->tx_attr->op_flags & SOCKD_OP_FLAGS) != hints->tx_attr->op_flags)) {
+		sockd_debug("[sockd] %s: hints->tx_attr->op_flags=0x%llx, supported=0x%llx\n",
+				__func__, hints->tx_attr->op_flags, SOCKD_OP_FLAGS);
 		return -FI_ENODATA;
 	}
 
-	if (hints->domain_attr) {
-		if ((hints->domain_attr->caps & SOCKD_DOMAIN_CAP) != hints->domain_attr->caps) {
-			sockd_debug("[sockd] %s: hints->domain_attr->caps=0x%llx, supported=0x%llx\n",
-					__func__, hints->domain_attr->caps, SOCKD_DOMAIN_CAP);
-			return -FI_ENODATA;
-		}
-
+	if ((hints->domain_cap & SOCKD_DOMAIN_CAP) != hints->domain_cap) {
+		sockd_debug("[sockd] %s: hints->domain_cap=0x%llx, supported=0x%llx\n",
+				__func__, hints->domain_cap, SOCKD_DOMAIN_CAP);
+		return -FI_ENODATA;
 		/* FIXME: check
 		 * threading, control_progress, mr_key_size, eq_data_size */
 	}
@@ -199,11 +196,9 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 
 	if (hints) {
 		fi->ep_cap	= hints->ep_cap;
-		fi->op_flags	= hints->op_flags;
 		fi->addr_format = hints->addr_format;
 	} else {
 		fi->ep_cap	= SOCK_EP_CAP;
-		fi->op_flags	= SOCKD_OP_FLAGS;
 		fi->addr_format = FI_SOCKADDR;
 	}
 
@@ -232,7 +227,7 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 	fi->domain_attr->threading 	  = FI_THREAD_PROGRESS;
 	fi->domain_attr->control_progress = FI_PROGRESS_MANUAL;
 	fi->domain_attr->data_progress 	  = FI_PROGRESS_MANUAL; /* FIXME: FI_PROGRESS_AUTO? */
-	fi->domain_attr->caps 		  = SOCKD_DOMAIN_CAP;
+	fi->domain_cap	 		  = SOCKD_DOMAIN_CAP;
 
 	fi->fabric_attr = calloc(1, sizeof (struct fi_fabric_attr));
 	if (!fi->fabric_attr) {
@@ -274,7 +269,18 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 		fi->dest_addrlen = 0;
 	}
 
+	fi->tx_attr = calloc(1, sizeof (struct fi_tx_ctx_attr));
+	if (!fi->tx_attr) {
+		goto err7;
+	}
+	if (hints->tx_attr)
+		fi->tx_attr->op_flags = hints->tx_attr->op_flags;
+	else
+		fi->tx_attr->op_flags = SOCKD_OP_FLAGS;
+
 	return fi;
+err7:
+	free(fi->dest_addr);
 err6:
 	free(fi->src_addr);
 err5:
@@ -727,7 +733,7 @@ int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 	_ep->ep.rma 		= NULL;
 	_ep->ep.tagged		= NULL;
 	_ep->ep.atomic		= NULL;
-	_ep->dom		= _dom;
+	_ep->domain		= _dom;
 
 	_ep->sock_fd 	= socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (_ep->sock_fd < 0) {
