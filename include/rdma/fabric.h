@@ -97,7 +97,7 @@ uint32_t fi_version(void);
 #define FI_REMOTE_READ		(1ULL << 20)
 #define FI_REMOTE_WRITE		(1ULL << 21)
 
-#define FI_REMOTE_EQ_DATA	(1ULL << 24)
+#define FI_REMOTE_CQ_DATA	(1ULL << 24)
 #define FI_EVENT		(1ULL << 25)
 #define FI_REMOTE_SIGNAL	(1ULL << 26)
 #define FI_REMOTE_COMPLETE	(1ULL << 27)
@@ -149,6 +149,26 @@ enum fi_threading {
 #define FI_ORDER_SAW		(1 << 7)
 #define FI_ORDER_SAS		(1 << 8)
 
+struct fi_tx_ctx_attr {
+	uint64_t		ep_cap;
+	uint64_t		op_flags;
+	uint64_t		msg_order;
+	size_t			inject_size;
+	size_t			size;
+	size_t			iov_limit;
+	size_t			op_alignment;
+};
+
+struct fi_rx_ctx_attr {
+	uint64_t		ep_cap;
+	uint64_t		op_flags;
+	uint64_t		msg_order;
+	size_t			total_buffered_recv;
+	size_t			size;
+	size_t			iov_limit;
+	size_t			op_alignment;
+};
+
 struct fi_ep_attr {
 	uint64_t		protocol;
 	size_t			max_msg_size;
@@ -165,17 +185,18 @@ struct fi_ep_attr {
 
 struct fi_domain_attr {
 	char			*name;
-	uint64_t		caps;
 	enum fi_threading	threading;
 	enum fi_progress	control_progress;
 	enum fi_progress	data_progress;
 	size_t			mr_key_size;
-	size_t			eq_data_size;
+	size_t			cq_data_size;
 	size_t			ep_cnt;
 	size_t			tx_ctx_cnt;
 	size_t			rx_ctx_cnt;
 	size_t			max_ep_tx_ctx;
 	size_t			max_ep_rx_ctx;
+	size_t			op_size;
+	size_t			iov_size;
 };
 
 struct fi_fabric_attr {
@@ -188,13 +209,15 @@ struct fi_info {
 	struct fi_info		*next;
 	uint64_t		type;
 	uint64_t		ep_cap;
-	uint64_t		op_flags;
+	uint64_t		domain_cap;
 	enum fi_addr_format	addr_format;
 	size_t			src_addrlen;
 	size_t			dest_addrlen;
 	void			*src_addr;
 	void			*dest_addr;
 	fi_connreq_t		connreq;
+	struct fi_tx_ctx_attr	*tx_attr;
+	struct fi_rx_ctx_attr	*rx_attr;
 	struct fi_ep_attr	*ep_attr;
 	struct fi_domain_attr	*domain_attr;
 	struct fi_fabric_attr	*fabric_attr;
@@ -205,6 +228,8 @@ enum {
 	FI_CLASS_FABRIC,
 	FI_CLASS_DOMAIN,
 	FI_CLASS_EP,
+	FI_CLASS_RX_CTX,
+	FI_CLASS_TX_CTX,
 	FI_CLASS_PEP,
 	FI_CLASS_INTERFACE,
 	FI_CLASS_AV,
@@ -257,7 +282,7 @@ void fi_freeinfo(struct fi_info *info);
 
 struct fi_ops_fabric {
 	size_t	size;
-	int	(*domain)(struct fid_fabric *fabric, struct fi_domain_attr *attr,
+	int	(*domain)(struct fid_fabric *fabric, struct fi_info *info,
 			struct fid_domain **dom, void *context);
 	int	(*endpoint)(struct fid_fabric *fabric, struct fi_info *info,
 			struct fid_pep **pep, void *context);
@@ -329,6 +354,26 @@ fi_open_ops(struct fid *fid, const char *name, uint64_t flags,
 {
 	return fid->ops->ops_open(fid, name, flags, ops, context);
 }
+
+enum fi_type {
+	FI_TYPE_INFO,
+	FI_TYPE_EP_TYPE,
+	FI_TYPE_EP_CAP,
+	FI_TYPE_OP_FLAGS,
+	FI_TYPE_ADDR_FORMAT,
+	FI_TYPE_TX_ATTR,
+	FI_TYPE_RX_ATTR,
+	FI_TYPE_EP_ATTR,
+	FI_TYPE_DOMAIN_ATTR,
+	FI_TYPE_FABRIC_ATTR,
+	FI_TYPE_DOMAIN_CAP,
+	FI_TYPE_THREADING,
+	FI_TYPE_PROGRESS,
+	FI_TYPE_PROTOCOL,
+	FI_TYPE_MSG_ORDER
+};
+
+char *fi_tostr(const void *data, enum fi_type datatype);
 
 
 #ifndef FABRIC_DIRECT
