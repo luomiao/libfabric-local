@@ -100,10 +100,6 @@ static int sock_ep_check_hints(struct fi_info *hints)
 			return -FI_ENODATA;
 	}
 
-	if(hints->op_flags){
-		return -FI_ENODATA;
-	}
-
 	switch (hints->addr_format){
 	case FI_ADDR_PROTO:
 	case FI_SOCKADDR:
@@ -132,7 +128,6 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 	_info->next = NULL;
 	
 	_info->type = ep_type;
-	_info->op_flags = 0;
 	_info->addr_format = addr_format;
 
 	_info->src_addr = src_addr;
@@ -779,7 +774,6 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		if(ret)
 			goto err2;
 		
-		sock_ep->info.op_flags = info->op_flags;
 		sock_ep->info.ep_cap = info->ep_cap;
 		sock_ep->info.addr_format = FI_SOCKADDR;
 		
@@ -844,7 +838,6 @@ int sock_rdm_pep(struct fid_fabric *fabric, struct fi_info *info,
 	}
 
 	if(info){
-		sock_pep->op_flags = info->op_flags;
 		sock_pep->pep_cap = info->ep_cap;
 
 		if(info->src_addr){
