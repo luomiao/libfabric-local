@@ -34,23 +34,6 @@
 #  include <config.h>
 #endif /* HAVE_CONFIG_H */
 
-//#include <errno.h>
-//#include <fcntl.h>
-//#include <netdb.h>
-//#include <netinet/in.h>
-//#include <netinet/tcp.h>
-//#include <poll.h>
-#include <pthread.h>
-//#include <stdarg.h>
-//#include <stddef.h>
-//#include <stdio.h>
-//#include <string.h>
-//#include <sys/select.h>
-//#include <sys/socket.h>
-//#include <sys/types.h>
-//#include <sys/time.h>
-//#include <unistd.h>
-
 #include <rdma/fabric.h>
 #include <rdma/fi_atomic.h>
 #include <rdma/fi_cm.h>
@@ -103,6 +86,7 @@ typedef struct _sock_fabric_t{
 
 typedef struct _sock_domain_t {
 	struct fid_domain dom_fid;
+	
 	sock_fabric_t *fab;
 	fastlock_t lock;
 	atomic_t ref;
@@ -125,8 +109,9 @@ typedef struct _sock_cntr_t {
 typedef struct _sock_cq_t {
 	struct fid_cq		cq_fid;
 	sock_domain_t	*domain;
-	int			fd[2];
-	enum fi_cq_format	format;
+	int fd[2];
+	int error_fd[2];
+	enum fi_cq_format format;
 	atomic_t		ref;
 	struct fi_cq_err_entry	err_entry;
 }sock_cq_t;
@@ -158,18 +143,28 @@ typedef struct _sock_wait_t {
 	sock_domain_t *dom;
 }sock_wait_t;
 
-typedef struct _send_buf_t{
-	void *buf;
-	size_t buf_len;
-	size_t completed;
-	struct _send_buf_t *next;
-}send_buf_t;
+#define SOCK_SEND (1)
+#define SOCK_SENDV (2)
+#define SOCK_SENDTO (3)
+#define SOCK_SENDMSG (4)
+#define SOCK_SENDDATA (5)
+#define SOCK_SENDDATATO (6)
 
-typedef struct _recv_buf_t{
-	void *buf;
-	size_t buf_len;
-	struct _recv_buf_t *next;
-}recv_buf_t;
+
+typedef struct _sock_comm_item_t{
+	int type;
+	int completed;
+	void *context;
+	size_t done_len;
+	size_t total_len;
+	uint64_t flags;
+	void *addr;
+
+	union{
+		struct fi_msg msg;
+		void *buf;
+	}item;
+}sock_comm_item_t;
 
 typedef struct _sock_eq_t{
 	struct fid_eq eq;
@@ -213,8 +208,10 @@ typedef struct _sock_ep_t {
 	struct fi_ep_attr ep_attr;
 
 	list_t *send_list;
-	list_t *recv_list;
 
+	list_t *posted_rcv_list;
+	list_t *completed_rcv_list;
+	
 	struct sockaddr src_addr;
 	struct sockaddr dest_addr;
 

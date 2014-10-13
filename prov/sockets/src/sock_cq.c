@@ -154,7 +154,11 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 
 	ret = socketpair(AF_UNIX, 0, 0, _cq->fd);
 	if (ret)
-		goto err;
+		goto err1;
+
+	ret = socketpair(AF_UNIX, 0, 0, _cq->error_fd);
+	if (ret)
+		goto err2;
 
 	atomic_init(&_cq->ref);
 	_cq->cq_fid.fid.fclass = FI_CLASS_CQ;
@@ -169,7 +173,11 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	*cq = &_cq->cq_fid;
 	return 0;
 
-err:
+err2:
+	close(_cq->fd[0]);
+	close(_cq->fd[1]);
+
+err1:
 	free(_cq);
 	return -ret;
 }
@@ -293,45 +301,135 @@ err1:
 	return -ret;
 }
 
-#define SOCK_PROGRESS_CM       (0x1)
-#define SOCK_PROGRESS_SENDS (0x1<<1)
-#define SOCK_PROGRESS_RECVS (0x1<<2)
+#define SOCK_PROGRESS_SENDS (0x1<<0)
+#define SOCK_PROGRESS_RECVS (0x1<<1)
 
-int sock_progress_cm()
+int sock_progress_cm(sock_cq_t *cq)
 {
 	return 0;
 }
 
-int sock_progress_recvs()
+int sock_progress_recvs(sock_cq_t *cq)
 {
 	return 0;
 }
 
-int sock_progress_sends()
+int sock_progress_sends(sock_cq_t *cq)
 {
 	return 0;
 }
 
-int sock_progress_engine(uint64_t flags)
+int sock_progress_engine(sock_cq_t *cq, uint64_t flags)
 {
 	int ret;
-	if(flags & SOCK_PROGRESS_CM){
-		ret = sock_progress_cm();
-		if(ret)
-			return ret;
-	}
-
 	if(flags & SOCK_PROGRESS_SENDS){
-		ret = sock_progress_sends();
+		ret = sock_progress_sends(cq);
 		if(ret)
 			return ret;
 	}
 		
 	if(flags & SOCK_PROGRESS_RECVS){
-		ret = sock_progress_recvs();
+		ret = sock_progress_recvs(cq);
 		if(ret)
 			return ret;
 	}
 
+	return 0;
+}
+
+int _sock_cq_report_cq(sock_cq_t *sock_cq, 
+		    const void *data, size_t len)
+{
+	ssize_t ret, remaining = len;
+
+	do{
+		ret = write(sock_cq->fd[SOCK_WR_FD], data, remaining);
+		if(ret > 0){
+			remaining -= ret;
+		}else if (ret == EWOULDBLOCK || ret == EAGAIN){
+			continue;
+		}else{
+			return -1;
+		}
+	}while(remaining>0);
+	return 0;
+}
+
+int _sock_cq_report_cq_err(sock_cq_t *sock_cq, 
+		    const void *data, size_t len)
+{
+	ssize_t ret, remaining = len;
+
+	do{
+		ret = write(sock_cq->error_fd[SOCK_WR_FD], data, remaining);
+		if(ret > 0){
+			remaining -= ret;
+		}else if (ret == EWOULDBLOCK || ret == EAGAIN){
+			continue;
+		}else{
+			return -1;
+		}
+	}while(remaining>0);
+	return 0;
+}
+
+int sock_cq_report(sock_cq_t *sock_cq, 
+		   struct fi_cq_tagged_entry *in_report)
+{
+	int ret;
+
+	switch(sock_cq->format){
+
+	case FI_CQ_FORMAT_CONTEXT:
+	{
+		struct fi_cq_entry report;
+		report.op_context = in_report->op_context;
+		return _sock_cq_report(sock_cq, &report, sizeof(struct fi_cq_entry));
+	}
+	case FI_CQ_FORMAT_MSG:
+	{
+		struct fi_cq_msg_entry report;
+	}
+	/* TODO: add support for other format types */
+	case FI_CQ_FORMAT_DATA:
+	case FI_CQ_FORMAT_TAGGED:
+	default:
+		return -1;
+	}
+	return 0;
+}
+
+int sock_cq_report_send_completion(sock_cq_t *sock_cq, 
+			       int comm_type, void *item)
+{
+	switch(comm_type){
+	case SOCK_SEND:
+		break;
+
+	case SOCK_SENDV:
+
+	case SOCK_SENDTO:
+
+	case SOCK_SENDMSG:
+		break;
+
+	case SOCK_SENDDATA:
+
+	case SOCK_SENDDATATO:
+		break;
+	default:
+		return -1;
+	}
+	return 0;
+}
+
+int sock_cq_report_recv_completion(sock_cq_t *sock_cq, 
+			       int comm_type, void *item)
+{
+	return 0;
+}
+
+int sock_cq_report_error(sock_cq_t *sock_cq, struct fi_cq_err_entry *error)
+{
 	return 0;
 }

@@ -38,8 +38,8 @@ typedef struct _list_t list_t;
 list_t *new_list(size_t length);
 void free_list(list_t *list);
 
-int enqueue_list(list_t *list, void *data, size_t len);
-void *peek_list(list_t *list, size_t *len);
-void *dequeue_list(list_t *list, size_t *len);
+int enqueue_list(list_t *list, void *item);
+void *peek_list(list_t *list);
+void *dequeue_list(list_t *list);
 
 #endif /* _LIST_H_ */
