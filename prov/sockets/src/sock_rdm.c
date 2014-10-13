@@ -618,7 +618,6 @@ ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	if(!comm_item)
 		return -FI_ENOMEM;
 	
-	comm_item->completed = 0;
 	comm_item->type = SOCK_SENDMSG;
 	comm_item->context = msg->context;
 	comm_item->done_len = 0;
@@ -672,23 +671,23 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	send_item->type = SOCK_SENDMSG;
 	send_item->context = msg->context;
 	if(msg->addr){
-		send_item->addr = malloc(sizeof(struct sockaddr));
+		//send_item->addr = malloc(sizeof(struct sockaddr));
 		if(NULL == send_item){
 			free(send_item);
 			return -FI_ENOMEM;
 		}
-		memcpy(send_item->addr, msg->addr, sizeof(struct sockaddr));
+		//memcpy(send_item->addr, msg->addr, sizeof(struct sockaddr));
 	}
 	
 	for(i=0; i< msg->iov_count; i++)
 		total_len += msg->msg_iov[i].iov_len;
 	
 	send_item->total_len = total_len;
-	send_item->completed = 0;
+	//send_item->completed = 0;
 	send_item->done_len = 0;
 
 	if(0 != enqueue_list(sock_ep->send_list, send_item)){
-		free(send_item->addr);
+		//free(send_item->addr);
 		free(send_item);
 		return -FI_ENOMEM;	
 	}
@@ -887,9 +886,9 @@ int sock_rdm_progress_send(sock_ep_t *ep)
 		struct msghdr message;
 		memset(&message, 0, sizeof(struct msghdr));
 
-		message.msg_name = send_item->addr;
-		message.msg_namelen = 
-			(send_item->addr) ? sizeof(struct sockaddr) : 0;
+		//message.msg_name = send_item->addr;
+		//message.msg_namelen = 
+		//(send_item->addr) ? sizeof(struct sockaddr) : 0;
 		message.msg_iov = send_item->item.msg.msg_iov;
 		message.msg_iovlen = send_item->item.msg.iov_count;
 		message.msg_control = send_item->item.msg.data;
@@ -898,7 +897,7 @@ int sock_rdm_progress_send(sock_ep_t *ep)
 
 		ret = sendmsg(sock_ep->sock_fd, &message, 0);
 		if(ret == send_item->total_len){
-			send_item->completed = 1;
+			//send_item->completed = 1;
 			send_item->done_len = send_item->total_len;
 
 			item = dequeue_list(sock_ep->send_list);
@@ -910,7 +909,7 @@ int sock_rdm_progress_send(sock_ep_t *ep)
 		}else if (ret > 0 || 
 			  (ret == -1 && 
 			   (errno == EAGAIN || errno == EWOULDBLOCK))){
-			send_item->completed = 0;
+			//send_item->completed = 0;
 			send_item->done_len += 
 				(ret > 0 ? ret : send_item->done_len);
 			return 0;

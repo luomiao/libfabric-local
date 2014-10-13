@@ -112,8 +112,9 @@ typedef struct _sock_cq_t {
 	int fd[2];
 	int error_fd[2];
 	enum fi_cq_format format;
-	atomic_t		ref;
-	struct fi_cq_err_entry	err_entry;
+	atomic_t ref;
+	struct fi_cq_err_entry err_entry;
+	list_t *ep_list;
 }sock_cq_t;
 
 typedef struct _sock_mr_t {
@@ -149,16 +150,17 @@ typedef struct _sock_wait_t {
 #define SOCK_SENDMSG (4)
 #define SOCK_SENDDATA (5)
 #define SOCK_SENDDATATO (6)
-
+#define SOCK_USR_DATA (7)
 
 typedef struct _sock_comm_item_t{
 	int type;
-	int completed;
+	int is_done;
 	void *context;
 	size_t done_len;
 	size_t total_len;
 	uint64_t flags;
-	void *addr;
+
+	struct sockaddr addr;
 
 	union{
 		struct fi_msg msg;
