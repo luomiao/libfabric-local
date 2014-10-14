@@ -144,13 +144,39 @@ typedef struct _sock_wait_t {
 	sock_domain_t *dom;
 }sock_wait_t;
 
-#define SOCK_SEND (1)
-#define SOCK_SENDV (2)
-#define SOCK_SENDTO (3)
-#define SOCK_SENDMSG (4)
-#define SOCK_SENDDATA (5)
-#define SOCK_SENDDATATO (6)
-#define SOCK_USR_DATA (7)
+typedef struct _sock_ep_t sock_ep_t;
+
+#define REQ_TYPE_SEND (1)
+#define REQ_TYPE_RECV (2)
+#define REQ_TYPE_USER (3)
+
+#define COMM_TYPE_SEND (1)
+#define COMM_TYPE_SENDV (2)
+#define COMM_TYPE_SENDTO (3)
+#define COMM_TYPE_SENDMSG (4)
+#define COMM_TYPE_SENDDATA (5)
+#define COMM_TYPE_SENDDATATO (6)
+
+typedef struct _sock_req_item_t
+{
+	int req_type;
+	int comm_type;
+	sock_ep_t *ep;
+
+	void *context;
+	uint64_t flags;
+	uint64_t tag;
+
+	size_t done_len;
+	size_t total_len;
+	struct sockaddr addr;
+
+	union{
+		struct fi_msg msg;
+		void *buf;
+	}item;
+
+}sock_req_item_t;
 
 typedef struct _sock_comm_item_t{
 	int type;
@@ -177,7 +203,7 @@ typedef struct _sock_eq_t{
 	list_t *eq_error_list;
 }sock_eq_t;
 
-typedef struct _sock_ep_t {
+struct _sock_ep_t {
 	struct fid_ep		ep;
 	sock_domain_t	*domain;	
 	int sock_fd;
@@ -229,7 +255,7 @@ typedef struct _sock_ep_t {
 	struct _sock_ep_t *base;
 
 	int port_num;
-}sock_ep_t;
+};
 
 typedef struct _sock_pep_t {
 	struct fid_pep		pep;

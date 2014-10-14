@@ -599,6 +599,7 @@ ssize_t sock_rdm_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void 
 ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
+/*
 	sock_ep_t *sock_ep;
 	sock_comm_item_t *comm_item;
 	
@@ -623,7 +624,7 @@ ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		free(comm_item);
 		return -FI_ENOMEM;
 	}
-		
+*/		
 	return 0;
 }
 
@@ -663,7 +664,9 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	
 	memcpy(&send_item->item.msg, msg, sizeof(struct fi_msg));
 
+/*
 	send_item->type = SOCK_SENDMSG;
+*/
 	send_item->context = msg->context;
 	if(msg->addr){
 		//send_item->addr = malloc(sizeof(struct sockaddr));
@@ -860,67 +863,5 @@ int sock_rdm_recv_progress(sock_ep_t *ep)
 
 int sock_rdm_progress_send(sock_ep_t *ep)
 {
-	int ret;
-	sock_ep_t *sock_ep;
-	sock_comm_item_t *send_item, *item;
-	struct msghdr message;
-
-	sock_ep = container_of(ep, sock_ep_t, ep);
-	if(!sock_ep)
-		return -FI_EINVAL;
-
-	send_item = peek_list(sock_ep->send_list);
-	if(NULL == send_item)
-		return 0;
-
-	switch(send_item->type){
-	case SOCK_SEND:
-	{
-		struct msghdr message;
-		memset(&message, 0, sizeof(struct msghdr));
-
-		//message.msg_name = send_item->addr;
-		//message.msg_namelen = 
-		//(send_item->addr) ? sizeof(struct sockaddr) : 0;
-		message.msg_iov = send_item->item.msg.msg_iov;
-		message.msg_iovlen = send_item->item.msg.iov_count;
-		message.msg_control = send_item->item.msg.data;
-		message.msg_controllen = sizeof(uint64_t);
-		message.msg_flags = 0;
-
-		ret = sendmsg(sock_ep->sock_fd, &message, 0);
-		if(ret == send_item->total_len){
-			//send_item->completed = 1;
-			send_item->done_len = send_item->total_len;
-
-			item = dequeue_list(sock_ep->send_list);
-			assert(item == send_item);
-			sock_report_send_completion(sock_ep->send_cq, 
-						   SOCK_SENDMSG, send_item);
-			return 0;
-
-		}else if (ret > 0 || 
-			  (ret == -1 && 
-			   (errno == EAGAIN || errno == EWOULDBLOCK))){
-			//send_item->completed = 0;
-			send_item->done_len += 
-				(ret > 0 ? ret : send_item->done_len);
-			return 0;
-		}else{
-			/* TODO: Report error to CQ */
-			return -FI_EINVAL;
-		}
-
-		break;
-	}
-	case SOCK_SENDV:
-	case SOCK_SENDTO:
-	case SOCK_SENDMSG:
-	case SOCK_SENDDATA:
-	case SOCK_SENDDATATO:
-	default:
-		return -1;
-	}
-
 	return 0;
 }
