@@ -865,3 +865,8 @@ int sock_rdm_progress_send(sock_ep_t *ep)
 {
 	return 0;
 }
+
+int _sock_ep_rdm_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq)
+{
+	return -FI_ENOSYS;
+}

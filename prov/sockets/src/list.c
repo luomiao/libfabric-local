@@ -39,28 +39,21 @@
 
 #define LIST_DEF_NUM_ENTRIES (128)
 
-typedef struct _list_element_t
-{
-	void *data;
-	size_t len;
-	list_t *list;
-	struct _list_element_t *next;
-}list_element_t;
-
-struct _list_t
-{
-	list_element_t *head, *tail;
-	list_element_t *free_head, *free_tail;
-	size_t curr_len;
-	size_t max_len;
-	pthread_mutex_t mutex;
-};
+#ifdef _LIST_USE_LOCKS_
 
 #define CREATE_LOCK(_x) pthread_mutex_init(&(_x->mutex), NULL)
 #define DESTROY_LOCK(_x) pthread_mutex_destroy(&((_x)->mutex))
 #define LOCK_LIST(_x) pthread_mutex_lock (&((_x)->mutex))
 #define UNLOCK_LIST(_x) pthread_mutex_unlock (&((_x)->mutex))
 
+#else
+
+#define CREATE_LOCK(_x) 0
+#define DESTROY_LOCK(_x) 0
+#define LOCK_LIST(_x) 0
+#define UNLOCK_LIST(_x) 0
+
+#endif
 
 #define ENQUEUE_LIST(_head, _tail, _elem) do{		\
 		(_elem)->next = NULL;			\
@@ -156,7 +149,7 @@ void free_list(list_t *list)
 	free((void *)list);
 }
 
-int enqueue_list(list_t *list, void *data)
+int enqueue_item(list_t *list, void *data)
 {
 	int ret;
 	LOCK_LIST(list);
@@ -206,7 +199,7 @@ int enqueue_list(list_t *list, void *data)
 	return ret;
 }
 
-void *dequeue_list(list_t *list)
+void *dequeue_item(list_t *list)
 {
 	LOCK_LIST(list);
 	if(list->curr_len > 0){
@@ -223,7 +216,7 @@ void *dequeue_list(list_t *list)
 	return NULL;
 }
 
-void *peek_list(list_t *list)
+void *peek_item(list_t *list)
 {
 	LOCK_LIST(list);
 	if(list->curr_len > 0){
@@ -233,4 +226,48 @@ void *peek_list(list_t *list)
 	}
 	UNLOCK_LIST(list);
 	return NULL;
+}
+
+int delete_item(list_t *list, void *item)
+{
+	LOCK_LIST(list);
+	list_element_t *curr;
+	list_element_t *prev = NULL;
+	
+	for(curr = list->head; curr != NULL; curr = curr->next){
+		if(curr->data == item) {
+			if(prev == NULL) {
+				list->head = curr->next;
+			} else {
+				prev->next = curr->next;
+			}
+			
+			if(list->tail == curr)
+				list->tail = NULL;
+
+			_list_enqueue_free_list(curr);
+			list->curr_len--;
+			UNLOCK_LIST(list);
+			return 0;
+		}
+		prev = curr;
+	}
+	UNLOCK_LIST(list);
+	return -1;
+}
+
+int find_item(list_t *list, void *item)
+{
+	LOCK_LIST(list);
+	list_element_t *curr = list->head;
+
+	while(curr){
+		if(curr->data == item){
+			UNLOCK_LIST(list);
+			return 0;
+		}
+		curr=curr->next;
+	}
+	UNLOCK_LIST(list);
+	return -1;
 }

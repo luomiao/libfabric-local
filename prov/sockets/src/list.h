@@ -33,13 +33,33 @@
 #ifndef _LIST_H_
 #define _LIST_H_
 
+#include <pthread.h>
+
 typedef struct _list_t list_t;
+typedef struct _list_element_t
+{
+	void *data;
+	size_t len;
+	list_t *list;
+	struct _list_element_t *next;
+}list_element_t;
+
+struct _list_t
+{
+	list_element_t *head, *tail;
+	list_element_t *free_head, *free_tail;
+	size_t curr_len;
+	size_t max_len;
+	pthread_mutex_t mutex;
+};
 
 list_t *new_list(size_t length);
 void free_list(list_t *list);
 
-int enqueue_list(list_t *list, void *item);
-void *peek_list(list_t *list);
-void *dequeue_list(list_t *list);
+int enqueue_item(list_t *list, void *item);
+void *peek_item(list_t *list);
+void *dequeue_item(list_t *list);
+int find_item(list_t *list, void *item);
+int delete_item(list_t *list, void *item);
 
 #endif /* _LIST_H_ */

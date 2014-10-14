@@ -183,3 +183,9 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 	*av = &_av->av_fid;
 	return 0;
 }
+
+/* TODO */
+fi_addr_t _sock_av_lookup(struct sockaddr *addr)
+{
+	return FI_ADDR_UNSPEC;
+}

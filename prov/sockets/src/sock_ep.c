@@ -246,3 +246,16 @@ static struct fi_ops_msg sock_msg_ops = {
 		.senddatato = NULL,
 };
 
+int _sock_ep_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq)
+{
+	switch (sock_ep->ep_type) {
+	case FI_EP_RDM:
+		return _sock_ep_rdm_progress(sock_ep, sock_cq);
+	case FI_EP_DGRAM:
+		return _sock_ep_dgram_progress(sock_ep, sock_cq);
+	case FI_EP_MSG:
+		return _sock_ep_msg_progress(sock_ep, sock_cq);
+	default:
+		return -FI_ENOPROTOOPT;
+	}
+}

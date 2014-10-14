@@ -757,3 +757,8 @@ int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 	sockd_debug("[sockd] leave sock_dgram_ep\n");
 	return 0;
 }
+
+int _sock_ep_dgram_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq)
+{
+	return -FI_ENOSYS;
+}

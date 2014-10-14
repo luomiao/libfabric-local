@@ -109,12 +109,13 @@ typedef struct _sock_cntr_t {
 typedef struct _sock_cq_t {
 	struct fid_cq		cq_fid;
 	sock_domain_t	*domain;
-	int fd[2];
-	int error_fd[2];
-	enum fi_cq_format format;
+	enum fi_cq_format cq_format;
+	ssize_t cq_entry_size;
 	atomic_t ref;
-	struct fi_cq_err_entry err_entry;
+
 	list_t *ep_list;
+	list_t *completed_list;
+	list_t *error_list;
 }sock_cq_t;
 
 typedef struct _sock_mr_t {
@@ -166,10 +167,11 @@ typedef struct _sock_req_item_t
 	void *context;
 	uint64_t flags;
 	uint64_t tag;
+	uint64_t data;
 
 	size_t done_len;
 	size_t total_len;
-	struct sockaddr addr;
+	struct sockaddr  src_addr;
 
 	union{
 		struct fi_msg msg;

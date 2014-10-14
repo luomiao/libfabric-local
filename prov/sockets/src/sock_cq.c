@@ -34,6 +34,7 @@
 #  include <config.h>
 #endif /* HAVE_CONFIG_H */
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -42,15 +43,167 @@
 
 #include "sock.h"
 
-static ssize_t sock_cq_read(struct fid_cq *cq, void *buf, size_t len)
+static ssize_t _sock_cq_entry_size(sock_cq_t *sock_cq)
 {
-	return -FI_ENOSYS;
+	ssize_t size = 0;
+
+	switch(sock_cq->cq_format){
+	case FI_CQ_FORMAT_CONTEXT:
+		size = sizeof(struct fi_cq_entry);
+		break;
+
+	case FI_CQ_FORMAT_MSG:
+		size = sizeof(struct fi_cq_msg_entry);
+		break;
+
+	case FI_CQ_FORMAT_DATA:
+		size = sizeof(struct fi_cq_data_entry);
+		break;
+
+	case FI_CQ_FORMAT_TAGGED:
+		size = sizeof(struct fi_cq_tagged_entry);
+		break;
+
+	case FI_CQ_FORMAT_UNSPEC:
+	default:
+		size = -1;
+		break;
+	}
+	return size;
+}
+
+static void _sock_cq_write_to_buf(sock_cq_t *sock_cq,
+				  void *buf, sock_req_item_t *cq_entry)
+{
+	ssize_t size;
+	switch(sock_cq->cq_format){
+
+	case FI_CQ_FORMAT_CONTEXT:
+	{
+		struct fi_cq_entry entry;
+		size = sizeof(struct fi_cq_entry);
+
+		entry.op_context = cq_entry->context;
+		memcpy(buf, &entry, size);
+		break;
+	}
+
+	case FI_CQ_FORMAT_MSG:
+	{
+		struct fi_cq_msg_entry entry;
+		size = sizeof(struct fi_cq_msg_entry);
+
+		entry.op_context = cq_entry->context;
+		entry.flags = cq_entry->flags;
+		entry.len = cq_entry->total_len;
+		memcpy(buf, &entry, size);
+		break;
+	}
+
+	case FI_CQ_FORMAT_DATA:
+	{
+		struct fi_cq_data_entry entry;
+		size = sizeof(struct fi_cq_data_entry);
+
+		entry.op_context = cq_entry->context;
+		entry.flags = cq_entry->flags;
+		entry.len = cq_entry->total_len;
+		if(cq_entry->comm_type == COMM_TYPE_SEND ||
+		   cq_entry->comm_type == COMM_TYPE_SENDTO||
+		   cq_entry->comm_type == COMM_TYPE_SENDDATA||
+		   cq_entry->comm_type == COMM_TYPE_SENDDATATO)
+			entry.buf = cq_entry->item.buf;
+		else
+			entry.buf = NULL;
+		entry.data = cq_entry->data;
+		memcpy(buf, &entry, size);
+		break;
+	}
+
+	case FI_CQ_FORMAT_TAGGED:
+	{
+		struct fi_cq_tagged_entry entry;
+		size = sizeof(struct fi_cq_tagged_entry);
+
+		entry.op_context = cq_entry->context;
+		entry.flags = cq_entry->flags;
+		entry.len = cq_entry->total_len;
+		if(cq_entry->comm_type == COMM_TYPE_SEND ||
+		   cq_entry->comm_type == COMM_TYPE_SENDTO||
+		   cq_entry->comm_type == COMM_TYPE_SENDDATA||
+		   cq_entry->comm_type == COMM_TYPE_SENDDATATO)
+			entry.buf = cq_entry->item.buf;
+		else
+			entry.buf = NULL;
+		entry.data = cq_entry->data;
+		entry.tag = cq_entry->tag;
+		memcpy(buf, &entry, size);
+		break;
+	}
+	default:
+		fprintf(stderr, "Invalid CQ format!\n");
+		break;
+	}
+}
+
+static void _sock_cq_progress(sock_cq_t *sock_cq)
+{
+	list_element_t *curr = sock_cq->ep_list;
+	while(curr){
+		_sock_ep_progress((sock_ep_t *)curr->data, sock_cq);
+		curr=curr->next;
+	}
 }
 
 static ssize_t sock_cq_readfrom(struct fid_cq *cq, void *buf, size_t len,
 				fi_addr_t *src_addr)
 {
-	return -FI_ENOSYS;
+	int num_done = 0;
+	sock_cq_t *sock_cq;
+	ssize_t bytes_written = 0;
+	sock_req_item_t *cq_entry;
+
+	sock_cq = container_of(cq, sock_cq_t, cq_fid);
+	if(!sock_cq)
+		return -FI_ENOENT;
+
+	if(peek_list(sock_cq->error_list))
+		return -FI_EAVAIL;
+
+	if(len < sock_cq->cq_entry_size)
+		return -FI_ETOOSMALL;
+
+	while(len > sock_cq->cq_entry_size){
+		_sock_cq_progress(sock_cq);
+		
+		cq_entry = dequeue_list(sock_cq->completed_list);
+		if(cq_entry){
+			_sock_cq_write_to_buf(sock_cq, buf, cq_entry);
+			bytes_written += sock_cq->cq_entry_size;
+			len -= sock_cq->cq_entry_size;
+			
+			if(src_addr){
+				fi_addr_t addr;
+				if(FI_SOURCE & cq_entry->ep->info.ep_cap){
+					addr = _sock_av_lookup(src_addr);
+				}else{
+					addr = FI_ADDR_UNSPEC;
+				}
+				memcpy((char*)src_addr + num_done * sizeof(fi_addr_t), 
+				       &addr, sizeof(fi_addr_t));
+			}
+			num_done++;
+		}else{
+			return bytes_written;
+		}
+	}
+	
+	return bytes_written;
+}
+
+static ssize_t sock_cq_read(struct fid_cq *cq, void *buf, size_t len)
+{
+	return sock_cq_readfrom(cq, buf, len, NULL);
 }
 
 static ssize_t sock_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
@@ -87,11 +240,16 @@ static int sock_cq_close(struct fid *fid)
 	sock_cq_t *cq;
 
 	cq = container_of(fid, sock_cq_t, cq_fid.fid);
+	if(!cq)
+		return -FI_EINVAL;
+
 	if (atomic_get(&cq->ref))
 		return -FI_EBUSY;
 
-	close(cq->fd[SOCK_WR_FD]);
-	close(cq->fd[SOCK_RD_FD]);
+	free_list(cq->ep_list);
+	free_list(cq->completed_list);
+	free_list(cq->error_list);
+
 	free(cq);
 	return 0;
 }
@@ -140,57 +298,47 @@ static int sock_cq_verify_attr(struct fi_cq_attr *attr)
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		 struct fid_cq **cq, void *context)
 {
-	sock_domain_t *dom;
-	sock_cq_t *_cq;
+	sock_domain_t *sock_dom;
+	sock_cq_t *sock_cq;
 	int ret;
+
+	sock_dom = container_of(domain, sock_domain_t, dom_fid);
+	if(!sock_dom)
+		return -FI_EINVAL;
 
 	ret = sock_cq_verify_attr(attr);
 	if (ret)
 		return ret;
 
-	_cq = calloc(1, sizeof(*_cq));
-	if (!_cq)
+	sock_cq = calloc(1, sizeof(*sock_cq));
+	if (sock_cq)
 		return -FI_ENOMEM;
 
-	ret = socketpair(AF_UNIX, 0, 0, _cq->fd);
-	if (ret){
-		ret = -ret;
-		goto err1;
+	atomic_init(&sock_cq->ref);
+	sock_cq->cq_fid.fid.fclass = FI_CLASS_CQ;
+	sock_cq->cq_fid.fid.context = context;
+	sock_cq->cq_fid.fid.ops = &sock_cq_fi_ops;
+	sock_cq->cq_fid.ops = &sock_cq_ops;
+	atomic_inc(&sock_dom->ref);
+
+	sock_cq->domain = sock_dom;
+	if(attr == NULL || attr->format == FI_CQ_FORMAT_UNSPEC)
+		sock_cq->cq_format = FI_CQ_FORMAT_CONTEXT;
+	else
+		sock_cq->cq_format = attr->format;
+	sock_cq->cq_entry_size = _sock_cq_entry_size(sock_cq);
+
+	sock_cq->ep_list = new_list(128);
+	sock_cq->completed_list = new_list(attr?attr->size:128);
+	sock_cq->error_list = new_list(attr?attr->size:128);
+	if(!sock_cq->ep_list || !sock_cq->completed_list || 
+	   !sock_cq->error_list){
+		free(sock_cq);
+		return -FI_ENOMEM;
 	}
-
-	ret = socketpair(AF_UNIX, 0, 0, _cq->error_fd);
-	if (ret){
-		ret = -ret;
-		goto err2;
-	}
-
-	atomic_init(&_cq->ref);
-	_cq->cq_fid.fid.fclass = FI_CLASS_CQ;
-	_cq->cq_fid.fid.context = context;
-	_cq->cq_fid.fid.ops = &sock_cq_fi_ops;
-	_cq->cq_fid.ops = &sock_cq_ops;
-
-	dom = container_of(domain, sock_domain_t, dom_fid);
-	atomic_inc(&dom->ref);
-
-	_cq->ep_list = new_list(64);
-	if(!_cq->ep_list){
-		ret = -FI_ENOMEM;
-		goto err2;
-	}
-
-	_cq->domain = dom;
-	_cq->format = attr->format;
-	*cq = &_cq->cq_fid;
+	
+	*cq = &sock_cq->cq_fid;
 	return 0;
-
-err2:
-	close(_cq->fd[0]);
-	close(_cq->fd[1]);
-
-err1:
-	free(_cq);
-	return ret;
 }
 
 static uint64_t sock_cntr_read(struct fid_cntr *cntr)
@@ -346,44 +494,18 @@ int sock_progress_engine(sock_cq_t *cq, uint64_t flags)
 int _sock_cq_report_cq(sock_cq_t *sock_cq, 
 		    const void *data, size_t len)
 {
-	ssize_t ret, remaining = len;
-
-	do{
-		ret = write(sock_cq->fd[SOCK_WR_FD], data, remaining);
-		if(ret > 0){
-			remaining -= ret;
-		}else if (ret == EWOULDBLOCK || ret == EAGAIN){
-			continue;
-		}else{
-			return -1;
-		}
-	}while(remaining>0);
-	return 0;
 }
 
 int _sock_cq_report_cq_err(sock_cq_t *sock_cq, 
 		    const void *data, size_t len)
 {
-	ssize_t ret, remaining = len;
-
-	do{
-		ret = write(sock_cq->error_fd[SOCK_WR_FD], data, remaining);
-		if(ret > 0){
-			remaining -= ret;
-		}else if (ret == EWOULDBLOCK || ret == EAGAIN){
-			continue;
-		}else{
-			return -1;
-		}
-	}while(remaining>0);
-	return 0;
 }
 
 int sock_cq_report(sock_cq_t *sock_cq, 
 		   struct fi_cq_tagged_entry *in_report)
 {
 	int ret;
-	switch(sock_cq->format){
+	switch(sock_cq->cq_format){
 
 	case FI_CQ_FORMAT_CONTEXT:
 	{
