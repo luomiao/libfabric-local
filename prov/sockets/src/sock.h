@@ -112,7 +112,7 @@ typedef struct _sock_cq_t {
 	ssize_t cq_entry_size;
 	atomic_t ref;
 	struct fi_cq_attr attr;
-	
+	int fd[2];
 
 	list_t *ep_list;
 	list_t *completed_list;

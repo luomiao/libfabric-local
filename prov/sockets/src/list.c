@@ -271,3 +271,12 @@ int find_item(list_t *list, void *item)
 	UNLOCK_LIST(list);
 	return -1;
 }
+
+ssize_t list_length(list_t *list)
+{
+	ssize_t len;
+	LOCK_LIST(list);
+	len = list->curr_len;
+	UNLOCK_LIST(list);
+	return len;
+}

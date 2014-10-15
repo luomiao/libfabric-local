@@ -61,5 +61,6 @@ void *peek_item(list_t *list);
 void *dequeue_item(list_t *list);
 int find_item(list_t *list, void *item);
 int delete_item(list_t *list, void *item);
+ssize_t list_length(list_t *list);
 
 #endif /* _LIST_H_ */

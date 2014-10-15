@@ -37,12 +37,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include <sys/socket.h>
 #include <sys/types.h>
 
 #include "list.h"
 #include "sock.h"
+
+static int _sock_cq_read_out_fd(sock_cq_t *sock_cq)
+{
+	int read_done = 0;
+	do{
+		char byte;
+		read_done = read(sock_cq->fd[SOCK_RD_FD], &byte, 1);
+		if(read_done < 0){
+			fprintf(stderr, "Error reading CQ FD\n");
+			return read_done;
+		}
+	}while(read_done == 1);
+	return 0;
+}
 
 static ssize_t _sock_cq_entry_size(sock_cq_t *sock_cq)
 {
@@ -186,6 +201,7 @@ static ssize_t sock_cq_readfrom(struct fid_cq *cq, void *buf, size_t len,
 		if(len < entry_len)
 			return bytes_written;
 		cq_entry = dequeue_list(sock_cq->completed_list);
+		_sock_cq_read_out_fd(sock_cq);
 
 		if(cq_entry->req_type == REQ_TYPE_USER){
 			/* Handle user event */
@@ -248,6 +264,8 @@ static ssize_t sock_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
 	while(len >= sizeof(struct fi_cq_err_entry)){
 		
 		err_entry = dequeue_list(sock_cq->error_list);
+		_sock_cq_read_out_fd(sock_cq);
+
 		if(err_entry){
 			memcpy( (char *)buf + num_done * sizeof(struct fi_cq_err_entry), 
 				err_entry, sizeof(struct fi_cq_err_entry));
@@ -273,6 +291,9 @@ static ssize_t sock_cq_write(struct fid_cq *cq, const void *buf, size_t len)
 	if(!sock_cq)
 		return -FI_ENOENT;
 
+	if(!(sock_cq->attr.flags & FI_WRITE))
+		return -FI_EINVAL;
+
 	item = calloc(1, sizeof(sock_req_item_t));
 	if(!item)
 		return -FI_ENOMEM;
@@ -293,16 +314,61 @@ static ssize_t sock_cq_write(struct fid_cq *cq, const void *buf, size_t len)
 	return len;
 }
 
-static ssize_t sock_cq_sread(struct fid_cq *cq, void *buf, size_t len,
-				const void *cond, int timeout)
-{
-	return -FI_ENOSYS;
-}
-
 static ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t len,
 				    fi_addr_t *src_addr, const void *cond, int timeout)
 {
-	return -FI_ENOSYS;
+	sock_cq_t *sock_cq;
+	int wait_infinite;
+	int cq_threshold;
+	double curr_time, end_time;
+
+	if(timeout>0){
+		struct timeval now;
+		gettimeofday(&now, NULL);
+		end_time = (double)now.tv_sec * 1000000.0 + 
+			(double)now.tv_usec + (double)timeout * 1000.0;
+		wait_infinite = 0;
+	}else{
+		wait_infinite = 1;
+	}
+
+	sock_cq = container_of(cq, sock_cq_t, cq_fid);
+	if(!sock_cq)
+		return -FI_ENOENT;
+
+	if (sock_cq->attr.wait_obj == FI_CQ_COND_THRESHOLD){
+		cq_threshold = (int)cond;
+	}else{
+		cq_threshold = 1;
+	}
+
+	do{
+		if(peek_item(sock_cq->error_list))
+			return -FI_EAVAIL;
+		
+		_sock_cq_progress(sock_cq);
+
+		if(list_length(sock_cq->completed_list) >= cq_threshold)
+			return sock_cq_readfrom(cq, buf, len, src_addr);
+		
+		if(!wait_infinite){
+			struct timeval now;
+			gettimeofday(&now, NULL);
+			curr_time = (double)now.tv_sec * 1000000.0 + 
+				(double)now.tv_usec;
+			
+			if(curr_time >= end_time)
+				break;
+		}
+	}while(1);
+
+	return sock_cq_readfrom(cq, buf, len, src_addr);
+}
+
+static ssize_t sock_cq_sread(struct fid_cq *cq, void *buf, size_t len,
+			     const void *cond, int timeout)
+{
+	return sock_cq_sreadfrom(cq, buf, len, NULL, cond, timeout);
 }
 
 static const char * sock_cq_strerror(struct fid_cq *cq, int prov_errno,
@@ -377,7 +443,7 @@ struct fi_cq_attr _sock_def_cq_attr = {
 	.size = 128,
 	.flags = 0,
 	.format = FI_CQ_FORMAT_CONTEXT,
-	.wait_obj = FI_WAIT_NONE,
+	.wait_obj = FI_WAIT_FD,
 	.signaling_vector = 0,
 	.wait_cond = FI_CQ_COND_NONE,
 	.wait_set = NULL,
@@ -388,6 +454,7 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 {
 	sock_domain_t *sock_dom;
 	sock_cq_t *sock_cq;
+	long flags = 0;
 	int ret;
 
 	sock_dom = container_of(domain, sock_domain_t, dom_fid);
@@ -399,7 +466,7 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		return ret;
 
 	sock_cq = calloc(1, sizeof(*sock_cq));
-	if (sock_cq)
+	if (!sock_cq)
 		return -FI_ENOMEM;
 
 	atomic_init(&sock_cq->ref);
@@ -423,22 +490,43 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	sock_cq->error_list = new_list(sock_cq->attr.size);
 	if(!sock_cq->ep_list || !sock_cq->completed_list || 
 	   !sock_cq->error_list){
-		free(sock_cq);
-		return -FI_ENOMEM;
+		ret = -FI_ENOMEM;
+		goto err;
+	}
+
+	ret = socketpair(AF_UNIX, 0, 0, sock_cq->fd);
+	if(ret){
+		ret = -errno;
+		goto err;
+	}
+
+	fcntl(sock_cq->fd[SOCK_RD_FD], F_GETFL, &flags);
+	ret = fcntl(sock_cq->fd[SOCK_RD_FD], F_SETFL, flags | O_NONBLOCK);
+	if (ret) {
+		ret = -errno;
+		goto err;
 	}
 	
 	*cq = &sock_cq->cq_fid;
 	return 0;
+
+err:
+	free(sock_cq);
+	return ret;
 }
 
 int _sock_cq_report_completion(sock_cq_t *sock_cq, 
 			      sock_req_item_t *item)
 {
+	char byte;
+	write(sock_cq->fd[SOCK_WR_FD], &byte, 1);
 	return enqueue_list(sock_cq->completed_list, item);
 }
 
 int _sock_cq_report_error(sock_cq_t *sock_cq, 
 			  struct fi_cq_err_entry *error)
 {
+	char byte;
+	write(sock_cq->fd[SOCK_WR_FD], &byte, 1);
 	return enqueue_list(sock_cq->error_list, error);
 }
