@@ -35,6 +35,7 @@ _sockets_files = \
 	prov/sockets/src/sock_dom.c \
 	prov/sockets/src/sock_eq.c \
 	prov/sockets/src/sock_cq.c \
+	prov/sockets/src/sock_cntr.c \
 	prov/sockets/src/sock_poll.c \
 	prov/sockets/src/sock_rdm.c \
 	prov/sockets/src/sock_fabric.c \

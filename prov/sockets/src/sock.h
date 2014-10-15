@@ -109,9 +109,10 @@ typedef struct _sock_cntr_t {
 typedef struct _sock_cq_t {
 	struct fid_cq		cq_fid;
 	sock_domain_t	*domain;
-	enum fi_cq_format cq_format;
 	ssize_t cq_entry_size;
 	atomic_t ref;
+	struct fi_cq_attr attr;
+	
 
 	list_t *ep_list;
 	list_t *completed_list;
