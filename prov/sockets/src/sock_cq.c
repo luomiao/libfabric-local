@@ -396,6 +396,9 @@ static int sock_cq_close(struct fid *fid)
 	free_list(cq->completed_list);
 	free_list(cq->error_list);
 
+	close(cq->fd[SOCK_RD_FD]);
+	close(cq->fd[SOCK_WR_FD]);
+
 	free(cq);
 	return 0;
 }
@@ -417,6 +420,9 @@ static struct fi_ops sock_cq_fi_ops = {
 
 static int sock_cq_verify_attr(struct fi_cq_attr *attr)
 {
+	if(!attr)
+		return 0;
+
 	switch (attr->format) {
 	case FI_CQ_FORMAT_CONTEXT:
 	case FI_CQ_FORMAT_MSG:
@@ -441,8 +447,8 @@ static int sock_cq_verify_attr(struct fi_cq_attr *attr)
 	return 0;
 }
 
-struct fi_cq_attr _sock_def_cq_attr = {
-	.size = 128,
+static struct fi_cq_attr _sock_cq_def_attr = {
+	.size = SOCK_CQ_DEF_LEN,
 	.flags = 0,
 	.format = FI_CQ_FORMAT_CONTEXT,
 	.wait_obj = FI_WAIT_FD,
@@ -479,7 +485,7 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	atomic_inc(&sock_dom->ref);
 
 	if(attr == NULL)
-		memcpy(&sock_cq->attr, &_sock_def_cq_attr, 
+		memcpy(&sock_cq->attr, &_sock_cq_def_attr, 
 		       sizeof(struct fi_cq_attr));
 	else
 		memcpy(&sock_cq->attr, attr, sizeof(struct fi_cq_attr));
