@@ -38,6 +38,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <unistd.h>
+#include <sys/time.h>
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -164,7 +166,7 @@ static void _sock_cq_write_to_buf(sock_cq_t *sock_cq,
 
 static void _sock_cq_progress(sock_cq_t *sock_cq)
 {
-	list_element_t *curr = sock_cq->ep_list;
+	list_element_t *curr = sock_cq->ep_list->head;
 	while(curr){
 		_sock_ep_progress((sock_ep_t *)curr->data, sock_cq);
 		curr=curr->next;
@@ -200,7 +202,7 @@ static ssize_t sock_cq_readfrom(struct fid_cq *cq, void *buf, size_t len,
 			cq_entry->total_len : sock_cq->cq_entry_size;
 		if(len < entry_len)
 			return bytes_written;
-		cq_entry = dequeue_list(sock_cq->completed_list);
+		cq_entry = dequeue_item(sock_cq->completed_list);
 		_sock_cq_read_out_fd(sock_cq);
 
 		if(cq_entry->req_type == REQ_TYPE_USER){
@@ -226,7 +228,7 @@ static ssize_t sock_cq_readfrom(struct fid_cq *cq, void *buf, size_t len,
 			if(src_addr){
 				fi_addr_t addr;
 				if(FI_SOURCE & cq_entry->ep->info.ep_cap){
-					addr = _sock_av_lookup(src_addr);
+					addr = _sock_av_lookup(&cq_entry->src_addr);
 				}else{
 					addr = FI_ADDR_UNSPEC;
 				}
@@ -263,7 +265,7 @@ static ssize_t sock_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
 
 	while(len >= sizeof(struct fi_cq_err_entry)){
 		
-		err_entry = dequeue_list(sock_cq->error_list);
+		err_entry = dequeue_item(sock_cq->error_list);
 		_sock_cq_read_out_fd(sock_cq);
 
 		if(err_entry){
@@ -319,8 +321,8 @@ static ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t len,
 {
 	sock_cq_t *sock_cq;
 	int wait_infinite;
-	int cq_threshold;
-	double curr_time, end_time;
+	int64_t cq_threshold;
+	double curr_time, end_time = 0.0;
 
 	if(timeout>0){
 		struct timeval now;
@@ -337,7 +339,7 @@ static ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t len,
 		return -FI_ENOENT;
 
 	if (sock_cq->attr.wait_obj == FI_CQ_COND_THRESHOLD){
-		cq_threshold = (int)cond;
+		cq_threshold = (int64_t)cond;
 	}else{
 		cq_threshold = 1;
 	}
@@ -520,7 +522,7 @@ int _sock_cq_report_completion(sock_cq_t *sock_cq,
 {
 	char byte;
 	write(sock_cq->fd[SOCK_WR_FD], &byte, 1);
-	return enqueue_list(sock_cq->completed_list, item);
+	return enqueue_item(sock_cq->completed_list, item);
 }
 
 int _sock_cq_report_error(sock_cq_t *sock_cq, 
@@ -528,5 +530,5 @@ int _sock_cq_report_error(sock_cq_t *sock_cq,
 {
 	char byte;
 	write(sock_cq->fd[SOCK_WR_FD], &byte, 1);
-	return enqueue_list(sock_cq->error_list, error);
+	return enqueue_item(sock_cq->error_list, error);
 }
