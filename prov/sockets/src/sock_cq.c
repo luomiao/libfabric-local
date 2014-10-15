@@ -228,7 +228,7 @@ static ssize_t sock_cq_readfrom(struct fid_cq *cq, void *buf, size_t len,
 			if(src_addr){
 				fi_addr_t addr;
 				if(FI_SOURCE & cq_entry->ep->info.ep_cap){
-					addr = _sock_av_lookup(&cq_entry->src_addr);
+					addr = _sock_av_lookup(cq_entry->ep->av, &cq_entry->src_addr);
 				}else{
 					addr = FI_ADDR_UNSPEC;
 				}

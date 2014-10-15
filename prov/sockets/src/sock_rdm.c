@@ -300,6 +300,7 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 {
 	sock_ep_t *sock_ep;
 	sock_cq_t *sock_cq;
+	sock_av_t *sock_av;
 
 	sock_ep = container_of(fid, sock_ep_t, ep.fid);
 	if(!sock_ep)
@@ -359,15 +360,12 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 */
 
 	case FI_CLASS_AV:
-		return -FI_ENOSYS;
-/*
-		av = container_of(bfid,
-				struct psmx_fid_av, av.fid);
-		if (ep->domain != av->domain)
+		sock_av = container_of(bfid,
+				sock_av_t, av_fid.fid);
+		if (sock_ep->domain != sock_av->dom)
 			return -EINVAL;
-		ep->av = av;
+		sock_ep->av = sock_av;
 		break;
-*/
 
 	case FI_CLASS_MR:
 		return -FI_ENOSYS;
@@ -620,7 +618,7 @@ ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	comm_item->flags = flags;
 	memcpy(&comm_item->item.msg, msg, sizeof(struct fi_msg));
 
-	if(0 != enqueue_list(sock_ep->posted_rcv_list, comm_item)){
+	if(0 != enqueue_item(sock_ep->posted_rcv_list, comm_item)){
 		free(comm_item);
 		return -FI_ENOMEM;
 	}
@@ -684,7 +682,7 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	//send_item->completed = 0;
 	send_item->done_len = 0;
 
-	if(0 != enqueue_list(sock_ep->send_list, send_item)){
+	if(0 != enqueue_item(sock_ep->send_list, send_item)){
 		//free(send_item->addr);
 		free(send_item);
 		return -FI_ENOMEM;	

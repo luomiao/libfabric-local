@@ -137,6 +137,8 @@ typedef struct _sock_av_t {
 	sock_domain_t	*dom;
 	atomic_t		ref;
 	struct fi_av_attr	attr;
+	size_t			count;
+	struct sockaddr_in	*table;
 }sock_av_t;
 
 typedef struct _sock_poll_t {
@@ -223,6 +225,7 @@ struct _sock_ep_t {
 	sock_eq_t        *eq;
 	sock_cq_t 	*send_cq;
 	sock_cq_t 	*recv_cq;
+	sock_av_t 	*av;
 
 	int send_cq_event_flag;
 	int recv_cq_event_flag;
@@ -318,7 +321,7 @@ int sock_ep_connect(struct fid_ep *ep, const void *addr,
 void free_fi_info(struct fi_info *info);
 
 int _sock_ep_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq);
-fi_addr_t _sock_av_lookup(struct sockaddr *addr);
+fi_addr_t _sock_av_lookup(sock_av_t *av, struct sockaddr *addr);
 
 int _sock_cq_report_completion(sock_cq_t *sock_cq, 
 			       sock_req_item_t *item);
