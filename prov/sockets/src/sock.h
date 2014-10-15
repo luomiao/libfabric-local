@@ -66,6 +66,9 @@
 #define SOCK_EP_SNDQ_LEN (128)
 #define SOCK_EP_RCVQ_LEN (128)
 
+#define SOCK_EQ_DEF_LEN (128)
+#define SOCK_CQ_DEF_LEN (128)
+
 #define SOCK_EP_CAP ( FI_PASSIVE | FI_MSG | \
 		      FI_INJECT | FI_SOURCE |		\
 		      FI_SEND | FI_RECV |		\
@@ -148,6 +151,11 @@ typedef struct _sock_wait_t {
 
 typedef struct _sock_ep_t sock_ep_t;
 
+typedef struct _sock_eq_item_t{
+	enum fi_eq_event type;
+	ssize_t len;
+}sock_eq_item_t;
+
 #define REQ_TYPE_SEND (1)
 #define REQ_TYPE_RECV (2)
 #define REQ_TYPE_USER (3)
@@ -200,10 +208,11 @@ typedef struct _sock_comm_item_t{
 typedef struct _sock_eq_t{
 	struct fid_eq eq;
 	struct fi_eq_attr attr;
-	void *context;
+	sock_fabric_t *sock_fab;
 	int fd[2];
-	list_t *eq_list;
-	list_t *eq_error_list;
+
+	list_t *completed_list;
+	list_t *error_list;
 }sock_eq_t;
 
 struct _sock_ep_t {
@@ -315,3 +324,7 @@ int _sock_cq_report_completion(sock_cq_t *sock_cq,
 			       sock_req_item_t *item);
 int _sock_cq_report_error(sock_cq_t *sock_cq, 
 			  struct fi_cq_err_entry *error);
+
+ssize_t _sock_eq_report_error(sock_eq_t *sock_eq, const void *buf, size_t len);
+ssize_t _sock_eq_report_event(sock_eq_t *sock_eq, enum fi_eq_event event, 
+			      const void *buf, size_t len);
