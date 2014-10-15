@@ -312,7 +312,7 @@ int sock_ep_connect(struct fid_ep *ep, const void *addr,
 void free_fi_info(struct fi_info *info);
 
 int _sock_ep_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq);
-fi_addr_t _sock_av_lookup(struct sockaddr *addr);
+fi_addr_t _sock_av_lookup(sock_av_t *av, struct sockaddr *addr);
 
 int _sock_cq_report_completion(sock_cq_t *sock_cq, 
 			       sock_req_item_t *item);

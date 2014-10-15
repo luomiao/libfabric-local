@@ -257,7 +257,20 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 }
 
 /* TODO */
-fi_addr_t _sock_av_lookup(struct sockaddr *addr)
+fi_addr_t _sock_av_lookup(sock_av_t *av, struct sockaddr *addr)
 {
+	if (av->attr.type == FI_AV_MAP) {
+		return (fi_addr_t)addr;
+	} else {
+		int i;
+		struct sockaddr_in *addrin;
+		addrin = (struct sockaddr_in*)addr;
+		for (i = 0 ; i < av->count ; i++) {
+			if (av->table[i].sin_addr.s_addr == addrin->sin_addr.s_addr &&
+					av->table[i].sin_port == addrin->sin_port)
+				return (fi_addr_t)i;
+		}
+		fprintf(stderr, "[sock] failed to lookup src_addr in av table\n");
+	}
 	return FI_ADDR_UNSPEC;
 }
