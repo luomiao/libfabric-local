@@ -134,6 +134,8 @@ typedef struct _sock_av_t {
 	sock_domain_t	*dom;
 	atomic_t		ref;
 	struct fi_av_attr	attr;
+	size_t			count;
+	struct sockaddr_in	*table;
 }sock_av_t;
 
 typedef struct _sock_poll_t {
@@ -214,6 +216,7 @@ struct _sock_ep_t {
 	sock_eq_t        *eq;
 	sock_cq_t 	*send_cq;
 	sock_cq_t 	*recv_cq;
+	sock_av_t 	*av;
 
 	int send_cq_event_flag;
 	int recv_cq_event_flag;

@@ -382,6 +382,7 @@ static int sockd_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 	sock_cntr_t *cntr;
 	sock_eq_t *eq;
 	sock_cq_t *cq;
+	sock_av_t *av;
 
 	ep = container_of(fid, sock_ep_t, ep.fid);
 
@@ -444,6 +445,14 @@ static int sockd_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 			return -EINVAL;
 		}
 		ep->eq = eq;
+		break;
+	case FI_CLASS_AV:
+		sockd_debug("[sockd] bind AV to ep\n");
+		av = container_of(bfid,
+				sock_av_t, av_fid.fid);
+		if (ep->domain != av->dom)
+			return -EINVAL;
+		ep->av = av;
 		break;
 	default:
 		return -FI_ENOSYS;
