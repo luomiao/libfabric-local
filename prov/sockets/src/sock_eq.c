@@ -336,7 +336,7 @@ int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 	else
 		memcpy(&sock_eq->attr, attr, sizeof(struct fi_cq_attr));		
 
-	ret = socketpair(AF_UNIX, 0, 0, sock_eq->fd);
+	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, sock_eq->fd);
 	if (ret){
 		ret = -errno;
 		goto err1;

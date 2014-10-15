@@ -502,7 +502,7 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		goto err;
 	}
 
-	ret = socketpair(AF_UNIX, 0, 0, sock_cq->fd);
+	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, sock_cq->fd);
 	if(ret){
 		ret = -errno;
 		goto err;
