@@ -168,7 +168,7 @@ static void _sock_cq_progress(sock_cq_t *sock_cq)
 {
 	list_element_t *curr = sock_cq->ep_list->head;
 	while(curr){
-		_sock_ep_progress((sock_ep_t *)curr->data, sock_cq);
+		((sock_ep_t *)curr->data)->progress_fn((sock_ep_t *)curr->data, sock_cq);
 		curr=curr->next;
 	}
 }
@@ -502,7 +502,7 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		goto err;
 	}
 
-	ret = socketpair(AF_UNIX, 0, 0, sock_cq->fd);
+	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, sock_cq->fd);
 	if(ret){
 		ret = -errno;
 		goto err;

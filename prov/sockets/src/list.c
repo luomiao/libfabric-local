@@ -130,6 +130,7 @@ list_t *new_list(size_t length)
 	for(i=0; i<length; i++){
 		list_element_t *element = (list_element_t *)((char *)elements + 
 							     sizeof(list_element_t) * i);
+		element->list = list;
 		if(0 != _list_enqueue_free_list(element))
 			goto err1;
 	}

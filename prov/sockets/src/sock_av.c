@@ -57,8 +57,6 @@ static int sock_at_insert(struct fid_av *av, const void *addr, size_t count,
 
 	for (i=0; i<count; i++) {
 		memcpy(&_av->table[i], &((struct sockaddr_in *)addr)[i], sizeof(struct sockaddr_in));
-		fprintf(stderr, "[at_insert] insert for the %d addr, port is %d, addr is %s\n", 
-				i, ntohs(_av->table[i].sin_port), inet_ntoa(_av->table[i].sin_addr));
 	}
 	_av->count = count;
 

@@ -183,6 +183,7 @@ typedef struct _sock_req_item_t
 	size_t done_len;
 	size_t total_len;
 	struct sockaddr  src_addr;
+	struct sockaddr addr;
 
 	union{
 		struct fi_msg msg;
@@ -217,6 +218,7 @@ typedef struct _sock_eq_t{
 	list_t *error_list;
 }sock_eq_t;
 
+typedef int (*sock_ep_progress_fn) (sock_ep_t *ep, sock_cq_t *cq);
 struct _sock_ep_t {
 	struct fid_ep		ep;
 	sock_domain_t	*domain;	
@@ -270,6 +272,8 @@ struct _sock_ep_t {
 	struct _sock_ep_t *base;
 
 	int port_num;
+
+	sock_ep_progress_fn	progress_fn;
 };
 
 typedef struct _sock_pep_t {
@@ -320,7 +324,6 @@ int sock_ep_connect(struct fid_ep *ep, const void *addr,
 
 void free_fi_info(struct fi_info *info);
 
-int _sock_ep_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq);
 fi_addr_t _sock_av_lookup(sock_av_t *av, struct sockaddr *addr);
 
 int _sock_cq_report_completion(sock_cq_t *sock_cq, 

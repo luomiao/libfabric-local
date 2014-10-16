@@ -246,6 +246,7 @@ static struct fi_ops_msg sock_msg_ops = {
 		.senddatato = NULL,
 };
 
+#if 0
 int _sock_ep_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq)
 {
 	switch (sock_ep->ep_type) {
@@ -259,3 +260,4 @@ int _sock_ep_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq)
 		return -FI_ENOPROTOOPT;
 	}
 }
+#endif
