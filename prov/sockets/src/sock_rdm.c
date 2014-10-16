@@ -729,6 +729,11 @@ struct fi_ops_msg sock_rdm_ep_msg_ops = {
 	.senddatato = sock_rdm_ep_msg_senddatato,
 };
 
+static inline int _sock_ep_rdm_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq)
+{
+	return -FI_ENOSYS;
+}
+
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context)
 {
@@ -800,6 +805,8 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	if(0 != (sock_ep->completed_rcv_list = new_list(SOCK_EP_RCVQ_LEN)))
 		goto err4;
 
+	sock_ep->progress_fn = _sock_ep_rdm_progress;
+
 	return 0;
 
 err4:
@@ -864,7 +871,3 @@ int sock_rdm_progress_send(sock_ep_t *ep)
 	return 0;
 }
 
-int _sock_ep_rdm_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq)
-{
-	return -FI_ENOSYS;
-}
