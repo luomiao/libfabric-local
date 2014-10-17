@@ -171,6 +171,12 @@ typedef struct _sock_eq_item_t{
 #define COMM_TYPE_SENDMSG (4)
 #define COMM_TYPE_SENDDATA (5)
 #define COMM_TYPE_SENDDATATO (6)
+#define COMM_TYPE_RECV (7)
+#define COMM_TYPE_RECVV (8)
+#define COMM_TYPE_RECVFROM (9)
+#define COMM_TYPE_RECVMSG (10)
+#define COMM_TYPE_RECVDATA (11)
+#define COMM_TYPE_RECVDATATO (12)
 
 typedef struct _sock_req_item_t
 {

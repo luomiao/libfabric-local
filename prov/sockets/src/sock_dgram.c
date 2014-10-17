@@ -615,7 +615,7 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 	
 	recv_req->item.buf = (void*)buf;
 	recv_req->req_type = REQ_TYPE_RECV;
-	recv_req->comm_type = COMM_TYPE_SENDTO;
+	recv_req->comm_type = COMM_TYPE_RECVFROM;
 	recv_req->context = context;
 	recv_req->total_len = len;
 	recv_req->done_len = 0;
@@ -784,11 +784,14 @@ static struct fi_ops_msg sockd_ops_msg = {
 static inline int _sock_ep_dgram_progress(sock_ep_t *ep, sock_cq_t *cq)
 {
 	sock_req_item_t *item;
+	struct sockaddr_in *addr;
 	if(item = dequeue_item(ep->send_list)) {
 		sock_debug(SOCK_ERROR,"[ep_dgram_progress] found a send req\n");
+		addr = (struct sockaddr_in *)&(item->addr);
 	}
 	if(item = dequeue_item(ep->recv_list)) {
 		sock_debug(SOCK_ERROR,"[ep_dgram_progress] found a recv req\n");
+		addr = (struct sockaddr_in *)&(item->addr);
 	}
 	return -FI_ENOSYS;
 }
