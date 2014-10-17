@@ -38,13 +38,14 @@
 #include <string.h>
 
 #include "sock.h"
+#include "sock_util.h"
 
 
 static int sock_dom_close(struct fid *fid)
 {
-	sock_domain_t *dom;
+	struct sock_domain *dom;
 
-	dom = container_of(fid, sock_domain_t, dom_fid.fid);
+	dom = container_of(fid, struct sock_domain, dom_fid.fid);
 	if (atomic_get(&dom->ref))
 		return -FI_EBUSY;
 
@@ -60,13 +61,7 @@ static int sock_dom_close(struct fid *fid)
 //	return 0;
 //}
 
-int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
-			struct fid_pep **pep, void *context)
-{
-	return 0;
-}
-
-static uint16_t sock_get_mr_key(sock_domain_t *dom)
+static uint16_t sock_get_mr_key(struct sock_domain *dom)
 {
 	uint16_t i;
 
@@ -79,10 +74,10 @@ static uint16_t sock_get_mr_key(sock_domain_t *dom)
 
 static int sock_mr_close(struct fid *fid)
 {
-	sock_domain_t *dom;
-	sock_mr_t *mr;
+	struct sock_domain *dom;
+	struct sock_mr *mr;
 
-	mr = container_of(fid, sock_mr_t, mr_fid.fid);
+	mr = container_of(fid, struct sock_mr, mr_fid.fid);
 	dom = mr->dom;
 	fastlock_acquire(&dom->lock);
 	idm_clear(&dom->mr_idm , (int) mr->mr_fid.key);
@@ -104,11 +99,11 @@ static struct fi_ops sock_mr_fi_ops = {
 static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr,
 		uint64_t flags, struct fid_mr **mr)
 {
-	sock_domain_t *dom;
-	sock_mr_t *_mr;
+	struct sock_domain *dom;
+	struct sock_mr *_mr;
 	uint16_t key;
 
-	dom = container_of(domain, sock_domain_t, dom_fid);
+	dom = container_of(domain, struct sock_domain, dom_fid);
 	if (!(dom->mode & FI_PROV_MR_KEY) && ((attr->requested_key > IDX_MAX_INDEX) ||
 	    idm_lookup(&dom->mr_idm, (int) attr->requested_key)))
 		return -FI_ENOKEY;
@@ -237,24 +232,79 @@ static struct fi_ops_mr sock_dom_mr_ops = {
 	.regattr = sock_regattr,
 };
 
+int _sock_verify_domain_attr(struct fi_domain_attr *attr)
+{
+	if(attr->name){
+		if (strcmp(attr->name, sock_dom_name))
+			return -FI_ENODATA;
+	}
+
+	switch(attr->threading){
+	case FI_THREAD_UNSPEC:
+	case FI_THREAD_SAFE:
+	case FI_THREAD_PROGRESS:
+		break;
+	default:
+		sock_debug(SOCK_INFO, "Invalid threading model!\n");
+		return -FI_ENODATA;
+	}
+
+	switch (attr->control_progress){
+	case FI_PROGRESS_UNSPEC:
+	case FI_PROGRESS_AUTO:
+		break;
+
+	case FI_PROGRESS_MANUAL:
+	default:
+		sock_debug(SOCK_INFO, "Control progress mode not supported!\n");
+		return -FI_ENODATA;
+	}
+
+	switch (attr->data_progress){
+	case FI_PROGRESS_UNSPEC:
+	case FI_PROGRESS_AUTO:
+		break;
+
+	case FI_PROGRESS_MANUAL:
+	default:
+		sock_debug(SOCK_INFO, "Data progress mode not supported!\n");
+		return -FI_ENODATA;
+	}
+
+	if(attr->max_ep_tx_ctx > SOCK_EP_TX_CTX_CNT)
+		return -FI_ENODATA;
+
+	if(attr->max_ep_rx_ctx > SOCK_EP_RX_CTX_CNT)
+		return -FI_ENODATA;
+
+	return 0;
+}
+
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context)
 {
-	sock_domain_t *_dom;
+	int ret;
+	struct sock_domain *sock_domain;
 
-	_dom = calloc(1, sizeof *_dom);
-	if (!_dom)
+	if(info && info->domain_attr){
+		ret = _sock_verify_domain_attr(info->domain_attr);
+		if(ret)
+			return ret;
+	}
+
+	sock_domain = calloc(1, sizeof *sock_domain);
+	if (!sock_domain)
 		return -FI_ENOMEM;
 	
-	fastlock_init(&_dom->lock);
-	atomic_init(&_dom->ref);
+	fastlock_init(&sock_domain->lock);
+	atomic_init(&sock_domain->ref);
 
-	_dom->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
-	_dom->dom_fid.fid.context = context;
-	_dom->dom_fid.fid.ops = &sock_dom_fi_ops;
-	_dom->dom_fid.ops = &sock_dom_ops;
-	_dom->dom_fid.mr = &sock_dom_mr_ops;
+	sock_domain->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
+	sock_domain->dom_fid.fid.context = context;
+	sock_domain->dom_fid.fid.ops = &sock_dom_fi_ops;
+	sock_domain->dom_fid.ops = &sock_dom_ops;
+	sock_domain->dom_fid.mr = &sock_dom_mr_ops;
 
-	*dom = &_dom->dom_fid;
+	*dom = &sock_domain->dom_fid;
 	return 0;
 }
