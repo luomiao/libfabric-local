@@ -52,6 +52,7 @@
 #include <unistd.h>
 
 #include "sock.h"
+#include "sock_util.h"
 
 static struct fi_ep_attr sock_ep_attr = {
 	.protocol = FI_PROTO_SOCKET,
@@ -165,9 +166,6 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 	struct fi_info *_info;
 	void *src_addr = NULL, *dest_addr = NULL;
 
-	struct addrinfo sock_hints;
-	struct addrinfo *result = NULL;
-	
 	if(!info)
 		return -FI_EBADFLAGS;
 
@@ -182,17 +180,22 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 
 	if (hints){
 		ret = sock_ep_check_hints(hints);
-		if(ret)
+		sock_debug(SOCK_INFO, "Cannot support requested options!\n");
+		if(ret){
 			return ret;
+		}
 	}
 
 	if(node || service){
+		struct addrinfo sock_hints;
+		struct addrinfo *result = NULL;
+	
 		src_addr = malloc(sizeof(struct sockaddr));
 		dest_addr = malloc(sizeof(struct sockaddr));
 			
-		memset(&sock_hints, 0, sizeof(struct addrinfo));
-		sock_hints.ai_family = PF_RDS;
-		sock_hints.ai_socktype = SOCK_STREAM;
+		memset(&sock_hints, 0, sizeof(struct sockaddr));
+		sock_hints.ai_family = AF_INET;
+		sock_hints.ai_socktype = SOCK_SEQPACKET;
 		
 		if(flags & FI_SOURCE)
 			sock_hints.ai_flags = AI_PASSIVE;
@@ -215,10 +218,12 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			socklen_t len;
 			int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
 			if (0 != connect(udp_sock, result->ai_addr, result->ai_addrlen)){
+				sock_debug(SOCK_ERROR, "[SOCK_RDM] %s:%d: Failed to get dest_addr\n", __func__, __LINE__);
 				ret = FI_ENODATA;
 				goto err;
 			}
 			if(0!= getsockname(udp_sock, (struct sockaddr *) dest_addr, &len)){
+				sock_debug(SOCK_ERROR, "[SOCK_RDM] %s:%d: Failed to get dest_addr\n", __func__, __LINE__);
 				close(udp_sock);
 				ret = FI_ENODATA;
 				goto err;
@@ -266,6 +271,7 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 err:
 	free(src_addr);
 	free(dest_addr);
+	sock_debug(SOCK_ERROR, "[SOCK_RDM] %s:%d: fi_getinfo failed\n", __func__, __LINE__);
 	return ret;	
 }
 
@@ -741,8 +747,10 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 
 	if(info){
 		ret = sock_ep_check_hints(info);
-		if(ret)
+		if(ret){
+			sock_debug(SOCK_INFO, "Cannot support requested options!\n");
 			return -FI_EINVAL;
+		}
 	}
 	
 	sock_dom = container_of(domain, sock_domain_t, dom_fid);
@@ -788,11 +796,19 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 			       sizeof(struct sockaddr));
 			ret = bind(sock_ep->sock_fd, &sock_ep->src_addr, 
 				   sizeof(struct sockaddr));
+			if(!ret){
+				sock_debug(SOCK_ERROR, "Failed to bind to local address\n");
+				return ret;
+			}
 		}
 		
 		if(info->dest_addr){
 			ret = sock_ep_connect(*ep, info->dest_addr, NULL, 0);
 			sock_ep->enabled = 0;
+			if(!ret){
+				sock_debug(SOCK_ERROR, "Failed to connect to remote address\n");
+				return ret;
+			}
 		}
 	}
 

@@ -38,6 +38,7 @@
 #include <string.h>
 
 #include "sock.h"
+#include "sock_util.h"
 
 static struct fi_ops_fabric sock_fab_ops = {
 	.size = sizeof(struct fi_ops_fabric),
@@ -105,6 +106,13 @@ static int sock_fabric(struct fi_fabric_attr *attr,
 static int sock_getinfo(uint32_t version, const char *node, const char *service,
 			uint64_t flags, struct fi_info *hints, struct fi_info **info)
 {
+	char *tmp = getenv("SFI_SOCK_DEBUG_LEVEL");
+	if (tmp){
+		sock_debug_level = atoi(tmp);
+	}else{
+		sock_debug_level = SOCK_ERROR;
+	}
+
 	if (hints) {
 		switch (hints->ep_type) {
 		case FI_EP_RDM:
