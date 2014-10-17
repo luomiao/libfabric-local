@@ -69,27 +69,6 @@
 
 static int so_rcvbuf;
 
-void sockd_debug(char *fmt, ...)
-{
-	static int debug = -1;
-	char *env;
-	va_list ap;
-
-	if (debug == -1) {
-		env = getenv("SFI_SOCKD_DEBUG");
-		if (env)
-			debug = atoi(env);
-		else
-			debug = 0;
-	}
-
-	if (debug) {
-		va_start(ap, fmt);
-		vfprintf(stderr, fmt, ap);
-		va_end(ap);
-	}
-}
-
 int sockd_check_hints(struct fi_info *hints)
 {
 	switch (hints->ep_type) {
@@ -184,6 +163,12 @@ int sockd_check_hints(struct fi_info *hints)
 	}
 
 	return 0;
+}
+
+/* TODO */
+struct fi_info *__fi_allocinfo()
+{
+	return calloc(1, sizeof(struct fi_info));
 }
 
 static struct fi_info* sockd_dupinfo(struct fi_info *hints)
@@ -643,7 +628,7 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 		memcpy(&recv_req->addr, &sock_ep->av->table[idx], sizeof(struct sockaddr_in));
 	}
 
-	if(0 != enqueue_item(sock_ep->posted_rcv_list, recv_req)){
+	if(0 != enqueue_item(sock_ep->recv_list, recv_req)){
 		free(recv_req);
 		return -FI_ENOMEM;	
 	}
@@ -799,7 +784,7 @@ static inline int _sock_ep_dgram_progress(sock_ep_t *ep, sock_cq_t *cq)
 	if(item = dequeue_item(ep->send_list)) {
 		sockd_debug("[ep_dgram_progress] found a send req\n");
 	}
-	if(item = dequeue_item(ep->posted_rcv_list)) {
+	if(item = dequeue_item(ep->recv_list)) {
 		sockd_debug("[ep_dgram_progress] found a recv req\n");
 	}
 	return -FI_ENOSYS;
@@ -852,20 +837,14 @@ int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 	if(!(_ep->send_list = new_list(SOCK_EP_SNDQ_LEN)))
 		goto err2;
 
-	if(!(_ep->posted_rcv_list = new_list(SOCK_EP_RCVQ_LEN)))
+	if(!(_ep->recv_list = new_list(SOCK_EP_RCVQ_LEN)))
 		goto err3;
 	
-	if(!(_ep->completed_rcv_list = new_list(SOCK_EP_RCVQ_LEN)))
-		goto err4;
-
 	_ep->progress_fn = _sock_ep_dgram_progress;
 
 	*ep = &_ep->ep;
 
 	return 0;
-
-err4:
-	free_list(_ep->posted_rcv_list);
 
 err3:
 	free_list(_ep->send_list);

@@ -74,8 +74,8 @@
 		      FI_SEND | FI_RECV |		\
 		      FI_CANCEL )
 
-#define SOCK_MAJOR_VERSION 0
-#define SOCK_MINOR_VERSION 2
+#define SOCK_MAJOR_VERSION 1
+#define SOCK_MINOR_VERSION 0
 
 #define MIN(_a, _b) (_a) < (_b) ? (_a):(_b)
 #define MAX(_a, _b) (_a) > (_b) ? (_a):(_b)
@@ -219,16 +219,17 @@ typedef struct _sock_eq_t{
 }sock_eq_t;
 
 typedef int (*sock_ep_progress_fn) (sock_ep_t *ep, sock_cq_t *cq);
+
 struct _sock_ep_t {
 	struct fid_ep		ep;
 	sock_domain_t	*domain;	
 	int sock_fd;
 
 	sock_eq_t        *eq;
-	sock_cq_t 	*send_cq;
-	sock_cq_t 	*recv_cq;
 	sock_av_t 	*av;
 
+	sock_cq_t 	*send_cq;
+	sock_cq_t 	*recv_cq;
 	int send_cq_event_flag;
 	int recv_cq_event_flag;
 
@@ -238,24 +239,22 @@ struct _sock_ep_t {
 	sock_cntr_t 	*write_cntr;
 	sock_cntr_t 	*rem_read_cntr;
 	sock_cntr_t 	*rem_write_cntr;
+	
+	uint64_t out_send;
+	uint64_t out_tagged_send;
+	uint64_t out_rma_put;
+	uint64_t out_rma_get;
 
-	uint64_t			out_send;
-	uint64_t			out_tagged_send;
-	uint64_t			out_rma_put;
-	uint64_t			out_rma_get;
-
-	uint64_t			cmpl_send;
-	uint64_t			cmpl_tagged_send;
-	uint64_t			cmpl_rma_put;
-	uint64_t			cmpl_rma_get;
+	uint64_t cmpl_send;
+	uint64_t cmpl_tagged_send;
+	uint64_t cmpl_rma_put;
+	uint64_t cmpl_rma_get;
 
 	struct fi_info info;
 	struct fi_ep_attr ep_attr;
 
 	list_t *send_list;
-
-	list_t *posted_rcv_list;
-	list_t *completed_rcv_list;
+	list_t *recv_list;
 	
 	struct sockaddr src_addr;
 	struct sockaddr dest_addr;
@@ -270,10 +269,9 @@ struct _sock_ep_t {
 	struct _sock_ep_t *prev;
 	struct _sock_ep_t *alias;
 	struct _sock_ep_t *base;
-
+	
 	int port_num;
-
-	sock_ep_progress_fn	progress_fn;
+	sock_ep_progress_fn progress_fn;
 };
 
 typedef struct _sock_pep_t {
