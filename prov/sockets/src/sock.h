@@ -51,6 +51,9 @@
 #include "indexer.h"
 #include "list.h"
 
+#ifndef _SOCK_H_
+#define _SOCK_H_
+
 #define SOCK_EP_MAX_MSG_SZ (1<<22)
 #define SOCK_EP_MAX_INJECT_SZ (1<<12)
 #define SOCK_EP_MAX_BUFF_RECV (1<<22)
@@ -80,8 +83,8 @@
 #define MIN(_a, _b) (_a) < (_b) ? (_a):(_b)
 #define MAX(_a, _b) (_a) > (_b) ? (_a):(_b)
 
-static const char const fab_name[] = "IP";
-static const char const dom_name[] = "sockets";
+extern const char const sock_fab_name[];
+extern const char const sock_dom_name[];
 
 typedef struct _sock_fabric_t{
 	struct fid_fabric fab_fid;
@@ -324,11 +327,13 @@ void free_fi_info(struct fi_info *info);
 
 fi_addr_t _sock_av_lookup(sock_av_t *av, struct sockaddr *addr);
 
-int _sock_cq_report_completion(sock_cq_t *sock_cq, 
-			       sock_req_item_t *item);
-int _sock_cq_report_error(sock_cq_t *sock_cq, 
-			  struct fi_cq_err_entry *error);
+int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
+		  struct fid_ep **ep, void *context);
+
+int _sock_cq_report_completion(sock_cq_t *sock_cq, sock_req_item_t *item);
+int _sock_cq_report_error(sock_cq_t *sock_cq, struct fi_cq_err_entry *error);
 
 ssize_t _sock_eq_report_error(sock_eq_t *sock_eq, const void *buf, size_t len);
 ssize_t _sock_eq_report_event(sock_eq_t *sock_eq, int event_type, 
 			      const void *buf, size_t len);
+#endif

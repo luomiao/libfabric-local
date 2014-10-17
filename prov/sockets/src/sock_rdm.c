@@ -107,7 +107,7 @@ static int sock_ep_check_hints(struct fi_info *hints)
 	}
 
 	if (hints->fabric_attr && hints->fabric_attr->name &&
-	    strcmp(hints->fabric_attr->name, fab_name))
+	    strcmp(hints->fabric_attr->name, sock_fab_name))
 		return -FI_ENODATA;
 
 	return 0;
@@ -180,8 +180,8 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 
 	if (hints){
 		ret = sock_ep_check_hints(hints);
-		sock_debug(SOCK_INFO, "Cannot support requested options!\n");
 		if(ret){
+			sock_debug(SOCK_INFO, "Cannot support requested options!\n");
 			return ret;
 		}
 	}
@@ -210,6 +210,7 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		ret = getaddrinfo(node, service, &sock_hints, &result);
 		if (ret != 0) {
 			ret = FI_ENODATA;
+			sock_debug(SOCK_INFO, "Cannot support requested node, service!\n");
 			goto err;
 		}
 		

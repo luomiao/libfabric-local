@@ -40,6 +40,9 @@
 #include "sock.h"
 #include "sock_util.h"
 
+const char const sock_fab_name[] = "IP";
+const char const sock_dom_name[] = "sockets";
+
 static struct fi_ops_fabric sock_fab_ops = {
 	.size = sizeof(struct fi_ops_fabric),
 	.domain = sock_domain,
@@ -88,7 +91,7 @@ static int sock_fabric(struct fi_fabric_attr *attr,
 {
 	sock_fabric_t *fab;
 
-	if (strcmp(attr->name, fab_name))
+	if (strcmp(attr->name, sock_fab_name))
 		return -FI_ENODATA;
 
 	fab = calloc(1, sizeof(*fab));
@@ -148,7 +151,7 @@ int sock_free_info(struct fi_info *info)
 }
 
 static struct fi_provider sock_prov = {
-	.name = fab_name,
+	.name = sock_fab_name,
 	.version = FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION), 
 	.getinfo = sock_getinfo,
 	.freeinfo = sock_free_info,

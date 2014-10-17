@@ -58,7 +58,7 @@ static int _sock_eq_read_out_fd(sock_eq_t *sock_eq)
 	return 0;
 }
 
-ssize_t sock_eq_read(struct fid_eq *eq,  int *event, void *buf, size_t len,
+ssize_t sock_eq_read(struct fid_eq *eq, uint32_t *event, void *buf, size_t len,
 		     uint64_t flags)
 {
 	sock_eq_t *sock_eq;
@@ -172,7 +172,7 @@ ssize_t _sock_eq_report_error(sock_eq_t *sock_eq, const void *buf, size_t len)
 	return (ret == 0) ? len : ret;
 }
 
-static ssize_t sock_eq_write(struct fid_eq *eq, int event, 
+static ssize_t sock_eq_write(struct fid_eq *eq, uint32_t event, 
 		      const void *buf, size_t len, int64_t flags)
 {
 	sock_eq_t *sock_eq;
@@ -192,7 +192,7 @@ ssize_t _sock_eq_report_event(sock_eq_t *sock_eq, int event,
 	return sock_eq_write(&sock_eq->eq, event, buf, len, 0);
 }
 
-ssize_t sock_eq_sread(struct fid_eq *eq, enum fi_eq_event *event, 
+ssize_t sock_eq_sread(struct fid_eq *eq, uint32_t *event, 
 			  void *buf, size_t len, int timeout, uint64_t flags)
 {
 	int ret;
