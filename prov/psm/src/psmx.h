@@ -43,33 +43,88 @@ extern "C" {
 #define MIN(x,y) ((x)<(y)?(x):(y))
 #endif
 
+#define PSMX_FREE_LIST_INIT(head, tail, type, count) \
+	do { \
+		int i; \
+		type *item; \
+		head = tail = NULL; \
+		for (i=0; i<count; i++) { \
+			item = calloc(sizeof(type), 1); \
+			if (!item) {\
+				fprintf(stderr, "%s: out of memory.\n", __func__); \
+				exit(-1); \
+			} \
+			item->next = head; \
+			head = item; \
+			if (!tail) \
+				tail = head; \
+		} \
+	} while (0)
+
+#define PSMX_FREE_LIST_GET(head, tail, type, item) \
+	do { \
+		if (head) { \
+			item = head; \
+			head = head->next; \
+			if (!head) \
+				tail = head; \
+			item->next = NULL; \
+		} \
+		else { \
+			item = calloc(sizeof(type), 1); \
+			if (!item) {\
+				fprintf(stderr, "%s: out of memory.\n", __func__); \
+				exit(-1); \
+			} \
+		} \
+	} while (0)
+
+#define PSMX_FREE_LIST_PUT(head, tail, type, item) \
+	do { \
+		memset(item, 0, sizeof(type)); \
+		if (tail) \
+			tail->next = item; \
+		else \
+			head = tail = item; \
+	} while (0)
+
+#define PSMX_FREE_LIST_FINALIZE(head, tail, type) \
+	do { \
+		type *next; \
+		while (head) { \
+			next = head->next; \
+			free(head); \
+			head = next; \
+		} \
+		tail = NULL; \
+	} while (0)
+
 #define PSMX_TIME_OUT	120
 
 #define PSMX_OP_FLAGS	(FI_INJECT | FI_MULTI_RECV | FI_EVENT | \
 			 FI_TRIGGER | FI_REMOTE_SIGNAL | FI_REMOTE_COMPLETE)
 
-#define PSMX_EP_CAP_EXT	(0)
+#define PSMX_CAP_EXT	(0)
 
 /* FI_MSG and FI_RMA appear in both BASE and OPT because they can be
  * supported w/ or w/o reserved tag bits
  */
-#define PSMX_EP_CAP_BASE (FI_TAGGED | FI_MSG | FI_ATOMICS | FI_INJECT | \
+#define PSMX_CAP_BASE	(FI_TAGGED | FI_MSG | FI_ATOMICS | FI_INJECT | \
 			 FI_RMA | FI_BUFFERED_RECV | FI_MULTI_RECV | \
                          FI_READ | FI_WRITE | FI_SEND | FI_RECV | \
                          FI_REMOTE_READ | FI_REMOTE_WRITE | \
                          FI_REMOTE_COMPLETE | FI_REMOTE_SIGNAL | \
 			 FI_CANCEL | FI_TRIGGER | \
-			 PSMX_EP_CAP_EXT)
-#define PSMX_EP_CAP_OPT1 (FI_MSG)
-#define PSMX_EP_CAP_OPT2 (FI_RMA)
+			 FI_DYNAMIC_MR | \
+			 PSMX_CAP_EXT)
+#define PSMX_CAP_OPT1	(FI_MSG)
+#define PSMX_CAP_OPT2	(FI_RMA)
 
-#define PSMX_EP_CAP	(PSMX_EP_CAP_BASE | PSMX_EP_CAP_OPT1 | PSMX_EP_CAP_OPT2)
+#define PSMX_CAPS	(PSMX_CAP_BASE | PSMX_CAP_OPT1 | PSMX_CAP_OPT2)
 
-#define PSMX_DOMAIN_CAP (FI_WRITE_COHERENT | FI_CONTEXT | \
-			 FI_USER_MR_KEY | FI_DYNAMIC_MR)
+#define PSMX_MODE	(FI_CONTEXT)
 
 #define PSMX_OUI_INTEL	0x0002b3L
-#define PSMX_PROTOCOL	0x0001
 
 #define PSMX_MAX_MSG_SIZE	((0x1ULL << 32) - 1)
 #define PSMX_INJECT_SIZE	(64)
@@ -224,6 +279,7 @@ struct psmx_fid_domain {
 	int			msg_used:1;
 	int			rma_used:1;
 	int			atomics_used:1;
+	uint64_t		mode;
 
 	int			use_am_msg;
 	int			use_tagged_rma;
@@ -272,14 +328,29 @@ struct psmx_cq_event_queue {
 	struct psmx_cq_event	*tail;
 };
 
+struct psmx_wait {
+	int				type;
+	int				cond;
+	union {
+		struct fid_wait		*wait_set;
+		int			fd[2];
+		struct {
+		  pthread_mutex_t mutex;
+		  pthread_cond_t cond;
+		}			mutex_cond;
+	};
+};
+
 struct psmx_fid_cq {
 	struct fid_cq			cq;
 	struct psmx_fid_domain		*domain;
 	int 				format;
 	int				entry_size;
 	struct psmx_cq_event_queue	event_queue;
+	struct psmx_cq_event_queue	free_list;
 	struct psmx_cq_event		*pending_error;
 	int				poll_am_before_mq;
+	struct psmx_wait		*wait;
 };
 
 enum psmx_triggered_op {
@@ -484,6 +555,14 @@ struct psmx_epaddr_context {
 extern struct fi_ops_mr		psmx_mr_ops;
 extern struct fi_ops_cm		psmx_cm_ops;
 extern struct fi_ops_tagged	psmx_tagged_ops;
+extern struct fi_ops_tagged	psmx_tagged_ops_no_flag_av_map;
+extern struct fi_ops_tagged	psmx_tagged_ops_no_flag_av_table;
+extern struct fi_ops_tagged	psmx_tagged_ops_no_event_av_map;
+extern struct fi_ops_tagged	psmx_tagged_ops_no_event_av_table;
+extern struct fi_ops_tagged	psmx_tagged_ops_no_send_event_av_map;
+extern struct fi_ops_tagged	psmx_tagged_ops_no_send_event_av_table;
+extern struct fi_ops_tagged	psmx_tagged_ops_no_recv_event_av_map;
+extern struct fi_ops_tagged	psmx_tagged_ops_no_recv_event_av_table;
 extern struct fi_ops_msg	psmx_msg_ops;
 extern struct fi_ops_msg	psmx_msg2_ops;
 extern struct fi_ops_rma	psmx_rma_ops;
@@ -515,7 +594,7 @@ void	psmx_debug(char *fmt, ...);
 
 void	psmx_cq_enqueue_event(struct psmx_cq_event_queue *eq,
 			      struct psmx_cq_event *event);
-struct	psmx_cq_event *psmx_cq_create_event(enum fi_cq_format format,
+struct	psmx_cq_event *psmx_cq_create_event(struct psmx_fid_cq *cq,
 					void *op_context, void *buf,
 					uint64_t flags, size_t len,
 					uint64_t data, uint64_t tag,

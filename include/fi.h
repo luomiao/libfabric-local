@@ -33,6 +33,10 @@
 #ifndef _FI_H_
 #define _FI_H_
 
+#if HAVE_CONFIG_H
+#  include <config.h>
+#endif /* HAVE_CONFIG_H */
+
 #include <byteswap.h>
 #include <endian.h>
 #include <semaphore.h>
@@ -143,8 +147,8 @@ int fi_read_file(const char *dir, const char *file, char *buf, size_t size);
 int fi_poll_fd(int fd, int timeout);
 int fi_wait_cond(pthread_cond_t *cond, pthread_mutex_t *mut, int timeout);
 
-struct fi_info *__fi_allocinfo(void);
-void __fi_freeinfo(struct fi_info *info);
+struct fi_info *fi_allocinfo_internal(void);
+void fi_freeinfo_internal(struct fi_info *info);
 
 int fi_sockaddr_len(struct sockaddr *addr);
 size_t fi_datatype_size(enum fi_datatype datatype);
@@ -156,6 +160,31 @@ int fi_version_register(uint32_t version, struct fi_provider *provider);
 #define RDMA_CONF_DIR  SYSCONFDIR "/" RDMADIR
 #define FI_CONF_DIR RDMA_CONF_DIR "/fabric"
 
+#define DEFAULT_ABI "FABRIC_1.0"
+
+/* symbol -> external symbol mappings */
+#ifdef HAVE_SYMVER_SUPPORT
+
+#  define symver(name, api, ver) \
+        asm(".symver " #name "," #api "@" #ver)
+#  define default_symver(name, api) \
+        asm(".symver " #name "," #api "@@" DEFAULT_ABI)
+#else
+#  define symver(name, api, ver)
+#  define default_symver(name, api) \
+        extern __typeof(name) api __attribute__((alias(#name)))
+
+#endif /* HAVE_SYMVER_SUPPORT */
+
+/* symbol -> external symbol mappings */
+#ifdef HAVE_SYMVER_SUPPORT
+
+/* FABRIC_1.0: default symbol set must match linker script */
+#define FABRIC_10(SYM, ESYM) asm(".symver " #SYM","#ESYM"@@FABRIC_1.0");
+
+#else
+#define FABRIC_10(SYM, ESYM)
+#endif
 
 #ifdef __cplusplus
 }

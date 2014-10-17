@@ -69,7 +69,7 @@
 #define SOCK_EQ_DEF_LEN (128)
 #define SOCK_CQ_DEF_LEN (128)
 
-#define SOCK_EP_CAP ( FI_PASSIVE | FI_MSG | \
+#define SOCK_EP_CAP ( FI_MSG | \
 		      FI_INJECT | FI_SOURCE |		\
 		      FI_SEND | FI_RECV |		\
 		      FI_CANCEL )
@@ -89,7 +89,7 @@ typedef struct _sock_fabric_t{
 
 typedef struct _sock_domain_t {
 	struct fid_domain dom_fid;
-	
+	uint64_t		mode;
 	sock_fabric_t *fab;
 	fastlock_t lock;
 	atomic_t ref;
@@ -154,7 +154,7 @@ typedef struct _sock_wait_t {
 typedef struct _sock_ep_t sock_ep_t;
 
 typedef struct _sock_eq_item_t{
-	enum fi_eq_event type;
+	int type;
 	ssize_t len;
 }sock_eq_item_t;
 
@@ -332,5 +332,5 @@ int _sock_cq_report_error(sock_cq_t *sock_cq,
 			  struct fi_cq_err_entry *error);
 
 ssize_t _sock_eq_report_error(sock_eq_t *sock_eq, const void *buf, size_t len);
-ssize_t _sock_eq_report_event(sock_eq_t *sock_eq, enum fi_eq_event event, 
+ssize_t _sock_eq_report_event(sock_eq_t *sock_eq, int event_type, 
 			      const void *buf, size_t len);

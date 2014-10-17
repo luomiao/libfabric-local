@@ -92,12 +92,12 @@ void sockd_debug(char *fmt, ...)
 
 int sockd_check_hints(struct fi_info *hints)
 {
-	switch (hints->type) {
+	switch (hints->ep_type) {
 	case FI_EP_DGRAM:
 		break;
 	default:
 		sockd_debug("[sockd] %s: hints->type = %d, only FI_EP_DGRAM = %d is supported\n",
-				__func__, hints->type, FI_EP_DGRAM);
+				__func__, hints->ep_type, FI_EP_DGRAM);
 		return -FI_ENODATA;
 	}
 
@@ -144,9 +144,9 @@ int sockd_check_hints(struct fi_info *hints)
 		 * msg_order */
 	}
 
-	if ((hints->ep_cap & SOCK_EP_CAP) != hints->ep_cap) {
+	if ((hints->caps & SOCK_EP_CAP) != hints->caps) {
 		sockd_debug("[sockd] %s: hints->ep_cap=0x%llx, supported=0x%llx\n",
-				__func__, hints->ep_cap, SOCK_EP_CAP);
+				__func__, hints->caps, SOCK_EP_CAP);
 		return -FI_ENODATA;
 	}
 
@@ -156,6 +156,7 @@ int sockd_check_hints(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 
+#if 0 /* TODO */
 	if ((hints->domain_cap & SOCKD_DOMAIN_CAP) != hints->domain_cap) {
 		sockd_debug("[sockd] %s: hints->domain_cap=0x%llx, supported=0x%llx\n",
 				__func__, hints->domain_cap, SOCKD_DOMAIN_CAP);
@@ -163,6 +164,7 @@ int sockd_check_hints(struct fi_info *hints)
 		/* FIXME: check
 		 * threading, control_progress, mr_key_size, eq_data_size */
 	}
+#endif
 
 	if (hints->fabric_attr) {
 		/* FIXME: check name */
@@ -192,13 +194,13 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 	}
 
 	fi->next = NULL;
-	fi->type = FI_EP_DGRAM;
+	fi->ep_type = FI_EP_DGRAM;
 
 	if (hints) {
-		fi->ep_cap	= hints->ep_cap;
+		fi->caps	= hints->caps;
 		fi->addr_format = hints->addr_format;
 	} else {
-		fi->ep_cap	= SOCK_EP_CAP;
+		fi->caps	= SOCK_EP_CAP;
 		fi->addr_format = FI_SOCKADDR;
 	}
 
@@ -227,7 +229,7 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 	fi->domain_attr->threading 	  = FI_THREAD_PROGRESS;
 	fi->domain_attr->control_progress = FI_PROGRESS_MANUAL;
 	fi->domain_attr->data_progress 	  = FI_PROGRESS_MANUAL; /* FIXME: FI_PROGRESS_AUTO? */
-	fi->domain_cap	 		  = SOCKD_DOMAIN_CAP;
+/* TODO	fi->domain_cap	 		  = SOCKD_DOMAIN_CAP; */
 
 	fi->fabric_attr = calloc(1, sizeof (struct fi_fabric_attr));
 	if (!fi->fabric_attr) {

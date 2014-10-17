@@ -58,7 +58,7 @@ static int _sock_eq_read_out_fd(sock_eq_t *sock_eq)
 	return 0;
 }
 
-ssize_t sock_eq_read(struct fid_eq *eq, enum fi_eq_event *event, void *buf, size_t len,
+ssize_t sock_eq_read(struct fid_eq *eq,  int *event, void *buf, size_t len,
 		     uint64_t flags)
 {
 	sock_eq_t *sock_eq;
@@ -130,7 +130,7 @@ ssize_t sock_eq_readerr(struct fid_eq *eq, struct fi_eq_err_entry *buf,
 }
 
 static ssize_t _sock_eq_write(sock_eq_t *sock_eq, 
-			      enum fi_eq_event event, 
+			      int event, 
 			      const void *buf, size_t len)
 {
 	int ret;
@@ -172,7 +172,7 @@ ssize_t _sock_eq_report_error(sock_eq_t *sock_eq, const void *buf, size_t len)
 	return (ret == 0) ? len : ret;
 }
 
-static ssize_t sock_eq_write(struct fid_eq *eq, enum fi_eq_event event, 
+static ssize_t sock_eq_write(struct fid_eq *eq, int event, 
 		      const void *buf, size_t len, int64_t flags)
 {
 	sock_eq_t *sock_eq;
@@ -186,7 +186,7 @@ static ssize_t sock_eq_write(struct fid_eq *eq, enum fi_eq_event event,
 	return _sock_eq_write(sock_eq, event, buf, len);
 }
 
-ssize_t _sock_eq_report_event(sock_eq_t *sock_eq, enum fi_eq_event event, 
+ssize_t _sock_eq_report_event(sock_eq_t *sock_eq, int event, 
 			      const void *buf, size_t len)
 {
 	return sock_eq_write(&sock_eq->eq, event, buf, len, 0);
@@ -290,7 +290,7 @@ static int _sock_eq_verify_attr(struct fi_eq_attr *attr)
 	case FI_WAIT_NONE:
 	case FI_WAIT_FD:
 		break;
-	case FI_WAIT_UNSPECIFIED:
+	case FI_WAIT_UNSPEC:
 		attr->wait_obj = FI_WAIT_FD;
 		break;
 	default:

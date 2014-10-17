@@ -227,7 +227,7 @@ static ssize_t sock_cq_readfrom(struct fid_cq *cq, void *buf, size_t len,
 			
 			if(src_addr){
 				fi_addr_t addr;
-				if(FI_SOURCE & cq_entry->ep->info.ep_cap){
+				if(FI_SOURCE & cq_entry->ep->info.caps){
 					addr = _sock_av_lookup(cq_entry->ep->av, &cq_entry->src_addr);
 				}else{
 					addr = FI_ADDR_UNSPEC;
@@ -437,7 +437,7 @@ static int sock_cq_verify_attr(struct fi_cq_attr *attr)
 	case FI_WAIT_NONE:
 	case FI_WAIT_FD:
 		break;
-	case FI_WAIT_UNSPECIFIED:
+	case FI_WAIT_UNSPEC:
 		attr->wait_obj = FI_WAIT_FD;
 		break;
 	default:
