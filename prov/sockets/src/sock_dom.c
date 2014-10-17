@@ -42,9 +42,9 @@
 
 static int sock_dom_close(struct fid *fid)
 {
-	struct sock_domain *dom;
+	sock_domain_t *dom;
 
-	dom = container_of(fid, struct sock_domain, dom_fid.fid);
+	dom = container_of(fid, sock_domain_t, dom_fid.fid);
 	if (atomic_get(&dom->ref))
 		return -FI_EBUSY;
 
@@ -60,18 +60,13 @@ static int sock_dom_close(struct fid *fid)
 //	return 0;
 //}
 
-static int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
-			 struct fid_ep **ep, void *context)
+int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
+			struct fid_pep **pep, void *context)
 {
-	switch (info->ep_type) {
-	case FI_EP_RDM:
-		return sock_rdm_ep(domain, info, ep, context);
-	default:
-		return -FI_ENOPROTOOPT;
-	}
+	return 0;
 }
 
-static uint16_t sock_get_mr_key(struct sock_domain *dom)
+static uint16_t sock_get_mr_key(sock_domain_t *dom)
 {
 	uint16_t i;
 
@@ -84,10 +79,10 @@ static uint16_t sock_get_mr_key(struct sock_domain *dom)
 
 static int sock_mr_close(struct fid *fid)
 {
-	struct sock_domain *dom;
-	struct sock_mr *mr;
+	sock_domain_t *dom;
+	sock_mr_t *mr;
 
-	mr = container_of(fid, struct sock_mr, mr_fid.fid);
+	mr = container_of(fid, sock_mr_t, mr_fid.fid);
 	dom = mr->dom;
 	fastlock_acquire(&dom->lock);
 	idm_clear(&dom->mr_idm , (int) mr->mr_fid.key);
@@ -109,11 +104,11 @@ static struct fi_ops sock_mr_fi_ops = {
 static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr,
 		uint64_t flags, struct fid_mr **mr)
 {
-	struct sock_domain *dom;
-	struct sock_mr *_mr;
+	sock_domain_t *dom;
+	sock_mr_t *_mr;
 	uint16_t key;
 
-	dom = container_of(domain, struct sock_domain, dom_fid);
+	dom = container_of(domain, sock_domain_t, dom_fid);
 	if (!(dom->mode & FI_PROV_MR_KEY) && ((attr->requested_key > IDX_MAX_INDEX) ||
 	    idm_lookup(&dom->mr_idm, (int) attr->requested_key)))
 		return -FI_ENOKEY;
@@ -182,6 +177,40 @@ static int sock_reg(struct fid_domain *domain, const void *buf, size_t len,
 			 flags, mr, context);
 }
 
+int sock_dom_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_dom_sync(struct fid *fid, uint64_t flags, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_dom_control(struct fid *fid, int command, void *arg)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_dom_ops_open(struct fid *fid, const char *name,
+			uint64_t flags, void **ops, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
+			 struct fid_ep **ep, void *context)
+{
+	switch (info->ep_type) {
+	case FI_EP_RDM:
+		return sock_rdm_ep(domain, info, ep, context);
+	case FI_EP_DGRAM:
+		return sock_dgram_ep(domain, info, ep, context);
+	default:
+		return -FI_ENOPROTOOPT;
+	}
+}
+
 static struct fi_ops sock_dom_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_dom_close,
@@ -211,12 +240,12 @@ static struct fi_ops_mr sock_dom_mr_ops = {
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context)
 {
-	struct sock_domain *_dom;
+	sock_domain_t *_dom;
 
 	_dom = calloc(1, sizeof *_dom);
 	if (!_dom)
 		return -FI_ENOMEM;
-
+	
 	fastlock_init(&_dom->lock);
 	atomic_init(&_dom->ref);
 
