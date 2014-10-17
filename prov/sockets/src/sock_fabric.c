@@ -109,6 +109,8 @@ static int sock_fabric(struct fi_fabric_attr *attr,
 static int sock_getinfo(uint32_t version, const char *node, const char *service,
 			uint64_t flags, struct fi_info *hints, struct fi_info **info)
 {
+	return -FI_ENODATA;
+
 	if (hints) {
 		switch (hints->ep_type) {
 		case FI_EP_RDM:
