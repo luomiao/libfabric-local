@@ -45,16 +45,16 @@
 
 static uint64_t sock_cntr_read(struct fid_cntr *cntr)
 {
-	sock_cntr_t *_cntr;
-	_cntr = container_of(cntr, sock_cntr_t, cntr_fid);
+	struct sock_cntr *_cntr;
+	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
 	return _cntr->value;
 }
 
 static int sock_cntr_add(struct fid_cntr *cntr, uint64_t value)
 {
-	sock_cntr_t *_cntr;
+	struct sock_cntr *_cntr;
 
-	_cntr = container_of(cntr, sock_cntr_t, cntr_fid);
+	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
 	pthread_mutex_lock(&_cntr->mut);
 	_cntr->value += value;
 	if (_cntr->value >= _cntr->threshold)
@@ -65,9 +65,9 @@ static int sock_cntr_add(struct fid_cntr *cntr, uint64_t value)
 
 static int sock_cntr_set(struct fid_cntr *cntr, uint64_t value)
 {
-	sock_cntr_t *_cntr;
+	struct sock_cntr *_cntr;
 
-	_cntr = container_of(cntr, sock_cntr_t, cntr_fid);
+	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
 	pthread_mutex_lock(&_cntr->mut);
 	_cntr->value = value;
 	if (_cntr->value >= _cntr->threshold)
@@ -78,10 +78,10 @@ static int sock_cntr_set(struct fid_cntr *cntr, uint64_t value)
 
 static int sock_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout)
 {
-	sock_cntr_t *_cntr;
+	struct sock_cntr *_cntr;
 	int ret = 0;
 
-	_cntr = container_of(cntr, sock_cntr_t, cntr_fid);
+	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
 	pthread_mutex_lock(&_cntr->mut);
 	_cntr->threshold = threshold;
 	while (_cntr->value < _cntr->threshold && !ret)
@@ -93,9 +93,9 @@ static int sock_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout
 
 static int sock_cntr_close(struct fid *fid)
 {
-	sock_cntr_t *cntr;
+	struct sock_cntr *cntr;
 
-	cntr = container_of(fid, sock_cntr_t, cntr_fid.fid);
+	cntr = container_of(fid, struct sock_cntr, cntr_fid.fid);
 	if (atomic_get(&cntr->ref))
 		return -FI_EBUSY;
 	
@@ -122,8 +122,8 @@ static struct fi_ops sock_cntr_fi_ops = {
 int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 		   struct fid_cntr **cntr, void *context)
 {
-	sock_domain_t *dom;
-	sock_cntr_t *_cntr;
+	struct sock_domain *dom;
+	struct sock_cntr *_cntr;
 	int ret;
 
 	if ((attr->events != FI_CNTR_EVENTS_COMP) ||
@@ -149,7 +149,7 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 	_cntr->cntr_fid.ops = &sock_cntr_ops;
 	_cntr->threshold = ~0;
 
-	dom = container_of(domain, sock_domain_t, dom_fid);
+	dom = container_of(domain, struct sock_domain, dom_fid);
 	atomic_inc(&dom->ref);
 	_cntr->dom = dom;
 	*cntr = &_cntr->cntr_fid;

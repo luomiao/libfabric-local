@@ -43,11 +43,26 @@
 const char const sock_fab_name[] = "IP";
 const char const sock_dom_name[] = "sockets";
 
+int _sock_verify_fabric_attr(struct fi_fabric_attr *attr)
+{
+	if (attr->name &&
+	    strcmp(attr->name, sock_fab_name))
+		return -FI_ENODATA;
+
+	if(attr->prov_version){
+		if(attr->prov_version != 
+		   FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION))
+			return -FI_ENODATA;
+	}
+
+	return 0;
+}
+
 static struct fi_ops_fabric sock_fab_ops = {
 	.size = sizeof(struct fi_ops_fabric),
 	.domain = sock_domain,
-	/*.endpoint = sock_pendpoint,*/
-	/*.eq_open = sock_eq_open,*/
+	.endpoint = sock_pendpoint,
+	.eq_open = sock_eq_open,
 };
 
 static int sock_fabric_close(fid_t fid)
@@ -89,15 +104,15 @@ static struct fi_ops sock_fab_fi_ops = {
 static int sock_fabric(struct fi_fabric_attr *attr,
 		       struct fid_fabric **fabric, void *context)
 {
-	sock_fabric_t *fab;
+	struct sock_fabric *fab;
 
 	if (strcmp(attr->name, sock_fab_name))
 		return -FI_ENODATA;
-
+	
 	fab = calloc(1, sizeof(*fab));
 	if (!fab)
 		return -FI_ENOMEM;
-
+	
 	fab->fab_fid.fid.fclass = FI_CLASS_FABRIC;
 	fab->fab_fid.fid.context = context;
 	fab->fab_fid.fid.ops = &sock_fab_fi_ops;

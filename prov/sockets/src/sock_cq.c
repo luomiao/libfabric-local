@@ -47,7 +47,7 @@
 #include "list.h"
 #include "sock.h"
 
-static int _sock_cq_read_out_fd(sock_cq_t *sock_cq)
+static int _sock_cq_read_out_fd(struct sock_cq *sock_cq)
 {
 	int read_done = 0;
 	do{
@@ -61,7 +61,7 @@ static int _sock_cq_read_out_fd(sock_cq_t *sock_cq)
 	return 0;
 }
 
-static ssize_t _sock_cq_entry_size(sock_cq_t *sock_cq)
+static ssize_t _sock_cq_entry_size(struct sock_cq *sock_cq)
 {
 	ssize_t size = 0;
 
@@ -90,8 +90,8 @@ static ssize_t _sock_cq_entry_size(sock_cq_t *sock_cq)
 	return size;
 }
 
-static void _sock_cq_write_to_buf(sock_cq_t *sock_cq,
-				  void *buf, sock_req_item_t *cq_entry)
+static void _sock_cq_write_to_buf(struct sock_cq *sock_cq,
+				  void *buf, struct sock_req_item *cq_entry)
 {
 	ssize_t size;
 	switch(sock_cq->attr.format){
@@ -164,11 +164,11 @@ static void _sock_cq_write_to_buf(sock_cq_t *sock_cq,
 	}
 }
 
-static void _sock_cq_progress(sock_cq_t *sock_cq)
+static void _sock_cq_progress(struct sock_cq *sock_cq)
 {
 	list_element_t *curr = sock_cq->ep_list->head;
 	while(curr){
-		((sock_ep_t *)curr->data)->progress_fn((sock_ep_t *)curr->data, sock_cq);
+		((struct sock_ep *)curr->data)->progress_fn((struct sock_ep *)curr->data, sock_cq);
 		curr=curr->next;
 	}
 }
@@ -177,11 +177,11 @@ static ssize_t sock_cq_readfrom(struct fid_cq *cq, void *buf, size_t len,
 				fi_addr_t *src_addr)
 {
 	int num_done = 0;
-	sock_cq_t *sock_cq;
+	struct sock_cq *sock_cq;
 	ssize_t bytes_written = 0;
-	sock_req_item_t *cq_entry;
+	struct sock_req_item *cq_entry;
 
-	sock_cq = container_of(cq, sock_cq_t, cq_fid);
+	sock_cq = container_of(cq, struct sock_cq, cq_fid);
 	if(!sock_cq)
 		return -FI_ENOENT;
 
@@ -252,11 +252,11 @@ static ssize_t sock_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
 			       size_t len, uint64_t flags)
 {
 	int num_done = 0;
-	sock_cq_t *sock_cq;
+	struct sock_cq *sock_cq;
 	ssize_t bytes_written = 0;
 	struct fi_cq_err_entry *err_entry;
 	
-	sock_cq = container_of(cq, sock_cq_t, cq_fid);
+	sock_cq = container_of(cq, struct sock_cq, cq_fid);
 	if(!sock_cq)
 		return -FI_ENOENT;
 	
@@ -286,17 +286,17 @@ static ssize_t sock_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
 
 static ssize_t sock_cq_write(struct fid_cq *cq, const void *buf, size_t len)
 {
-	sock_cq_t *sock_cq;
-	sock_req_item_t *item;
+	struct sock_cq *sock_cq;
+	struct sock_req_item *item;
 
-	sock_cq = container_of(cq, sock_cq_t, cq_fid);
+	sock_cq = container_of(cq, struct sock_cq, cq_fid);
 	if(!sock_cq)
 		return -FI_ENOENT;
 
 	if(!(sock_cq->attr.flags & FI_WRITE))
 		return -FI_EINVAL;
 
-	item = calloc(1, sizeof(sock_req_item_t));
+	item = calloc(1, sizeof(struct sock_req_item));
 	if(!item)
 		return -FI_ENOMEM;
 	
@@ -319,7 +319,7 @@ static ssize_t sock_cq_write(struct fid_cq *cq, const void *buf, size_t len)
 static ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t len,
 				    fi_addr_t *src_addr, const void *cond, int timeout)
 {
-	sock_cq_t *sock_cq;
+	struct sock_cq *sock_cq;
 	int wait_infinite;
 	int64_t cq_threshold;
 	double curr_time, end_time = 0.0;
@@ -334,7 +334,7 @@ static ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t len,
 		wait_infinite = 1;
 	}
 
-	sock_cq = container_of(cq, sock_cq_t, cq_fid);
+	sock_cq = container_of(cq, struct sock_cq, cq_fid);
 	if(!sock_cq)
 		return -FI_ENOENT;
 
@@ -383,9 +383,9 @@ static const char * sock_cq_strerror(struct fid_cq *cq, int prov_errno,
 
 static int sock_cq_close(struct fid *fid)
 {
-	sock_cq_t *cq;
+	struct sock_cq *cq;
 
-	cq = container_of(fid, sock_cq_t, cq_fid.fid);
+	cq = container_of(fid, struct sock_cq, cq_fid.fid);
 	if(!cq)
 		return -FI_EINVAL;
 
@@ -460,12 +460,12 @@ static struct fi_cq_attr _sock_cq_def_attr = {
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		 struct fid_cq **cq, void *context)
 {
-	sock_domain_t *sock_dom;
-	sock_cq_t *sock_cq;
+	struct sock_domain *sock_dom;
+	struct sock_cq *sock_cq;
 	long flags = 0;
 	int ret;
 
-	sock_dom = container_of(domain, sock_domain_t, dom_fid);
+	sock_dom = container_of(domain, struct sock_domain, dom_fid);
 	if(!sock_dom)
 		return -FI_EINVAL;
 
@@ -523,15 +523,15 @@ err:
 	return ret;
 }
 
-int _sock_cq_report_completion(sock_cq_t *sock_cq, 
-			      sock_req_item_t *item)
+int _sock_cq_report_completion(struct sock_cq *sock_cq, 
+			      struct sock_req_item *item)
 {
 	char byte;
 	write(sock_cq->fd[SOCK_WR_FD], &byte, 1);
 	return enqueue_item(sock_cq->completed_list, item);
 }
 
-int _sock_cq_report_error(sock_cq_t *sock_cq, 
+int _sock_cq_report_error(struct sock_cq *sock_cq, 
 			  struct fi_cq_err_entry *error)
 {
 	char byte;

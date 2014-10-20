@@ -48,9 +48,9 @@ static int sock_at_insert(struct fid_av *av, const void *addr, size_t count,
 			  fi_addr_t *fi_addr, uint64_t flags)
 {
 	int i;
-	sock_av_t *_av;
+	struct sock_av *_av;
 
-	_av = container_of(av, sock_av_t, av_fid);
+	_av = container_of(av, struct sock_av, av_fid);
 	_av->table = calloc(count, sizeof(struct sockaddr_in));
 	if (!_av->table)
 		return -ENOMEM;
@@ -74,9 +74,9 @@ static int sock_at_lookup(struct fid_av *av, fi_addr_t fi_addr, void *addr,
 {
 	int idx;
 	idx = (int)(int64_t)fi_addr;
-	sock_av_t *_av;
+	struct sock_av *_av;
 
-	_av = container_of(av, sock_av_t, av_fid);
+	_av = container_of(av, struct sock_av, av_fid);
 	if (idx >= _av->count || idx < 0)
 		return -EINVAL;
 	memcpy(addr, &_av->table[idx], min(*addrlen, sizeof(struct sockaddr_in)));
@@ -146,9 +146,9 @@ static int sock_av_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 
 static int sock_av_close(struct fid *fid)
 {
-	sock_av_t *av;
+	struct sock_av *av;
 
-	av = container_of(fid, sock_av_t, av_fid.fid);
+	av = container_of(fid, struct sock_av, av_fid.fid);
 	if (atomic_get(&av->ref))
 		return -FI_EBUSY;
 
@@ -191,10 +191,10 @@ static struct fi_ops_av sock_at_ops = {
 //};
 
 #if 0
-static int sock_open_am(sock_domain_t *dom, struct fi_av_attr *attr,
-			sock_av_t **av, void *context)
+static int sock_open_am(struct sock_domain *dom, struct fi_av_attr *attr,
+			struct sock_av **av, void *context)
 {
-	sock_av_t *_av;
+	struct sock_av *_av;
 
 	_av = calloc(1, sizeof(*_av));
 	if (!_av)
@@ -213,14 +213,14 @@ static int sock_open_am(sock_domain_t *dom, struct fi_av_attr *attr,
 int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		 struct fid_av **av, void *context)
 {
-	sock_domain_t *dom;
-	sock_av_t *_av;
+	struct sock_domain *dom;
+	struct sock_av *_av;
 //	int ret;
 
 	if (attr->name || attr->flags)
 		return -FI_ENOSYS;
 
-	dom = container_of(domain, sock_domain_t, dom_fid);
+	dom = container_of(domain, struct sock_domain, dom_fid);
 
 	_av = calloc(1, sizeof(*_av));
 	if (!_av)
@@ -255,7 +255,7 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 }
 
 /* TODO */
-fi_addr_t _sock_av_lookup(sock_av_t *av, struct sockaddr *addr)
+fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr)
 {
 	if (av->attr.type == FI_AV_MAP) {
 		return (fi_addr_t)addr;

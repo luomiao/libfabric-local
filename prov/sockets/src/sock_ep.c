@@ -39,6 +39,28 @@
 
 #include "sock.h"
 
+int _sock_verify_ep_attr(struct fi_ep_attr *attr)
+{
+	switch (attr->protocol) {
+	case FI_PROTO_UNSPEC:
+	case FI_PROTO_SOCKET:
+		break;
+	default:
+		return -FI_ENODATA;
+	}
+
+	if(attr->max_msg_size > SOCK_EP_MAX_MSG_SZ)
+		return -FI_ENODATA;
+
+	if(attr->inject_size > SOCK_EP_MAX_INJECT_SZ)
+		return -FI_ENODATA;
+
+	if(attr->total_buffered_recv > SOCK_EP_MAX_BUFF_RECV)
+		return -FI_ENODATA;
+
+	return 0;
+}
+
 static ssize_t sock_ep_cancel(fid_t fid, void *context)
 {
 	return -FI_ENOSYS;
@@ -73,9 +95,9 @@ int sock_ep_connect(struct fid_ep *ep, const void *addr,
 			const void *param, size_t paramlen)
 {
 	int ret;
-	sock_ep_t *sock_ep;
+	struct sock_ep *sock_ep;
 
-	sock_ep = container_of(ep, sock_ep_t, ep);
+	sock_ep = container_of(ep, struct sock_ep, ep);
 	if(!sock_ep)
 		return -FI_EINVAL;
 	
@@ -95,9 +117,9 @@ int sock_ep_connect(struct fid_ep *ep, const void *addr,
 int sock_ep_listen(struct fid_pep *pep)
 {
 	int ret;
-	sock_pep_t *sock_pep;
+	struct sock_pep *sock_pep;
 
-	sock_pep = container_of(pep, sock_pep_t, pep);
+	sock_pep = container_of(pep, struct sock_pep, pep);
 	ret = listen(sock_pep->sock_fd, SOCK_EP_BACKLOG);
 	if(ret)
 		return -errno;
@@ -150,9 +172,9 @@ ssize_t sock_ep_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
 			void *context)
 {
 /*
-	sock_ep_t *sock_ep;
+	struct sock_ep *sock_ep;
 	recv_buf_t *list_entry;
-	sock_ep = container_of(ep, struct _sock_ep_t, ep);
+	sock_ep = container_of(ep, struct _struct sock_ep, ep);
 	
 	if(NULL == (list_entry = get_from_free_recv_list(sock_ep)))
 		return -FI_ENOMEM;
@@ -230,6 +252,12 @@ ssize_t sock_ep_senddatato(struct fid_ep *ep, const void *buf, size_t len,
 	return 0;
 }
 
+int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
+			struct fid_pep **pep, void *context)
+{
+	return -FI_ENOSYS;
+}
+
 struct fi_ops_msg sock_msg_ops = {
 		.size = sizeof(struct fi_ops_msg),
 		.recv = NULL,
@@ -246,18 +274,3 @@ struct fi_ops_msg sock_msg_ops = {
 		.senddatato = NULL,
 };
 
-#if 0
-int _sock_ep_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq)
-{
-	switch (sock_ep->ep_type) {
-	case FI_EP_RDM:
-		return _sock_ep_rdm_progress(sock_ep, sock_cq);
-	case FI_EP_DGRAM:
-		return _sock_ep_dgram_progress(sock_ep, sock_cq);
-	case FI_EP_MSG:
-		return _sock_ep_msg_progress(sock_ep, sock_cq);
-	default:
-		return -FI_ENOPROTOOPT;
-	}
-}
-#endif
