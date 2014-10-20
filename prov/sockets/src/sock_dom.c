@@ -38,6 +38,7 @@
 #include <string.h>
 
 #include "sock.h"
+#include "sock_util.h"
 
 
 static int sock_dom_close(struct fid *fid)
@@ -237,6 +238,54 @@ static struct fi_ops_mr sock_dom_mr_ops = {
 	.regattr = sock_regattr,
 };
 
+int _sock_verify_domain_attr(struct fi_domain_attr *attr)
+{
+	if(attr->name){
+		if (strcmp(attr->name, sock_dom_name))
+			return -FI_ENODATA;
+	}
+
+	switch(attr->threading){
+	case FI_THREAD_UNSPEC:
+	case FI_THREAD_SAFE:
+	case FI_THREAD_PROGRESS:
+		break;
+	default:
+		sock_debug(SOCK_INFO, "Invalid threading model!\n");
+		return -FI_ENODATA;
+	}
+
+	switch (attr->control_progress){
+	case FI_PROGRESS_UNSPEC:
+	case FI_PROGRESS_AUTO:
+		break;
+
+	case FI_PROGRESS_MANUAL:
+	default:
+		sock_debug(SOCK_INFO, "Control progress mode not supported!\n");
+		return -FI_ENODATA;
+	}
+
+	switch (attr->data_progress){
+	case FI_PROGRESS_UNSPEC:
+	case FI_PROGRESS_AUTO:
+		break;
+
+	case FI_PROGRESS_MANUAL:
+	default:
+		sock_debug(SOCK_INFO, "Data progress mode not supported!\n");
+		return -FI_ENODATA;
+	}
+
+	if(attr->max_ep_tx_ctx > SOCK_EP_TX_CTX_CNT)
+		return -FI_ENODATA;
+
+	if(attr->max_ep_rx_ctx > SOCK_EP_RX_CTX_CNT)
+		return -FI_ENODATA;
+
+	return 0;
+}
+
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context)
 {
@@ -249,12 +298,12 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 	fastlock_init(&_dom->lock);
 	atomic_init(&_dom->ref);
 
-	_dom->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
-	_dom->dom_fid.fid.context = context;
-	_dom->dom_fid.fid.ops = &sock_dom_fi_ops;
-	_dom->dom_fid.ops = &sock_dom_ops;
-	_dom->dom_fid.mr = &sock_dom_mr_ops;
+	sock_domain->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
+	sock_domain->dom_fid.fid.context = context;
+	sock_domain->dom_fid.fid.ops = &sock_dom_fi_ops;
+	sock_domain->dom_fid.ops = &sock_dom_ops;
+	sock_domain->dom_fid.mr = &sock_dom_mr_ops;
 
-	*dom = &_dom->dom_fid;
+	*dom = &sock_domain->dom_fid;
 	return 0;
 }

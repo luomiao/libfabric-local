@@ -93,11 +93,11 @@ static int sock_fabric(struct fi_fabric_attr *attr,
 
 	if (strcmp(attr->name, sock_fab_name))
 		return -FI_ENODATA;
-
+	
 	fab = calloc(1, sizeof(*fab));
 	if (!fab)
 		return -FI_ENOMEM;
-
+	
 	fab->fab_fid.fid.fclass = FI_CLASS_FABRIC;
 	fab->fab_fid.fid.context = context;
 	fab->fab_fid.fid.ops = &sock_fab_fi_ops;
@@ -160,6 +160,13 @@ static struct fi_provider sock_prov = {
 
 static void __attribute__((constructor)) sock_ini(void)
 {
+	char *tmp = getenv("SFI_SOCK_DEBUG_LEVEL");
+	if (tmp){
+		sock_debug_level = atoi(tmp);
+	}else{
+		sock_debug_level = SOCK_ERROR;
+	}
+
 	(void) fi_register(&sock_prov);
 }
 
