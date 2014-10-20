@@ -298,12 +298,12 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 	fastlock_init(&_dom->lock);
 	atomic_init(&_dom->ref);
 
-	sock_domain->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
-	sock_domain->dom_fid.fid.context = context;
-	sock_domain->dom_fid.fid.ops = &sock_dom_fi_ops;
-	sock_domain->dom_fid.ops = &sock_dom_ops;
-	sock_domain->dom_fid.mr = &sock_dom_mr_ops;
+	_dom->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
+	_dom->dom_fid.fid.context = context;
+	_dom->dom_fid.fid.ops = &sock_dom_fi_ops;
+	_dom->dom_fid.ops = &sock_dom_ops;
+	_dom->dom_fid.mr = &sock_dom_mr_ops;
 
-	*dom = &sock_domain->dom_fid;
+	*dom = &_dom->dom_fid;
 	return 0;
 }

@@ -64,6 +64,7 @@
 #define SOCK_EP_MSG_ORDER (0)
 #define SOCK_EP_TX_CTX_CNT (0)
 #define SOCK_EP_RX_CTX_CNT (0)
+#define SOCK_EP_MAX_IOV_LIMIT (8)
 
 #define SOCK_EP_BACKLOG (8)
 #define SOCK_EP_SNDQ_LEN (128)
@@ -73,9 +74,12 @@
 #define SOCK_CQ_DEF_LEN (128)
 
 #define SOCK_EP_CAP ( FI_MSG | \
-		      FI_INJECT | FI_SOURCE |		\
+		      FI_INJECT |			\
+		      FI_SOURCE |			\
 		      FI_SEND | FI_RECV |		\
 		      FI_CANCEL )
+
+#define SOCK_OPS_CAP (FI_INJECT | FI_SEND | FI_RECV )
 
 #define SOCK_MAJOR_VERSION 1
 #define SOCK_MINOR_VERSION 0
@@ -114,7 +118,7 @@ typedef struct _sock_cntr_t {
 
 typedef struct _sock_cq_t {
 	struct fid_cq		cq_fid;
-	struct sock_domain	*domain;
+	sock_domain_t	*domain;
 	ssize_t cq_entry_size;
 	atomic_t ref;
 	struct fi_cq_attr attr;
@@ -191,7 +195,7 @@ typedef struct _sock_req_item_t
 
 	size_t done_len;
 	size_t total_len;
-	struct sockaddr  src_addr;
+	struct sockaddr src_addr;
 	struct sockaddr addr;
 
 	union{
@@ -315,42 +319,14 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 		struct fid_cntr **cntr, void *context);
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context);
-
-
-int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
-		struct fid_av **av, void *context);
-fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr);
-
-
-int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
-		 struct fid_cq **cq, void *context);
-int _sock_cq_report_completion(struct sock_cq *sock_cq, struct sock_req_item *item);
-int _sock_cq_report_error(struct sock_cq *sock_cq, struct fi_cq_err_entry *error);
-
-
 int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 		struct fid_eq **eq, void *context);
-ssize_t _sock_eq_report_error(struct sock_eq *sock_eq, const void *buf, size_t len);
-ssize_t _sock_eq_report_event(struct sock_eq *sock_eq, int event_type, 
-			      const void *buf, size_t len);
-
-
-int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
-		struct fid_cntr **cntr, void *context);
-
-
+int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
+		 struct fid_cq **cq, void *context);
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context);
 int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 		  struct fid_ep **ep, void *context);
-int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
-		   struct fid_pep **pep, void *context);
-
-
-int sock_ep_connect(struct fid_ep *ep, const void *addr,
-		    const void *param, size_t paramlen);
-
-
 int sock_poll_open(struct fid_domain *domain, struct fi_poll_attr *attr,
 		struct fid_poll **pollset);
 int sock_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,

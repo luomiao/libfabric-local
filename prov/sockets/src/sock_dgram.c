@@ -34,22 +34,15 @@
 #  include <config.h>
 #endif /* HAVE_CONFIG_H */
 
-#include <errno.h>
-#include <fcntl.h>
-#include <netdb.h>
+#include <arpa/inet.h>
 #include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <stdarg.h>
-#include <stddef.h>
+#include <netinet/ip.h>
 #include <stdio.h>
-#include <string.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/time.h>
-#include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <poll.h>
 
 #include "sock_util.h"
 #include "sock.h"
@@ -515,7 +508,7 @@ static int sockd_ep_tx_ctx(struct fid_ep *ep, int index,
 }
 
 static int sockd_ep_rx_ctx(struct fid_ep *ep, int index,
-		struct fi_rx_ctx_attr *attr, struct fid_ep *rx_ep,
+		struct fi_rx_ctx_attr *attr, struct fid_ep **rx_ep,
 		void *context)
 {
 	errno = FI_ENOSYS;
@@ -583,14 +576,6 @@ static int sockd_cm_leave(struct fid_ep *ep, void *addr, fi_addr_t fi_addr,
 }
 
 /* sockd_ops_msg */
-
-static ssize_t sockd_msg_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
-		void *context)
-{
-	errno = FI_ENOSYS;
-	return -errno;
-}
-
 static ssize_t sockd_msg_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
 		size_t count, void *context)
 {
@@ -604,6 +589,12 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 	int ret;
 	sock_ep_t *sock_ep;
 	sock_req_item_t *recv_req;
+
+	if (src_addr) {
+		sock_debug(SOCK_ERROR, "fi_recvfrom is not supported for dgram socket provider\n");
+		errno = FI_ENOSYS;
+		return errno;
+	}
 
 	sock_ep = container_of(ep, sock_ep_t, ep);
 	if(!sock_ep)
@@ -620,15 +611,17 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 	recv_req->total_len = len;
 	recv_req->done_len = 0;
 
-	if (sock_ep->av->attr.type == FI_AV_MAP) {
-		memcpy(&recv_req->addr, (void*)src_addr, sizeof(struct sockaddr_in));
-	} else {
-		size_t idx;
-		idx = (size_t)src_addr;
-		if (idx > sock_ep->av->count-1 || idx < 0) {
-			return -EINVAL;
-		}	
-		memcpy(&recv_req->addr, &sock_ep->av->table[idx], sizeof(struct sockaddr_in));
+	if (src_addr) {
+		if (sock_ep->av->attr.type == FI_AV_MAP) {
+			memcpy(&recv_req->addr, (void*)src_addr, sizeof(struct sockaddr_in));
+		} else {
+			size_t idx;
+			idx = (size_t)src_addr;
+			if (idx > sock_ep->av->count-1 || idx < 0) {
+				return -EINVAL;
+			}	
+			memcpy(&recv_req->addr, &sock_ep->av->table[idx], sizeof(struct sockaddr_in));
+		}
 	}
 
 	if(0 != enqueue_item(sock_ep->recv_list, recv_req)){
@@ -636,6 +629,12 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 		return -FI_ENOMEM;	
 	}
 	return 0;
+}
+
+static ssize_t sockd_msg_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
+		void *context)
+{
+	return sockd_msg_recvfrom(ep, buf, len, desc, 0, context);
 }
 
 static ssize_t sockd_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
@@ -690,12 +689,15 @@ static ssize_t sockd_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
 			return -EINVAL;
 		}	
 		memcpy(&send_req->addr, &sock_ep->av->table[idx], sizeof(struct sockaddr_in));
+		struct sockaddr_in *tmp_addr;
+		tmp_addr = (struct sockaddr_in*)&send_req->addr;
 	}
 
 	if(0 != enqueue_item(sock_ep->send_list, send_req)){
 		free(send_req);
 		return -FI_ENOMEM;	
 	}
+
 	return 0;
 }
 
@@ -783,16 +785,52 @@ static struct fi_ops_msg sockd_ops_msg = {
 
 static inline int _sock_ep_dgram_progress(sock_ep_t *ep, sock_cq_t *cq)
 {
-	sock_req_item_t *item;
+	sock_req_item_t *send_item, *recv_item;
 	struct sockaddr_in *addr;
-	if(item = dequeue_item(ep->send_list)) {
-		sock_debug(SOCK_ERROR,"[ep_dgram_progress] found a send req\n");
-		addr = (struct sockaddr_in *)&(item->addr);
+	socklen_t src_addrlen;
+	struct pollfd ufds = {0};
+	int recv_len;
+	int ret;
+
+	send_item = peek_item(ep->send_list);
+	recv_item = peek_item(ep->recv_list);
+
+	if (send_item) ufds.events = POLLOUT;
+	if (recv_item) ufds.events |= POLLIN;
+	ufds.fd = ep->sock_fd;
+
+	ret = poll(&ufds, 1, 3500); /* FIXME: timeout */
+	if (ret == -1) {
+		sock_debug(SOCK_ERROR, "[ep_dgram_progress] poll failed\n");
+		return -1;
+	} else if (ret == 0) {
+		sock_debug(SOCK_ERROR, "[ep_dgram_progress] poll timeout\n");
+	} else {
+		if (ufds.revents & POLLOUT) {
+			addr = (struct sockaddr_in *)&(send_item->addr);
+			if ((ret = sendto(ep->sock_fd, send_item->item.buf, send_item->total_len, 
+					0, addr, sizeof(struct sockaddr_in))) == -1) {
+				sock_debug(SOCK_ERROR, "[ep_dgram_progress] sendto failed\n");
+				return -1;
+			}
+			/* FIXME: handle partial send */
+			delete_item(ep->send_list, send_item);
+			_sock_cq_report_completion(ep->send_cq, send_item);
+		}
+
+		if (ufds.revents & POLLIN) {
+			if ((recv_len = recvfrom(ep->sock_fd, recv_item->item.buf, recv_item->total_len, 
+							0, &recv_item->src_addr, &src_addrlen)) == -1) {
+				sock_debug(SOCK_ERROR, "[ep_dgram_progress] recvfrom failed\n");
+				return -1;
+			}
+			recv_item->done_len = recv_len;
+			fprintf(stderr, "[dgram_progress] after recvfrom, recv_len = %d\n", recv_len);
+			delete_item(ep->recv_list, recv_item);
+			_sock_cq_report_completion(ep->recv_cq, recv_item);
+		}
 	}
-	if(item = dequeue_item(ep->recv_list)) {
-		sock_debug(SOCK_ERROR,"[ep_dgram_progress] found a recv req\n");
-		addr = (struct sockaddr_in *)&(item->addr);
-	}
+
 	return -FI_ENOSYS;
 }
 
