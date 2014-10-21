@@ -39,6 +39,28 @@
 
 #include "sock.h"
 
+int _sock_verify_ep_attr(struct fi_ep_attr *attr)
+{
+	switch (attr->protocol) {
+	case FI_PROTO_UNSPEC:
+	case FI_PROTO_SOCK_RDS:
+		break;
+	default:
+		return -FI_ENODATA;
+	}
+
+	if(attr->max_msg_size > SOCK_EP_MAX_MSG_SZ)
+		return -FI_ENODATA;
+
+	if(attr->inject_size > SOCK_EP_MAX_INJECT_SZ)
+		return -FI_ENODATA;
+
+	if(attr->total_buffered_recv > SOCK_EP_MAX_BUFF_RECV)
+		return -FI_ENODATA;
+
+	return 0;
+}
+
 static ssize_t sock_ep_cancel(fid_t fid, void *context)
 {
 	return -FI_ENOSYS;
@@ -61,7 +83,7 @@ static int sock_ep_enable(struct fid_ep *ep)
 	return -FI_ENOSYS;
 }
 
-static struct fi_ops_ep sock_ep_ops = {
+struct fi_ops_ep sock_ep_ops = {
 	.size = sizeof(struct fi_ops_ep),
 	.cancel = sock_ep_cancel,
 	.getopt = sock_ep_getopt,
@@ -73,9 +95,9 @@ int sock_ep_connect(struct fid_ep *ep, const void *addr,
 			const void *param, size_t paramlen)
 {
 	int ret;
-	sock_ep_t *sock_ep;
+	struct sock_ep *sock_ep;
 
-	sock_ep = container_of(ep, sock_ep_t, ep);
+	sock_ep = container_of(ep, struct sock_ep, ep);
 	if(!sock_ep)
 		return -FI_EINVAL;
 	
@@ -92,48 +114,48 @@ int sock_ep_connect(struct fid_ep *ep, const void *addr,
 	return 0;
 }
 
-static int sock_ep_listen(struct fid_pep *pep)
+int sock_ep_listen(struct fid_pep *pep)
 {
 	int ret;
-	sock_pep_t *sock_pep;
+	struct sock_pep *sock_pep;
 
-	sock_pep = container_of(pep, sock_pep_t, pep);
+	sock_pep = container_of(pep, struct sock_pep, pep);
 	ret = listen(sock_pep->sock_fd, SOCK_EP_BACKLOG);
 	if(ret)
 		return -errno;
 	return 0;
 }
 
-static int sock_ep_accept(struct fid_ep *ep, fi_connreq_t connreq,
+int sock_ep_accept(struct fid_ep *ep, fi_connreq_t connreq,
 			const void *param, size_t paramlen)
 {
 	return -FI_ENOSYS;
 }
 	
-static int sock_ep_reject(struct fid_pep *pep, fi_connreq_t connreq,
+int sock_ep_reject(struct fid_pep *pep, fi_connreq_t connreq,
 			const void *param, size_t paramlen)
 {
 	return -FI_ENOSYS;
 }
 
-static int sock_ep_shutdown(struct fid_ep *ep, uint64_t flags)
+int sock_ep_shutdown(struct fid_ep *ep, uint64_t flags)
 {
 	return -FI_ENOSYS;
 }
 	
-static int sock_ep_join(struct fid_ep *ep, void *addr, fi_addr_t *fi_addr,
+int sock_ep_join(struct fid_ep *ep, void *addr, fi_addr_t *fi_addr,
 			uint64_t flags, void *context)
 {
 	return -FI_ENOSYS;
 }
        
-static int sock_ep_leave(struct fid_ep *ep, void *addr, fi_addr_t fi_addr,
+int sock_ep_leave(struct fid_ep *ep, void *addr, fi_addr_t fi_addr,
 			uint64_t flags)
 {
 	return -FI_ENOSYS;
 }
 
-static struct fi_ops_cm sock_cm_ops = {
+struct fi_ops_cm sock_cm_ops = {
 	.size = sizeof(struct fi_ops_cm),
 	.getname = NULL,
 	.getpeer = NULL,
@@ -146,13 +168,13 @@ static struct fi_ops_cm sock_cm_ops = {
 	.leave= NULL,
 };
 
-static ssize_t sock_ep_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
+ssize_t sock_ep_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
 			void *context)
 {
 /*
-	sock_ep_t *sock_ep;
+	struct sock_ep *sock_ep;
 	recv_buf_t *list_entry;
-	sock_ep = container_of(ep, struct _sock_ep_t, ep);
+	sock_ep = container_of(ep, struct _struct sock_ep, ep);
 	
 	if(NULL == (list_entry = get_from_free_recv_list(sock_ep)))
 		return -FI_ENOMEM;
@@ -165,72 +187,78 @@ static ssize_t sock_ep_recv(struct fid_ep *ep, void *buf, size_t len, void *desc
 	return 0;
 }
 
-static ssize_t sock_ep_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+ssize_t sock_ep_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
 			size_t count, void *context)
 {
 	return 0;
 }
 
-static ssize_t sock_ep_recvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
+ssize_t sock_ep_recvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
 			fi_addr_t src_addr, void *context)
 {
 	return 0;
 }
 
-static ssize_t sock_ep_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
+ssize_t sock_ep_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 			uint64_t flags)
 {
 	return 0;
 }
 
-static ssize_t sock_ep_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+ssize_t sock_ep_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
 			void *context)
 {
 	return 0;
 }
 
-static ssize_t sock_ep_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+ssize_t sock_ep_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
 			size_t count, void *context)
 {
 	return 0;
 }
 
-static ssize_t sock_ep_sendto(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+ssize_t sock_ep_sendto(struct fid_ep *ep, const void *buf, size_t len, void *desc,
 			fi_addr_t dest_addr, void *context)
 {
 	return 0;
 }
 
-static ssize_t sock_ep_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
+ssize_t sock_ep_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 			uint64_t flags)
 {
 	return 0;
 }
 
-static ssize_t sock_ep_inject(struct fid_ep *ep, const void *buf, size_t len)
+ssize_t sock_ep_inject(struct fid_ep *ep, const void *buf, size_t len)
 {
 	return 0;
 }
 
-static ssize_t sock_ep_injectto(struct fid_ep *ep, const void *buf, size_t len,
+ssize_t sock_ep_injectto(struct fid_ep *ep, const void *buf, size_t len,
 			  fi_addr_t dest_addr)
 {
 	return 0;
 }
 
-static ssize_t sock_ep_senddata(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+ssize_t sock_ep_senddata(struct fid_ep *ep, const void *buf, size_t len, void *desc,
 			uint64_t data, void *context)
 {
 	return 0;
 }
 
-static ssize_t sock_ep_senddatato(struct fid_ep *ep, const void *buf, size_t len, void *desc,
-			uint64_t data, fi_addr_t dest_addr, void *context)
+ssize_t sock_ep_senddatato(struct fid_ep *ep, const void *buf, size_t len, 
+				  void *desc, uint64_t data, fi_addr_t dest_addr, void *context)
 {
 	return 0;
 }
 
-static struct fi_ops_msg sock_msg_ops = {
+int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
+			struct fid_pep **pep, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+struct fi_ops_msg sock_msg_ops = {
 		.size = sizeof(struct fi_ops_msg),
 		.recv = NULL,
 		.recvv = NULL,
@@ -246,18 +274,3 @@ static struct fi_ops_msg sock_msg_ops = {
 		.senddatato = NULL,
 };
 
-#if 0
-int _sock_ep_progress(sock_ep_t *sock_ep, sock_cq_t *sock_cq)
-{
-	switch (sock_ep->ep_type) {
-	case FI_EP_RDM:
-		return _sock_ep_rdm_progress(sock_ep, sock_cq);
-	case FI_EP_DGRAM:
-		return _sock_ep_dgram_progress(sock_ep, sock_cq);
-	case FI_EP_MSG:
-		return _sock_ep_msg_progress(sock_ep, sock_cq);
-	default:
-		return -FI_ENOPROTOOPT;
-	}
-}
-#endif

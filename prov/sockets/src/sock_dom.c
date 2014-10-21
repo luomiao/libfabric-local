@@ -61,13 +61,7 @@ static int sock_dom_close(struct fid *fid)
 //	return 0;
 //}
 
-static int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
-			struct fid_pep **pep, void *context)
-{
-	return 0;
-}
-
-static uint16_t sock_get_mr_key(sock_domain_t *dom)
+static uint16_t sock_get_mr_key(struct sock_domain *dom)
 {
 	uint16_t i;
 
@@ -289,21 +283,28 @@ int _sock_verify_domain_attr(struct fi_domain_attr *attr)
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context)
 {
-	sock_domain_t *_dom;
+	int ret;
+	struct sock_domain *sock_domain;
 
-	_dom = calloc(1, sizeof *_dom);
-	if (!_dom)
+	if(info && info->domain_attr){
+		ret = _sock_verify_domain_attr(info->domain_attr);
+		if(ret)
+			return ret;
+	}
+
+	sock_domain = calloc(1, sizeof *sock_domain);
+	if (!sock_domain)
 		return -FI_ENOMEM;
 	
-	fastlock_init(&_dom->lock);
-	atomic_init(&_dom->ref);
+	fastlock_init(&sock_domain->lock);
+	atomic_init(&sock_domain->ref);
 
-	_dom->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
-	_dom->dom_fid.fid.context = context;
-	_dom->dom_fid.fid.ops = &sock_dom_fi_ops;
-	_dom->dom_fid.ops = &sock_dom_ops;
-	_dom->dom_fid.mr = &sock_dom_mr_ops;
+	sock_domain->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
+	sock_domain->dom_fid.fid.context = context;
+	sock_domain->dom_fid.fid.ops = &sock_dom_fi_ops;
+	sock_domain->dom_fid.ops = &sock_dom_ops;
+	sock_domain->dom_fid.mr = &sock_dom_mr_ops;
 
-	*dom = &_dom->dom_fid;
+	*dom = &sock_domain->dom_fid;
 	return 0;
 }

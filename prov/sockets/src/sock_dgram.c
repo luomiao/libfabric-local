@@ -346,9 +346,9 @@ int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 
 static int sockd_ep_close(fid_t fid)
 {
-	sock_ep_t *ep;
+	struct sock_ep *ep;
 
-	ep = container_of(fid, sock_ep_t, ep.fid);
+	ep = container_of(fid, struct sock_ep, ep.fid);
 	if (ep->sock_fd)
 		if (close(ep->sock_fd)) {
 			sock_debug(SOCK_ERROR,"[sockd] cannot close sock_fd\n");
@@ -361,18 +361,18 @@ static int sockd_ep_close(fid_t fid)
 
 static int sockd_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags) 
 {
-	sock_ep_t *ep;
-	sock_cntr_t *cntr;
-	sock_eq_t *eq;
-	sock_cq_t *cq;
-	sock_av_t *av;
+	struct sock_ep *ep;
+	struct sock_cntr *cntr;
+	struct sock_eq *eq;
+	struct sock_cq *cq;
+	struct sock_av *av;
 
-	ep = container_of(fid, sock_ep_t, ep.fid);
+	ep = container_of(fid, struct sock_ep, ep.fid);
 
 	switch (bfid->fclass) {
 	case FI_CLASS_CNTR:
 		sock_debug(SOCK_ERROR,"[sockd] bind counter to ep\n");
-		cntr = container_of(bfid, sock_cntr_t, cntr_fid.fid);
+		cntr = container_of(bfid, struct sock_cntr, cntr_fid.fid);
 		if (!(flags &
 			(FI_WRITE | FI_READ | FI_SEND | FI_RECV))) {
 			sock_debug(SOCK_ERROR,"[sockd] Counter only support FI_WRITE | FI_READ | FI_SEND | FI_RECV\n");
@@ -402,7 +402,7 @@ static int sockd_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		break;
 	case FI_CLASS_CQ:
 		sock_debug(SOCK_ERROR,"[sockd] bind CQ to ep\n");
-		cq = container_of(bfid, sock_cq_t, cq_fid.fid);
+		cq = container_of(bfid, struct sock_cq, cq_fid.fid);
 		if (!(flags &
 			(FI_SEND | FI_RECV))) {
 			sock_debug(SOCK_ERROR,"[sockd] CQ only support FI_SEND | FI_RECV\n");
@@ -426,7 +426,7 @@ static int sockd_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 	case FI_CLASS_EQ:
 		sock_debug(SOCK_ERROR,"[sockd] bind EQ to ep\n");
 		/* FIXME: bind EQ to sockd EP */
-		eq = container_of(bfid, sock_eq_t, eq.fid);
+		eq = container_of(bfid, struct sock_eq, eq.fid);
 		if (ep->eq) {
 			return -EINVAL;
 		}
@@ -435,7 +435,7 @@ static int sockd_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 	case FI_CLASS_AV:
 		sock_debug(SOCK_ERROR,"[sockd] bind AV to ep\n");
 		av = container_of(bfid,
-				sock_av_t, av_fid.fid);
+				struct sock_av, av_fid.fid);
 		if (ep->domain != av->dom)
 			return -EINVAL;
 		ep->av = av;
@@ -470,8 +470,8 @@ static int sockd_ep_ops_open(struct fid *fid, const char *name,
 
 static int sockd_ep_enable(struct fid_ep *ep)
 {
-	sock_ep_t *sock_ep;
-	sock_ep = container_of(ep, sock_ep_t, ep);
+	struct sock_ep *sock_ep;
+	sock_ep = container_of(ep, struct sock_ep, ep);
 	if(!sock_ep)
 		return -FI_EINVAL;
 
@@ -507,9 +507,10 @@ static int sockd_ep_tx_ctx(struct fid_ep *ep, int index,
 	return -errno;
 }
 
-static int sockd_ep_rx_ctx(struct fid_ep *ep, int index,
-		struct fi_rx_ctx_attr *attr, struct fid_ep **rx_ep,
-		void *context)
+
+static int	sockd_ep_rx_ctx(struct fid_ep *ep, int index,
+			struct fi_rx_ctx_attr *attr, struct fid_ep **rx_ep,
+			void *context)
 {
 	errno = FI_ENOSYS;
 	return -errno;
@@ -586,9 +587,8 @@ static ssize_t sockd_msg_recvv(struct fid_ep *ep, const struct iovec *iov, void 
 static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
 		fi_addr_t src_addr, void *context)
 {
-	int ret;
-	sock_ep_t *sock_ep;
-	sock_req_item_t *recv_req;
+	struct sock_ep *sock_ep;
+	struct sock_req_item *recv_req;
 
 	if (src_addr) {
 		sock_debug(SOCK_ERROR, "fi_recvfrom is not supported for dgram socket provider\n");
@@ -596,17 +596,17 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 		return errno;
 	}
 
-	sock_ep = container_of(ep, sock_ep_t, ep);
+	sock_ep = container_of(ep, struct sock_ep, ep);
 	if(!sock_ep)
 		return -FI_EINVAL;
 
-	recv_req = calloc(1, sizeof(sock_req_item_t));
+	recv_req = calloc(1, sizeof(struct sock_req_item));
 	if(!recv_req)
 		return -FI_ENOMEM;
 	
 	recv_req->item.buf = (void*)buf;
-	recv_req->req_type = REQ_TYPE_RECV;
-	recv_req->comm_type = COMM_TYPE_RECVFROM;
+	recv_req->req_type = SOCK_REQ_TYPE_RECV;
+	recv_req->comm_type = SOCK_COMM_TYPE_SENDTO;
 	recv_req->context = context;
 	recv_req->total_len = len;
 	recv_req->done_len = 0;
@@ -661,21 +661,20 @@ static ssize_t sockd_msg_sendv(struct fid_ep *ep, const struct iovec *iov, void 
 static ssize_t sockd_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, void *desc,
 		fi_addr_t dest_addr, void *context)
 {
-	int ret;
-	sock_ep_t *sock_ep;
-	sock_req_item_t *send_req;
+	struct sock_ep *sock_ep;
+	struct sock_req_item *send_req;
 
-	sock_ep = container_of(ep, sock_ep_t, ep);
+	sock_ep = container_of(ep, struct sock_ep, ep);
 	if(!sock_ep)
 		return -FI_EINVAL;
 
-	send_req = calloc(1, sizeof(sock_req_item_t));
+	send_req = calloc(1, sizeof(struct sock_req_item));
 	if(!send_req)
 		return -FI_ENOMEM;
 	
 	send_req->item.buf = (void*)buf;
-	send_req->req_type = REQ_TYPE_SEND;
-	send_req->comm_type = COMM_TYPE_SENDTO;
+	send_req->req_type = SOCK_REQ_TYPE_SEND;
+	send_req->comm_type = SOCK_COMM_TYPE_SENDTO;
 	send_req->context = context;
 	send_req->total_len = len;
 	send_req->done_len = 0;
@@ -689,15 +688,12 @@ static ssize_t sockd_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
 			return -EINVAL;
 		}	
 		memcpy(&send_req->addr, &sock_ep->av->table[idx], sizeof(struct sockaddr_in));
-		struct sockaddr_in *tmp_addr;
-		tmp_addr = (struct sockaddr_in*)&send_req->addr;
 	}
 
 	if(0 != enqueue_item(sock_ep->send_list, send_req)){
 		free(send_req);
 		return -FI_ENOMEM;	
 	}
-
 	return 0;
 }
 
@@ -751,7 +747,7 @@ static struct fi_ops_ep sockd_ops_ep = {
 	.setopt = sockd_ep_setopt,
 	.enable = sockd_ep_enable,
 	.tx_ctx = sockd_ep_tx_ctx,
-	.rx_ctx = sockd_ep_rx_ctx
+	.rx_ctx = sockd_ep_rx_ctx,
 };
 
 static struct fi_ops_cm sockd_ops_cm = {
@@ -783,9 +779,9 @@ static struct fi_ops_msg sockd_ops_msg = {
 	.senddatato 	= sockd_msg_senddatato
 };
 
-static inline int _sock_ep_dgram_progress(sock_ep_t *ep, sock_cq_t *cq)
+static inline int _sock_ep_dgram_progress(struct sock_ep *ep, struct sock_cq *cq)
 {
-	sock_req_item_t *send_item, *recv_item;
+	struct sock_req_item *send_item, *recv_item;
 	struct sockaddr_in *addr;
 	socklen_t src_addrlen;
 	struct pollfd ufds = {0};
@@ -838,15 +834,15 @@ int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context)
 {
 	sock_debug(SOCK_ERROR,"[sockd] enter sock_dgram_ep\n");
-	sock_ep_t *_ep;
-	sock_domain_t *_dom;
+	struct sock_ep *_ep;
+	struct sock_domain *_dom;
 	struct sockaddr_in si_me;
 
-	_dom = container_of(domain, sock_domain_t, dom_fid);
+	_dom = container_of(domain, struct sock_domain, dom_fid);
 	if(!_dom)
 		return -FI_EINVAL;
 
-	_ep = (sock_ep_t*)calloc(1, sizeof(*_ep));
+	_ep = (struct sock_ep*)calloc(1, sizeof(*_ep));
 	if(!_ep)
 		return -FI_ENOMEM;
 
