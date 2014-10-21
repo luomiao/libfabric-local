@@ -100,15 +100,15 @@ struct sock_domain {
 	struct index_map mr_idm;
 };
 
-typedef struct _sock_cntr_t {
+struct sock_cntr {
 	struct fid_cntr		cntr_fid;
-	sock_domain_t	*dom;
+	struct sock_domain	*dom;
 	uint64_t		value;
 	uint64_t		threshold;
 	atomic_t		ref;
 	pthread_cond_t		cond;
 	pthread_mutex_t		mut;
-}sock_cntr_t;
+};
 
 #define SOCK_RD_FD		0
 #define SOCK_WR_FD		1
@@ -126,29 +126,29 @@ struct sock_cq {
 	list_t *error_list;
 };
 
-typedef struct _sock_mr_t {
+struct sock_mr {
 	struct fid_mr		mr_fid;
-	sock_domain_t	*dom;
+	struct sock_domain	*dom;
 	uint64_t		access;
 	uint64_t		offset;
 	uint64_t		key;
 	size_t			iov_count;
 	struct iovec		mr_iov[1];
-}sock_mr_t;
+};
 
-typedef struct _sock_av_t {
+struct sock_av {
 	struct fid_av		av_fid;
-	sock_domain_t	*dom;
+	struct sock_domain	*dom;
 	atomic_t		ref;
 	struct fi_av_attr	attr;
 	size_t			count;
 	struct sockaddr_in	*table;
 };
 
-typedef struct _sock_poll_t {
+struct sock_poll {
 	struct fid_poll		poll_fid;
-	sock_domain_t	*dom;
-}sock_poll_t;
+	struct sock_domain	*dom;
+};
 
 struct sock_wait {
 	struct fid_wait wait_fid;

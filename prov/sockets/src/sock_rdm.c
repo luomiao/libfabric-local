@@ -903,7 +903,6 @@ int sock_rdm_pep(struct fid_fabric *fabric, struct fi_info *info,
 }
 
 int sock_rdm_recv_progress(struct sock_ep *ep)
->>>>>>> 65dda67c2659f508b3e21311e4954a781d77bf2c
 {
 	return 0;
 }

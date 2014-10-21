@@ -53,10 +53,6 @@ static int _sock_cq_read_out_fd(struct sock_cq *sock_cq)
 	do{
 		char byte;
 		read_done = read(sock_cq->fd[SOCK_RD_FD], &byte, 1);
-		if(read_done < 0){
-			fprintf(stderr, "Error reading CQ FD\n");
-			return read_done;
-		}
 	}while(read_done == 1);
 	return 0;
 }
@@ -238,6 +234,8 @@ static ssize_t sock_cq_readfrom(struct fid_cq *cq, void *buf, size_t len,
 		}
 		free(cq_entry);
 		num_done++;
+		if (len < sock_cq->cq_entry_size)
+			return bytes_written;
 	}while(1);
 	
 	return bytes_written;

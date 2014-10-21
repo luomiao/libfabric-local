@@ -43,9 +43,9 @@
 
 static int sock_dom_close(struct fid *fid)
 {
-	sock_domain_t *dom;
+	struct sock_domain *dom;
 
-	dom = container_of(fid, sock_domain_t, dom_fid.fid);
+	dom = container_of(fid, struct sock_domain, dom_fid.fid);
 	if (atomic_get(&dom->ref))
 		return -FI_EBUSY;
 
@@ -74,10 +74,10 @@ static uint16_t sock_get_mr_key(struct sock_domain *dom)
 
 static int sock_mr_close(struct fid *fid)
 {
-	sock_domain_t *dom;
-	sock_mr_t *mr;
+	struct sock_domain *dom;
+	struct sock_mr *mr;
 
-	mr = container_of(fid, sock_mr_t, mr_fid.fid);
+	mr = container_of(fid, struct sock_mr, mr_fid.fid);
 	dom = mr->dom;
 	fastlock_acquire(&dom->lock);
 	idm_clear(&dom->mr_idm , (int) mr->mr_fid.key);
@@ -99,11 +99,11 @@ static struct fi_ops sock_mr_fi_ops = {
 static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr,
 		uint64_t flags, struct fid_mr **mr)
 {
-	sock_domain_t *dom;
-	sock_mr_t *_mr;
+	struct sock_domain *dom;
+	struct sock_mr *_mr;
 	uint16_t key;
 
-	dom = container_of(domain, sock_domain_t, dom_fid);
+	dom = container_of(domain, struct sock_domain, dom_fid);
 	if (!(dom->mode & FI_PROV_MR_KEY) && ((attr->requested_key > IDX_MAX_INDEX) ||
 	    idm_lookup(&dom->mr_idm, (int) attr->requested_key)))
 		return -FI_ENOKEY;

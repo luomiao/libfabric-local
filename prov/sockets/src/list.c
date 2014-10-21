@@ -221,7 +221,7 @@ void *peek_item(list_t *list)
 {
 	LOCK_LIST(list);
 	if(list->curr_len > 0){
-		list_element_t *element = _list_dequeue(list);
+		list_element_t *element = list->head;
 		UNLOCK_LIST(list);
 	        return element->data;
 	}

@@ -815,6 +815,7 @@ static inline int _sock_ep_dgram_progress(struct sock_ep *ep, struct sock_cq *cq
 		}
 
 		if (ufds.revents & POLLIN) {
+			src_addrlen = sizeof(struct sockaddr_in);
 			if ((recv_len = recvfrom(ep->sock_fd, recv_item->item.buf, recv_item->total_len, 
 							0, &recv_item->src_addr, &src_addrlen)) == -1) {
 				sock_debug(SOCK_ERROR, "[ep_dgram_progress] recvfrom failed\n");

@@ -146,9 +146,9 @@ static int sock_av_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 
 static int sock_av_close(struct fid *fid)
 {
-	sock_av_t *av;
+	struct sock_av *av;
 
-	av = container_of(fid, sock_av_t, av_fid.fid);
+	av = container_of(fid, struct sock_av, av_fid.fid);
 	if (atomic_get(&av->ref))
 		return -FI_EBUSY;
 
@@ -194,7 +194,7 @@ static struct fi_ops_av sock_at_ops = {
 static int sock_open_am(struct sock_domain *dom, struct fi_av_attr *attr,
 			struct sock_av **av, void *context)
 {
-	sock_av_t *_av;
+	struct sock_av *_av;
 
 	_av = calloc(1, sizeof(*_av));
 	if (!_av)
