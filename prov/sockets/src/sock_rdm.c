@@ -634,9 +634,8 @@ ssize_t sock_rdm_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void 
 ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
-/*
 	struct sock_ep *sock_ep;
-	struct sock_comm_item *comm_item;
+	struct sock_req_item *req_item;
 	
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	if(!sock_ep)
@@ -644,22 +643,29 @@ ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	
 	if(!sock_ep->enabled)
 		return -FI_EINVAL;
-
-	comm_item = (struct sock_comm_item*)calloc(1, sizeof(struct sock_comm_item));
-	if(!comm_item)
+	
+	req_item = (struct sock_req_item*)
+		calloc(1, sizeof(struct sock_req_item));
+	if(!req_item)
 		return -FI_ENOMEM;
 	
-	comm_item->type = SOCK_SENDMSG;
-	comm_item->context = msg->context;
-	comm_item->done_len = 0;
-	comm_item->flags = flags;
-	memcpy(&comm_item->item.msg, msg, sizeof(struct fi_msg));
+	req_item->req_type = SOCK_REQ_TYPE_RECV;
+	req_item->comm_type = SOCK_COMM_TYPE_SENDMSG;
+	req_item->ep = sock_ep;
 
-	if(0 != enqueue_item(sock_ep->recv_list, comm_item)){
-		free(comm_item);
+	req_item->context = msg->context;
+	req_item->data = msg->data;
+	req_item->flags = flags;
+
+	req_item->done_len = 0;
+	req_item->total_len = msg->msg_iov->iov_len;
+	req_item->item.msg = *msg;
+
+	if(0 != enqueue_item(sock_ep->recv_list, req_item)){
+		free(req_item);
 		return -FI_ENOMEM;
 	}
-*/		
+	
 	return 0;
 }
 
@@ -684,46 +690,35 @@ ssize_t sock_rdm_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len,
 ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
-	int i;
-	ssize_t total_len = 0;
 	struct sock_ep *sock_ep;
-	struct sock_comm_item *send_item;
+	struct sock_req_item *req_item;
 
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	if(!sock_ep)
 		return -FI_EINVAL;
 
-	send_item = calloc(1, sizeof(struct sock_comm_item));
-	if(!send_item)
+	req_item = calloc(1, sizeof(struct sock_req_item));
+	if(!req_item)
 		return -FI_ENOMEM;
 	
-	memcpy(&send_item->item.msg, msg, sizeof(struct fi_msg));
+	req_item->item.msg = *msg;
 
-/*
-	send_item->type = SOCK_SENDMSG;
-*/
-	send_item->context = msg->context;
-	if(msg->addr){
-		//send_item->addr = malloc(sizeof(struct sockaddr));
-		if(NULL == send_item){
-			free(send_item);
-			return -FI_ENOMEM;
-		}
-		//memcpy(send_item->addr, msg->addr, sizeof(struct sockaddr));
-	}
-	
-	for(i=0; i< msg->iov_count; i++)
-		total_len += msg->msg_iov[i].iov_len;
-	
-	send_item->total_len = total_len;
-	//send_item->completed = 0;
-	send_item->done_len = 0;
+	req_item->req_type = SOCK_REQ_TYPE_SEND;
+	req_item->comm_type = SOCK_COMM_TYPE_SENDMSG;
+	req_item->ep = sock_ep;
 
-	if(0 != enqueue_item(sock_ep->send_list, send_item)){
-		//free(send_item->addr);
-		free(send_item);
+	req_item->context = msg->context;
+	req_item->addr = msg->addr;
+	req_item->data = msg->data;
+
+	req_item->done_len = 0;
+	req_item->total_len = msg->msg_iov->iov_len;
+	
+	if(0 != enqueue_item(sock_ep->send_list, req_item)){
+		free(req_item);
 		return -FI_ENOMEM;	
 	}
+
 	return 0;
 }
 
@@ -780,10 +775,8 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 
 	if(info){
 		ret = _sock_verify_info(info);
-		if(ret){
-			sock_debug(SOCK_INFO, "Cannot support requested options!\n");
+		if(ret)
 			return -FI_EINVAL;
-		}
 	}
 	
 	sock_dom = container_of(domain, struct sock_domain, dom_fid);

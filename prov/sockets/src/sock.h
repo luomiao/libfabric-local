@@ -64,7 +64,7 @@
 #define SOCK_EP_MSG_ORDER (0)
 #define SOCK_EP_TX_CTX_CNT (0)
 #define SOCK_EP_RX_CTX_CNT (0)
-#define SOCK_EP_MAX_IOV_LIMIT (8)
+#define SOCK_EP_MAX_IOV_LIMIT (1)
 
 #define SOCK_EP_BACKLOG (8)
 #define SOCK_EP_SNDQ_LEN (128)
@@ -155,8 +155,6 @@ struct sock_wait {
 	struct sock_domain *dom;
 };
 
-struct sock_ep;
-
 struct sock_eq_item{
 	int type;
 	ssize_t len;
@@ -190,29 +188,13 @@ struct sock_req_item{
 	size_t done_len;
 	size_t total_len;
 	struct sockaddr  src_addr;
-	struct sockaddr addr;
+	fi_addr_t addr;
 
 	union{
 		struct fi_msg msg;
 		void *buf;
 	}item;
 
-};
-
-struct sock_comm_item{
-	int type;
-	int is_done;
-	void *context;
-	size_t done_len;
-	size_t total_len;
-	uint64_t flags;
-
-	struct sockaddr addr;
-
-	union{
-		struct fi_msg msg;
-		void *buf;
-	}item;
 };
 
 struct sock_eq{
