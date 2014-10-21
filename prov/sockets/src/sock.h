@@ -142,7 +142,7 @@ struct sock_av {
 	atomic_t		ref;
 	struct fi_av_attr	attr;
 	size_t			count;
-	struct sockaddr_in	*table;
+	struct sockaddr_storage	*table;
 };
 
 struct sock_poll {
@@ -187,8 +187,8 @@ struct sock_req_item{
 
 	size_t done_len;
 	size_t total_len;
-	struct sockaddr  src_addr;
-	fi_addr_t addr;
+
+	struct sockaddr_storage sock_addr;
 
 	union{
 		struct fi_msg msg;
@@ -208,6 +208,7 @@ struct sock_eq{
 };
 
 typedef int (*sock_ep_progress_fn) (struct sock_ep *ep, struct sock_cq *cq);
+typedef fi_addr_t (*sock_av_lookup_fn)(struct sock_av *av, struct sockaddr *addr);
 
 struct sock_ep {
 	struct fid_ep		ep;
@@ -244,9 +245,10 @@ struct sock_ep {
 
 	list_t *send_list;
 	list_t *recv_list;
-	
-	struct sockaddr src_addr;
-	struct sockaddr dest_addr;
+
+	fi_addr_t fi_dest_addr;
+	struct sockaddr_storage src_addr;
+	struct sockaddr_storage dest_addr;
 
 	enum fi_ep_type ep_type;
 
@@ -260,7 +262,9 @@ struct sock_ep {
 	struct sock_ep *base;
 	
 	int port_num;
+
 	sock_ep_progress_fn progress_fn;
+	sock_av_lookup_fn addr_lookup_fn;
 };
 
 struct sock_pep {
@@ -296,7 +300,9 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 
 int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		struct fid_av **av, void *context);
-fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr);
+fi_addr_t _sock_av_lookup_in(struct sock_av *av, struct sockaddr *addr);
+struct sockaddr *_sock_av_lookup_addr(struct sock_ep *ep, fi_addr_t addr);
+socklen_t _sock_addrlen(struct sock_ep *ep);
 
 
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,

@@ -43,6 +43,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <poll.h>
+#include <unistd.h>
 
 #include "sock_util.h"
 #include "sock.h"
@@ -589,6 +590,7 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 {
 	struct sock_ep *sock_ep;
 	struct sock_req_item *recv_req;
+	void *addr;
 
 	if (src_addr) {
 		sock_debug(SOCK_ERROR, "fi_recvfrom is not supported for dgram socket provider\n");
@@ -611,19 +613,12 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 	recv_req->total_len = len;
 	recv_req->done_len = 0;
 
-	if (src_addr) {
-		if (sock_ep->av->attr.type == FI_AV_MAP) {
-			memcpy(&recv_req->addr, (void*)src_addr, sizeof(struct sockaddr_in));
-		} else {
-			size_t idx;
-			idx = (size_t)src_addr;
-			if (idx > sock_ep->av->count-1 || idx < 0) {
-				return -EINVAL;
-			}	
-			memcpy(&recv_req->addr, &sock_ep->av->table[idx], sizeof(struct sockaddr_in));
-		}
-	}
+	addr = _sock_av_lookup_addr(sock_ep, src_addr);
+	if(!addr)
+		return -FI_EINVAL;
 
+	memcpy(&recv_req->sock_addr, addr, _sock_addrlen(sock_ep));
+	       
 	if(0 != enqueue_item(sock_ep->recv_list, recv_req)){
 		free(recv_req);
 		return -FI_ENOMEM;	
@@ -663,6 +658,7 @@ static ssize_t sockd_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
 {
 	struct sock_ep *sock_ep;
 	struct sock_req_item *send_req;
+	void *addr;
 
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	if(!sock_ep)
@@ -679,16 +675,11 @@ static ssize_t sockd_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
 	send_req->total_len = len;
 	send_req->done_len = 0;
 
-	if (sock_ep->av->attr.type == FI_AV_MAP) {
-		memcpy(&send_req->addr, (void*)dest_addr, sizeof(struct sockaddr_in));
-	} else {
-		size_t idx;
-		idx = (size_t)dest_addr;
-		if (idx > sock_ep->av->count-1 || idx < 0) {
-			return -EINVAL;
-		}	
-		memcpy(&send_req->addr, &sock_ep->av->table[idx], sizeof(struct sockaddr_in));
-	}
+	addr = _sock_av_lookup_addr(sock_ep, dest_addr);
+	if(!addr)
+		return -FI_EINVAL;
+	
+	memcpy(&send_req->sock_addr, addr, _sock_addrlen(sock_ep));
 
 	if(0 != enqueue_item(sock_ep->send_list, send_req)){
 		free(send_req);
@@ -782,7 +773,7 @@ static struct fi_ops_msg sockd_ops_msg = {
 static inline int _sock_ep_dgram_progress(struct sock_ep *ep, struct sock_cq *cq)
 {
 	struct sock_req_item *send_item, *recv_item;
-	struct sockaddr_in *addr;
+	struct sockaddr *addr;
 	socklen_t src_addrlen;
 	struct pollfd ufds = {0};
 	int recv_len;
@@ -803,9 +794,9 @@ static inline int _sock_ep_dgram_progress(struct sock_ep *ep, struct sock_cq *cq
 		sock_debug(SOCK_ERROR, "[ep_dgram_progress] poll timeout\n");
 	} else {
 		if (ufds.revents & POLLOUT) {
-			addr = (struct sockaddr_in *)&(send_item->addr);
+			addr = (struct sockaddr *)&(send_item->sock_addr);
 			if ((ret = sendto(ep->sock_fd, send_item->item.buf, send_item->total_len, 
-					0, addr, sizeof(struct sockaddr_in))) == -1) {
+					  0, addr, _sock_addrlen(ep))) == -1) {
 				sock_debug(SOCK_ERROR, "[ep_dgram_progress] sendto failed\n");
 				return -1;
 			}
@@ -817,7 +808,7 @@ static inline int _sock_ep_dgram_progress(struct sock_ep *ep, struct sock_cq *cq
 		if (ufds.revents & POLLIN) {
 			src_addrlen = sizeof(struct sockaddr_in);
 			if ((recv_len = recvfrom(ep->sock_fd, recv_item->item.buf, recv_item->total_len, 
-							0, &recv_item->src_addr, &src_addrlen)) == -1) {
+						 0, (struct sockaddr *)&recv_item->sock_addr, &src_addrlen)) == -1) {
 				sock_debug(SOCK_ERROR, "[ep_dgram_progress] recvfrom failed\n");
 				return -1;
 			}
@@ -882,6 +873,7 @@ int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 		goto err3;
 	
 	_ep->progress_fn = _sock_ep_dgram_progress;
+	_ep->addr_lookup_fn = _sock_av_lookup_in;
 
 	*ep = &_ep->ep;
 

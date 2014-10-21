@@ -43,6 +43,7 @@
 #include <sys/socket.h>
 
 #include "sock.h"
+#include "sock_util.h"
 
 static int sock_at_insert(struct fid_av *av, const void *addr, size_t count,
 			  fi_addr_t *fi_addr, uint64_t flags)
@@ -254,21 +255,85 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 	return 0;
 }
 
-/* TODO */
-fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr)
+struct sockaddr *_sock_av_lookup_addr(struct sock_ep *ep, fi_addr_t addr)
+{
+	if(ep->av->attr.type == FI_AV_MAP)
+		return (struct sockaddr*) addr;
+	
+	if (addr >= ep->av->count || addr < 0) {
+		sock_debug(SOCK_ERROR, "Invalid address for lookup\n");
+		return NULL;
+	}	
+
+	switch (ep->info.addr_format){
+
+	case FI_SOCKADDR:
+	{
+		struct sockaddr *table = (struct sockaddr*)ep->av->table;
+		return (struct sockaddr*)&table[addr];
+	}
+
+	case FI_SOCKADDR_IN:
+	{
+		struct sockaddr_in *table = (struct sockaddr_in*)ep->av->table;
+		return (struct sockaddr*)&table[addr];
+	}
+
+	case FI_SOCKADDR_IN6:
+	{
+		struct sockaddr_in6 *table = (struct sockaddr_in6*)ep->av->table;
+		return (struct sockaddr*)&table[addr];
+	}
+	default:
+		sock_debug(SOCK_ERROR, "Invalid address for lookup\n");
+		return NULL;
+	}
+}
+				      
+
+fi_addr_t _sock_av_lookup_in(struct sock_av *av, struct sockaddr *addr)
+{
+	int i;
+	struct sockaddr_in *addrin;
+	struct sockaddr_in *table;
+
+	if (av->attr.type == FI_AV_MAP) {
+		return (fi_addr_t)addr;
+	} else {
+		addrin = (struct sockaddr_in*)addr;
+		table = (struct sockaddr_in*) av->table;
+		for (i = 0 ; i < av->count ; i++) {
+			if (table[i].sin_addr.s_addr == addrin->sin_addr.s_addr &&
+			    table[i].sin_port == addrin->sin_port)
+				return (fi_addr_t)i;
+		}
+		sock_debug(SOCK_ERROR, "[sock] failed to lookup src_addr in av table\n");
+	}
+	return FI_ADDR_UNSPEC;
+}
+
+fi_addr_t _sock_av_lookup_in6(struct sock_av *av, struct sockaddr *addr)
 {
 	if (av->attr.type == FI_AV_MAP) {
 		return (fi_addr_t)addr;
 	} else {
-		int i;
-		struct sockaddr_in *addrin;
-		addrin = (struct sockaddr_in*)addr;
-		for (i = 0 ; i < av->count ; i++) {
-			if (av->table[i].sin_addr.s_addr == addrin->sin_addr.s_addr &&
-					av->table[i].sin_port == addrin->sin_port)
-				return (fi_addr_t)i;
-		}
-		fprintf(stderr, "[sock] failed to lookup src_addr in av table\n");
+		/* TODO */
 	}
 	return FI_ADDR_UNSPEC;
 }
+
+socklen_t _sock_addrlen(struct sock_ep *ep)
+{
+	switch(ep->info.addr_format){
+	case FI_SOCKADDR:
+		return sizeof(struct sockaddr);
+	case FI_SOCKADDR_IN:
+		return sizeof(struct sockaddr_in);
+	case FI_SOCKADDR_IN6:
+		return sizeof(struct sockaddr_in6);
+	default:
+		sock_debug(SOCK_ERROR, "Invalid address format\n");
+		return 0;
+	}
+}
+

@@ -634,6 +634,7 @@ ssize_t sock_rdm_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void 
 ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
+	void *addr;
 	struct sock_ep *sock_ep;
 	struct sock_req_item *req_item;
 	
@@ -642,6 +643,10 @@ ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		return -FI_EINVAL;
 	
 	if(!sock_ep->enabled)
+		return -FI_EINVAL;
+
+	addr = _sock_av_lookup_addr(sock_ep, msg->addr);
+	if(!addr)
 		return -FI_EINVAL;
 	
 	req_item = (struct sock_req_item*)
@@ -690,6 +695,7 @@ ssize_t sock_rdm_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len,
 ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
+	void *addr;
 	struct sock_ep *sock_ep;
 	struct sock_req_item *req_item;
 
@@ -697,18 +703,22 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	if(!sock_ep)
 		return -FI_EINVAL;
 
+	addr = _sock_av_lookup_addr(sock_ep, msg->addr);
+	if(!addr)
+		return -FI_EINVAL;
+
 	req_item = calloc(1, sizeof(struct sock_req_item));
 	if(!req_item)
 		return -FI_ENOMEM;
 	
 	req_item->item.msg = *msg;
-
+	
 	req_item->req_type = SOCK_REQ_TYPE_SEND;
 	req_item->comm_type = SOCK_COMM_TYPE_SENDMSG;
 	req_item->ep = sock_ep;
-
 	req_item->context = msg->context;
-	req_item->addr = msg->addr;
+
+	memcpy(&req_item->sock_addr, addr, _sock_addrlen(sock_ep));
 	req_item->data = msg->data;
 
 	req_item->done_len = 0;
@@ -761,9 +771,112 @@ struct fi_ops_msg sock_rdm_ep_msg_ops = {
 	.senddatato = sock_rdm_ep_msg_senddatato,
 };
 
-static inline int _sock_ep_rdm_progress(struct sock_ep *sock_ep, struct sock_cq *sock_cq)
+static int sock_rdm_progress_recv(struct sock_ep *ep, struct sock_cq *cq)
 {
-	return -FI_ENOSYS;
+	struct sock_req_item *recv_item;
+	struct pollfd ufds = {0};
+	struct msghdr message = {0};
+	int ret;
+
+	recv_item = peek_item(ep->recv_list);
+	if(!recv_item)
+		return 0;
+	
+	ufds.events = POLLIN;
+	ufds.fd = ep->sock_fd;
+
+	ret = poll(&ufds, 1, 0);
+	if (ret == -1) {
+		sock_debug(SOCK_ERROR, "[rdm_recv_progress] poll failed\n");
+		return -FI_EINVAL;
+	} else if (ret == 0) {
+		sock_debug(SOCK_ERROR, "[rdm_recv_progress] poll timeout\n");
+		return -FI_EINVAL;
+	}
+
+	message.msg_name = (void*)&recv_item->sock_addr;
+	message.msg_namelen = _sock_addrlen(ep);
+	message.msg_iov = (struct iovec*)recv_item->item.msg.msg_iov;
+	message.msg_iovlen = recv_item->item.msg.iov_count;
+	message.msg_control = &recv_item->data;
+	message.msg_controllen = sizeof(uint64_t);
+	
+	ret = recvmsg(ep->sock_fd, &message, recv_item->flags);
+	if(ret == EAGAIN || ret == EWOULDBLOCK)
+		return 0;
+
+	if(ret < 0){
+		sock_debug(SOCK_ERROR, "[rdm_recv_progress] recvmsg failed\n");
+		return -FI_EINVAL;
+	}
+
+	recv_item->done_len = ret;
+	dequeue_item(ep->recv_list);
+	_sock_cq_report_completion(ep->recv_cq, recv_item);
+	return 0;
+}
+
+static int sock_rdm_progress_send(struct sock_ep *ep, struct sock_cq *cq)
+{
+	struct sock_req_item *send_item;
+	struct pollfd ufds = {0};
+	struct msghdr message = {0};
+	int ret;
+
+	send_item = peek_item(ep->send_list);
+	if(!send_item)
+		return 0;
+	
+	ufds.events = POLLOUT;
+	ufds.fd = ep->sock_fd;
+
+	ret = poll(&ufds, 1, 0);
+	if (ret == -1) {
+		sock_debug(SOCK_ERROR, "[rdm_send_progress] poll failed\n");
+		return -FI_EINVAL;
+	} else if (ret == 0) {
+		sock_debug(SOCK_ERROR, "[rdm_send_progress] poll timeout\n");
+		return -FI_EINVAL;
+	}
+
+	message.msg_name = &send_item->sock_addr;
+	message.msg_namelen = _sock_addrlen(ep);
+	message.msg_iov = (struct iovec*)send_item->item.msg.msg_iov;
+	message.msg_iovlen = send_item->item.msg.iov_count;
+	message.msg_control = &send_item->data;
+	message.msg_controllen = sizeof(uint64_t);
+
+	ret = sendmsg(ep->sock_fd, &message, send_item->flags);
+	if(ret == EAGAIN || ret == EWOULDBLOCK)
+		return 0;
+	
+	if(ret < 0){
+		sock_debug(SOCK_ERROR, "[rdm_send_progress] sendmsg failed\n");
+		return -FI_EINVAL;
+	}
+
+	if(ret + send_item->done_len == send_item->total_len){
+		send_item->done_len = send_item->total_len;
+		dequeue_item(ep->send_list);
+		_sock_cq_report_completion(ep->send_cq, send_item);
+	}else{
+		send_item->done_len += ret;
+	}
+	return 0;
+}
+
+static int _sock_rdm_progress(struct sock_ep *ep, struct sock_cq *cq)
+{
+	int ret;
+	if(ep->send_cq == cq){
+		ret = sock_rdm_progress_send(ep, cq);
+		if(ret)
+			return ret;
+	}
+	if(ep->recv_cq == cq)
+		ret = sock_rdm_progress_recv(ep, cq);
+
+	return ret;
 }
 
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
@@ -820,8 +933,8 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		if(info->src_addr){
 			memcpy(&sock_ep->src_addr, info->src_addr, 
 			       sizeof(struct sockaddr));
-			ret = bind(sock_ep->sock_fd, &sock_ep->src_addr, 
-				   sizeof(struct sockaddr));
+			ret = bind(sock_ep->sock_fd, (struct sockaddr *)&sock_ep->src_addr, 
+				   _sock_addrlen(sock_ep));
 			if(!ret){
 				sock_debug(SOCK_ERROR, "Failed to bind to local address\n");
 				return ret;
@@ -844,7 +957,8 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	if(0 != (sock_ep->recv_list = new_list(SOCK_EP_RCVQ_LEN)))
 		goto err3;
 	
-	sock_ep->progress_fn = _sock_ep_rdm_progress;
+	sock_ep->progress_fn = _sock_rdm_progress;
+	sock_ep->addr_lookup_fn = _sock_av_lookup_in;
 	return 0;
 
 err3:
@@ -895,13 +1009,4 @@ int sock_rdm_pep(struct fid_fabric *fabric, struct fi_info *info,
 	return 0;
 }
 
-int sock_rdm_recv_progress(struct sock_ep *ep)
-{
-	return 0;
-}
-
-int sock_rdm_progress_send(struct sock_ep *ep)
-{
-	return 0;
-}
 
