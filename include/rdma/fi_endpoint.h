@@ -46,7 +46,7 @@ extern "C" {
 
 struct fi_msg {
 	const struct iovec	*msg_iov;
-	void			*desc;
+	void			**desc;
 	size_t			iov_count;
 	fi_addr_t		addr;
 	void			*context;
