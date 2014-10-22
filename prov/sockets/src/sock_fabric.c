@@ -45,6 +45,9 @@ const char const sock_dom_name[] = "sockets";
 
 int _sock_verify_fabric_attr(struct fi_fabric_attr *attr)
 {
+	if(!attr)
+		return 0;
+
 	if (attr->name &&
 	    strcmp(attr->name, sock_fab_name))
 		return -FI_ENODATA;
@@ -127,7 +130,7 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 	int ret;
 	struct fi_info *_info, *tmp;
 
-	return -FI_ENODATA;
+	//return -FI_ENODATA;
 
 	if (hints) {
 		switch (hints->ep_type) {

@@ -617,7 +617,7 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 	if(!addr)
 		return -FI_EINVAL;
 
-	memcpy(&recv_req->sock_addr, addr, _sock_addrlen(sock_ep));
+	memcpy(&recv_req->sock_addr, addr, _sock_addrlen(sock_ep->domain));
 	       
 	if(0 != enqueue_item(sock_ep->recv_list, recv_req)){
 		free(recv_req);
@@ -679,7 +679,7 @@ static ssize_t sockd_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
 	if(!addr)
 		return -FI_EINVAL;
 	
-	memcpy(&send_req->sock_addr, addr, _sock_addrlen(sock_ep));
+	memcpy(&send_req->sock_addr, addr, _sock_addrlen(sock_ep->domain));
 
 	if(0 != enqueue_item(sock_ep->send_list, send_req)){
 		free(send_req);
@@ -796,7 +796,7 @@ static inline int _sock_ep_dgram_progress(struct sock_ep *ep, struct sock_cq *cq
 		if (ufds.revents & POLLOUT) {
 			addr = (struct sockaddr *)&(send_item->sock_addr);
 			if ((ret = sendto(ep->sock_fd, send_item->item.buf, send_item->total_len, 
-					  0, addr, _sock_addrlen(ep))) == -1) {
+					  0, addr, _sock_addrlen(ep->domain))) == -1) {
 				sock_debug(SOCK_ERROR, "[ep_dgram_progress] sendto failed\n");
 				return -1;
 			}

@@ -83,23 +83,17 @@ int _sock_verify_info(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 
-	if(hints->ep_attr){
-		ret = _sock_verify_ep_attr(hints->ep_attr);
-		if(ret)
-			return ret;
-	}
+	ret = _sock_verify_ep_attr(hints->ep_attr);
+	if(ret)
+		return ret;
+	
+	ret = _sock_verify_domain_attr(hints->domain_attr);
+	if(ret)
+		return ret;
 
-	if(hints->domain_attr){
-		ret = _sock_verify_domain_attr(hints->domain_attr);
-		if(ret)
-			return ret;
-	}
-
-	if(hints->fabric_attr){
-		ret = _sock_verify_fabric_attr(hints->fabric_attr);
-		if(ret)
-			return ret;
-	}
+	ret = _sock_verify_fabric_attr(hints->fabric_attr);
+	if(ret)
+		return ret;
 
 	return 0;
 }
@@ -128,8 +122,8 @@ const struct fi_domain_attr _sock_domain_attr = {
 	.ep_cnt = 128,
 	.tx_ctx_cnt = 128,
 	.rx_ctx_cnt = 128,
-	.max_ep_tx_ctx = 1,
-	.max_ep_rx_ctx = 1,
+	.max_ep_tx_ctx = SOCK_EP_TX_CTX_CNT,
+	.max_ep_rx_ctx = SOCK_EP_RX_CTX_CNT,
 	.op_size = 0,
 	.iov_size = 8,
 };
@@ -234,24 +228,22 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 				 SOCK_MINOR_VERSION))
 		return -FI_ENODATA;
 
-	if (hints){
-		ret = _sock_verify_info(hints);
-		if(ret){
-			sock_debug(SOCK_INFO, "Cannot support requested options!\n");
-			return ret;
-		}
+	ret = _sock_verify_info(hints);
+	if(ret){
+		sock_debug(SOCK_INFO, "Cannot support requested options!\n");
+		return ret;
 	}
 
 	if(node || service){
 		struct addrinfo sock_hints;
 		struct addrinfo *result = NULL;
-	
+		
 		src_addr = malloc(sizeof(struct sockaddr));
 		dest_addr = malloc(sizeof(struct sockaddr));
-			
+		
 		memset(&sock_hints, 0, sizeof(struct sockaddr));
 		sock_hints.ai_family = AF_INET;
-		sock_hints.ai_socktype = SOCK_SEQPACKET;
+		sock_hints.ai_socktype = SOCK_STREAM;
 		
 		if(flags & FI_SOURCE)
 			sock_hints.ai_flags = AI_PASSIVE;
@@ -270,17 +262,21 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			goto err;
 		}
 		
-		memcpy(src_addr, result->ai_addr, sizeof(struct sockaddr));
+		sock_debug(SOCK_ERROR, "result->ai_addr: %x, result->ai_addrlen: %d\n",
+			   result->ai_addr, result->ai_addrlen);
+
+		memcpy(src_addr, result->ai_addr, result->ai_addrlen);
+
 		if(AI_PASSIVE == sock_hints.ai_flags){
 			socklen_t len;
 			int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
 			if (0 != connect(udp_sock, result->ai_addr, result->ai_addrlen)){
-				sock_debug(SOCK_ERROR, "[SOCK_RDM] %s:%d: Failed to get dest_addr\n", __func__, __LINE__);
+				sock_debug(SOCK_ERROR, "Couldn't connect to dest_addr\n");
 				ret = FI_ENODATA;
 				goto err;
 			}
 			if(0!= getsockname(udp_sock, (struct sockaddr *) dest_addr, &len)){
-				sock_debug(SOCK_ERROR, "[SOCK_RDM] %s:%d: Failed to get dest_addr\n", __func__, __LINE__);
+				sock_debug(SOCK_ERROR, "Couldn't get dest_addr\n");
 				close(udp_sock);
 				ret = FI_ENODATA;
 				goto err;
@@ -488,17 +484,23 @@ int sock_rdm_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
 {
 	size_t len;
 	struct sock_ep *sock_ep;
-	
-	if (!addr || !addrlen)
+
+	if(!addrlen)
 		return -FI_EINVAL;
 
 	sock_ep = container_of(fid, struct sock_ep, ep.fid);
 	if(!sock_ep)
 		return -FI_EINVAL;
 
-	len = min(*addrlen, sizeof(struct sockaddr));
+	len = _sock_addrlen(sock_ep->domain);
+	
+	if (!addr || *addrlen < len){
+		*addrlen = len;
+		return -FI_ETOOSMALL;
+	}
+
 	memcpy(addr, &sock_ep->src_addr, len);
-	*addrlen = sizeof(struct sockaddr);
+	*addrlen = len;
 	return 0;
 }
 
@@ -718,7 +720,7 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	req_item->ep = sock_ep;
 	req_item->context = msg->context;
 
-	memcpy(&req_item->sock_addr, addr, _sock_addrlen(sock_ep));
+	memcpy(&req_item->sock_addr, addr, _sock_addrlen(sock_ep->domain));
 	req_item->data = msg->data;
 
 	req_item->done_len = 0;
@@ -795,7 +797,7 @@ static int sock_rdm_progress_recv(struct sock_ep *ep, struct sock_cq *cq)
 	}
 
 	message.msg_name = (void*)&recv_item->sock_addr;
-	message.msg_namelen = _sock_addrlen(ep);
+	message.msg_namelen = _sock_addrlen(ep->domain);
 	message.msg_iov = (struct iovec*)recv_item->item.msg.msg_iov;
 	message.msg_iovlen = recv_item->item.msg.iov_count;
 	message.msg_control = &recv_item->data;
@@ -840,7 +842,7 @@ static int sock_rdm_progress_send(struct sock_ep *ep, struct sock_cq *cq)
 	}
 
 	message.msg_name = &send_item->sock_addr;
-	message.msg_namelen = _sock_addrlen(ep);
+	message.msg_namelen = _sock_addrlen(ep->domain);
 	message.msg_iov = (struct iovec*)send_item->item.msg.msg_iov;
 	message.msg_iovlen = send_item->item.msg.iov_count;
 	message.msg_control = &send_item->data;
@@ -886,11 +888,9 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	struct sock_ep *sock_ep;
 	struct sock_domain *sock_dom;
 
-	if(info){
-		ret = _sock_verify_info(info);
-		if(ret)
-			return -FI_EINVAL;
-	}
+	ret = _sock_verify_info(info);
+	if(ret)
+		return -FI_EINVAL;
 	
 	sock_dom = container_of(domain, struct sock_domain, dom_fid);
 	if(!sock_dom)
@@ -915,8 +915,9 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 
 	sock_ep->domain = sock_dom;
 
-	sock_ep->sock_fd = socket(PF_RDS, SOCK_STREAM, 0);
+	sock_ep->sock_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if(sock_ep->sock_fd <0){
+		sock_debug(SOCK_ERROR, "Couldn't create RDS socket!\n");
 		goto err1;
 	}
 
@@ -934,27 +935,18 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 			memcpy(&sock_ep->src_addr, info->src_addr, 
 			       sizeof(struct sockaddr));
 			ret = bind(sock_ep->sock_fd, (struct sockaddr *)&sock_ep->src_addr, 
-				   _sock_addrlen(sock_ep));
+				   _sock_addrlen(sock_ep->domain));
 			if(!ret){
-				sock_debug(SOCK_ERROR, "Failed to bind to local address\n");
-				return ret;
-			}
-		}
-		
-		if(info->dest_addr){
-			ret = sock_ep_connect(*ep, info->dest_addr, NULL, 0);
-			sock_ep->enabled = 0;
-			if(!ret){
-				sock_debug(SOCK_ERROR, "Failed to connect to remote address\n");
+				sock_debug(SOCK_ERROR, "Couldn't bind to local address\n");
 				return ret;
 			}
 		}
 	}
 
-	if(0 != (sock_ep->send_list = new_list(SOCK_EP_SNDQ_LEN)))
+	if(NULL == (sock_ep->send_list = new_list(SOCK_EP_SNDQ_LEN)))
 		goto err2;
 
-	if(0 != (sock_ep->recv_list = new_list(SOCK_EP_RCVQ_LEN)))
+	if(NULL == (sock_ep->recv_list = new_list(SOCK_EP_RCVQ_LEN)))
 		goto err3;
 	
 	sock_ep->progress_fn = _sock_rdm_progress;

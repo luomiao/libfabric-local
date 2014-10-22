@@ -92,11 +92,15 @@ struct sock_fabric{
 };
 
 struct sock_domain {
+	struct fi_info info;
 	struct fid_domain dom_fid;
 	uint64_t		mode;
 	struct sock_fabric *fab;
+	struct sock_domain *dom;
+
 	fastlock_t lock;
 	atomic_t ref;
+
 	struct index_map mr_idm;
 };
 
@@ -296,13 +300,13 @@ int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context);
+socklen_t _sock_addrlen(struct sock_domain *ep);
 
 
 int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		struct fid_av **av, void *context);
 fi_addr_t _sock_av_lookup_in(struct sock_av *av, struct sockaddr *addr);
 struct sockaddr *_sock_av_lookup_addr(struct sock_ep *ep, fi_addr_t addr);
-socklen_t _sock_addrlen(struct sock_ep *ep);
 
 
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,

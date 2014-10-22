@@ -94,20 +94,23 @@ static const char * sock_at_straddr(struct fid_av *av, const void *addr,
 static int sock_am_insert(struct fid_av *av, const void *addr, size_t count,
 			  fi_addr_t *fi_addr, uint64_t flags)
 {
-	const struct sockaddr_in *sin;
-	struct sockaddr_in *fin;
 	int i;
+	size_t len;
+	struct sock_av *sock_av;
+
+	sock_av = container_of(av, struct sock_av, av_fid);
+	if(!sock_av || !fi_addr)
+		return -FI_EINVAL;
 
 	if (flags)
 		return -FI_EBADFLAGS;
-	if (sizeof(void *) != sizeof(*sin))
-		return -FI_ENOSYS;
 
-	sin = addr;
-	fin = (struct sockaddr_in *) fi_addr;
+	len = _sock_addrlen(sock_av->dom);
+	memcpy(sock_av->table, addr, count * len);
+
 	for (i = 0; i < count; i++)
-		memcpy(&fin[i], &sin[i], sizeof(*sin));
-
+		fi_addr[i] = (fi_addr_t)((char *)addr + i * len);
+	
 	return 0;
 }
 
@@ -148,12 +151,13 @@ static int sock_av_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 static int sock_av_close(struct fid *fid)
 {
 	struct sock_av *av;
-
 	av = container_of(fid, struct sock_av, av_fid.fid);
 	if (atomic_get(&av->ref))
 		return -FI_EBUSY;
 
 	atomic_dec(&av->dom->ref);
+
+	free(av->table);
 	free(av);
 	return 0;
 }
@@ -183,72 +187,38 @@ static struct fi_ops_av sock_at_ops = {
 	.straddr = sock_at_straddr
 };
 
-//static struct fi_ops_av sock_av_ops = {
-//	.size = sizeof(struct fi_ops_av),
-//	.insert = sock_av_insert,
-//	.remove = sock_av_remove,
-//	.lookup = sock_av_lookup,
-//	.straddr = sock_av_straddr
-//};
-
-#if 0
-static int sock_open_am(struct sock_domain *dom, struct fi_av_attr *attr,
-			struct sock_av **av, void *context)
-{
-	struct sock_av *_av;
-
-	_av = calloc(1, sizeof(*_av));
-	if (!_av)
-		return -FI_ENOMEM;
-
-	_av->av_fid.fid.fclass = FI_CLASS_AV;
-	_av->av_fid.fid.context = context;
-	_av->av_fid.fid.ops = &sock_av_fi_ops;
-	_av->av_fid.ops = &sock_am_ops;
-
-	*av = _av;
-	return 0;
-}
-#endif
-
 int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		 struct fid_av **av, void *context)
 {
 	struct sock_domain *dom;
 	struct sock_av *_av;
-//	int ret;
-
-	if (attr->name || attr->flags)
-		return -FI_ENOSYS;
 
 	dom = container_of(domain, struct sock_domain, dom_fid);
 
 	_av = calloc(1, sizeof(*_av));
 	if (!_av)
 		return -FI_ENOMEM;
-
+	
 	_av->av_fid.fid.fclass = FI_CLASS_AV;
 	_av->av_fid.fid.context = context;
 	_av->av_fid.fid.ops = &sock_av_fi_ops;
-
+	
 	switch (attr->type) {
 	case FI_AV_MAP:
-//		ret = sock_open_am(dom, attr, &_av, context);
 		_av->av_fid.ops = &sock_am_ops;
 		break;
 	case FI_AV_TABLE:
 		_av->av_fid.ops = &sock_at_ops;
 		break;
 	default:
-		return -FI_ENOSYS;
+		return -FI_EINVAL;
 	}
-#if 0
-	if (ret)
-		return ret;
-#endif
 
 	atomic_init(&_av->ref);
 	atomic_inc(&dom->ref);
+
+	_av->table = calloc(attr->count, _sock_addrlen(dom));
+
 	_av->dom = dom;
 	_av->attr = *attr;
 	*av = &_av->av_fid;
@@ -320,20 +290,5 @@ fi_addr_t _sock_av_lookup_in6(struct sock_av *av, struct sockaddr *addr)
 		/* TODO */
 	}
 	return FI_ADDR_UNSPEC;
-}
-
-socklen_t _sock_addrlen(struct sock_ep *ep)
-{
-	switch(ep->info.addr_format){
-	case FI_SOCKADDR:
-		return sizeof(struct sockaddr);
-	case FI_SOCKADDR_IN:
-		return sizeof(struct sockaddr_in);
-	case FI_SOCKADDR_IN6:
-		return sizeof(struct sockaddr_in6);
-	default:
-		sock_debug(SOCK_ERROR, "Invalid address format\n");
-		return 0;
-	}
 }
 
