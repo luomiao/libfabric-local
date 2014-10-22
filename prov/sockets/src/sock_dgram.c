@@ -66,6 +66,64 @@
 
 static int so_rcvbuf;
 
+const struct fi_ep_attr _sockd_ep_attr = {
+	.protocol 		= FI_PROTO_UDP,
+	.max_msg_size 		= SOCK_EP_MAX_MSG_SZ,
+	.inject_size 		= SOCK_EP_MAX_INJECT_SZ,
+	.total_buffered_recv 	= SOCK_EP_MAX_BUFF_RECV,
+	.max_order_raw_size 	= SOCK_EP_MAX_ORDER_RAW_SZ,
+	.max_order_war_size 	= SOCK_EP_MAX_ORDER_WAR_SZ,
+	.max_order_waw_size 	= SOCK_EP_MAX_ORDER_WAW_SZ,
+	.mem_tag_format 	= SOCK_EP_MEM_TAG_FMT,
+	.msg_order 		= SOCK_EP_MSG_ORDER,
+	.tx_ctx_cnt 		= SOCK_EP_TX_CTX_CNT,
+	.rx_ctx_cnt 		= SOCK_EP_RX_CTX_CNT,
+};
+
+const struct fi_domain_attr _sockd_domain_attr = {
+	.name 			= NULL,
+	.threading 		= FI_THREAD_SAFE,
+	.control_progress 	= FI_PROGRESS_AUTO,
+	.data_progress 		= FI_PROGRESS_AUTO,
+	.mr_key_size 		= 0,
+	.cq_data_size 		= 0,
+	.ep_cnt 		= 128,
+	.tx_ctx_cnt 		= 128,
+	.rx_ctx_cnt 		= 128,
+	.max_ep_tx_ctx 		= SOCK_EP_TX_CTX_CNT,
+	.max_ep_rx_ctx 		= SOCK_EP_RX_CTX_CNT,
+	.op_size 		= 0,
+	.iov_size 		= 8,
+};
+
+const struct fi_fabric_attr _sockd_fabric_attr = {
+	.fabric 	= NULL,
+	.name 		= NULL,
+	.prov_name 	= NULL,
+	.prov_version 	= FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION),
+};
+
+
+const struct fi_tx_ctx_attr _sockd_tx_attr = {
+	.caps 		= SOCK_EP_CAP,
+	.op_flags 	= SOCK_OPS_CAP,
+	.msg_order 	= 0,
+	.inject_size 	= SOCK_EP_MAX_INJECT_SZ,
+	.size 		= SOCK_EP_MAX_MSG_SZ,
+	.iov_limit 	= SOCK_EP_MAX_IOV_LIMIT,
+	.op_alignment 	= 0,
+};
+
+const struct fi_rx_ctx_attr _sockd_rx_attr = {
+	.caps 			= SOCK_EP_CAP,
+	.op_flags 		= SOCK_OPS_CAP,
+	.msg_order 		= 0,
+	.total_buffered_recv 	= 0,
+	.size 			= SOCK_EP_MAX_MSG_SZ,
+	.iov_limit 		= SOCK_EP_MAX_IOV_LIMIT,
+	.op_alignment 		= 0,
+};
+
 int sockd_check_hints(struct fi_info *hints)
 {
 	switch (hints->ep_type) {
@@ -91,6 +149,7 @@ int sockd_check_hints(struct fi_info *hints)
 	if (hints->ep_attr) {
 		switch (hints->ep_attr->protocol) {
 		case FI_PROTO_UNSPEC:
+		case FI_PROTO_UDP:
 			break;
 		default:
 			sock_debug(SOCK_ERROR,"[sockd] %s: hints->ep_attr->protocol=%lu, supported=%d\n",
@@ -132,18 +191,18 @@ int sockd_check_hints(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 
-#if 0 /* TODO */
-	if ((hints->domain_cap & SOCKD_DOMAIN_CAP) != hints->domain_cap) {
-		sock_debug(SOCK_ERROR,"[sockd] %s: hints->domain_cap=0x%llx, supported=0x%llx\n",
-				__func__, hints->domain_cap, SOCKD_DOMAIN_CAP);
-		return -FI_ENODATA;
-		/* FIXME: check
-		 * threading, control_progress, mr_key_size, eq_data_size */
-	}
-#endif
-
 	if (hints->fabric_attr) {
-		/* FIXME: check name */
+		if(hints->fabric_attr->name){
+			if (strcmp(hints->fabric_attr->name, sock_fab_name))
+				return -FI_ENODATA;
+		}
+	}
+
+	if (hints->domain_attr) {
+		if(hints->domain_attr->name){
+			if (strcmp(hints->domain_attr->name, sock_dom_name))
+				return -FI_ENODATA;
+		}
 	}
 
 	struct sockaddr_in *si_src;
@@ -162,18 +221,10 @@ int sockd_check_hints(struct fi_info *hints)
 	return 0;
 }
 
-/* TODO */
-struct fi_info *__fi_allocinfo()
-{
-	return calloc(1, sizeof(struct fi_info));
-}
-
 static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 {
 	struct fi_info *fi;
-	if (!(fi = __fi_allocinfo())) {
-		goto err1;
-	}
+	fi = fi_allocinfo_internal();
 
 	fi->next = NULL;
 	fi->ep_type = FI_EP_DGRAM;
@@ -183,53 +234,26 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 		fi->addr_format = hints->addr_format;
 	} else {
 		fi->caps	= SOCK_EP_CAP;
-		fi->addr_format = FI_SOCKADDR;
+		fi->addr_format = FI_SOCKADDR_IN;
 	}
 
-	fi->ep_attr = calloc(1, sizeof (struct fi_ep_attr));
-	if (!fi->ep_attr) {
-		goto err2;
-	}
-	fi->ep_attr->protocol = FI_PROTO_UNSPEC;
-	if (hints && hints->ep_attr) {
-		fi->ep_attr->max_msg_size 	 = hints->ep_attr->max_msg_size;
-		fi->ep_attr->inject_size  	 = hints->ep_attr->inject_size;
-		fi->ep_attr->total_buffered_recv = hints->ep_attr->total_buffered_recv;
-	} else {
-		fi->ep_attr->max_msg_size 	 = SOCKD_MTU;
-		fi->ep_attr->inject_size  	 = SOCKD_MTU;
-		fi->ep_attr->total_buffered_recv = so_rcvbuf;
-	}
-	/* fi->ep_attr->mem_tag_format  = fi_tag_format(max_tag_value); */
-	/* fi->ep_attr->msg_order 	= FI_ORDER_SAS; */
+	memcpy(fi->ep_attr, &_sockd_ep_attr, 
+	       sizeof(struct fi_ep_attr));
 
-	fi->domain_attr = calloc(1, sizeof (struct fi_domain_attr));
-	if (!fi->domain_attr) {
-		goto err3;
-	}
-	fi->domain_attr->name 		  = strdup("socket");
-	fi->domain_attr->threading 	  = FI_THREAD_PROGRESS;
-	fi->domain_attr->control_progress = FI_PROGRESS_MANUAL;
-	fi->domain_attr->data_progress 	  = FI_PROGRESS_MANUAL; /* FIXME: FI_PROGRESS_AUTO? */
-/* TODO	fi->domain_cap	 		  = SOCKD_DOMAIN_CAP; */
+	memcpy(fi->domain_attr, &_sockd_domain_attr, 
+	       sizeof(struct fi_domain_attr));
+	fi->domain_attr->name 		  = strdup(sock_dom_name);
 
-	fi->fabric_attr = calloc(1, sizeof (struct fi_fabric_attr));
-	if (!fi->fabric_attr) {
-		goto err4;
-	}
-	fi->fabric_attr->name 			= strdup("IP"); /* FIXME: fabric name for socket */
-	fi->fabric_attr->prov_name 		= strdup("socket"); /* FIXME: fabric prov_name for socket */
+	memcpy(fi->fabric_attr, &_sockd_fabric_attr, 
+	       sizeof(struct fi_fabric_attr));
+	fi->fabric_attr->name 			= strdup(sock_fab_name);
+	fi->fabric_attr->prov_name 		= strdup(sock_fab_name);
 	/* fi->fabric_attr->prov_version 	= PROVIDER_VERSION; */
-
-#if 0
-	if ((hints->ep_cap & FI_PASSIVE)) /* FIXME: FI_SOURCE? */
-		sockd_info->ep_cap = FI_PASSIVE;
-#endif
 
 	if (hints && hints->src_addr) {
 		fi->src_addr = malloc(hints->src_addrlen);
 		if (!fi->src_addr) {
-			goto err5;
+			goto err;
 		}
 		memcpy(fi->src_addr, hints->src_addr, hints->src_addrlen);
 		fi->src_addrlen = hints->src_addrlen;
@@ -239,12 +263,12 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 		fi->src_addr = NULL;
 		fi->src_addrlen = 0;
 #endif
-		goto err6;
+		goto err;
 	}
 	if (hints && hints->dest_addr) {
 		fi->dest_addr = malloc(hints->dest_addrlen);
 		if (!fi->dest_addr) {
-			goto err6;
+			goto err;
 		}
 		memcpy(fi->dest_addr, hints->dest_addr, hints->dest_addrlen);
 		fi->dest_addrlen = hints->dest_addrlen;
@@ -253,29 +277,14 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 		fi->dest_addrlen = 0;
 	}
 
-	fi->tx_attr = calloc(1, sizeof (struct fi_tx_ctx_attr));
-	if (!fi->tx_attr) {
-		goto err7;
-	}
-	if (hints->tx_attr)
-		fi->tx_attr->op_flags = hints->tx_attr->op_flags;
-	else
-		fi->tx_attr->op_flags = SOCKD_OP_FLAGS;
+	memcpy(fi->tx_attr, &_sockd_tx_attr, 
+	       sizeof(struct fi_tx_ctx_attr));
+	memcpy(fi->rx_attr, &_sockd_rx_attr, 
+	       sizeof(struct fi_rx_ctx_attr));
 
 	return fi;
-err7:
-	free(fi->dest_addr);
-err6:
-	free(fi->src_addr);
-err5:
-	free(fi->fabric_attr);
-err4:
-	free(fi->domain_attr);
-err3:
-	free(fi->ep_attr);
-err2:
-	free(fi);
-err1:
+err:
+	fi_freeinfo_internal(fi);
 	return NULL;
 }
 
@@ -613,11 +622,13 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 	recv_req->total_len = len;
 	recv_req->done_len = 0;
 
-	addr = _sock_av_lookup_addr(sock_ep, src_addr);
-	if(!addr)
-		return -FI_EINVAL;
+	if (src_addr) {
+		addr = _sock_av_lookup_addr(sock_ep, src_addr);
+		if(!addr)
+			return -FI_EINVAL;
 
-	memcpy(&recv_req->sock_addr, addr, _sock_addrlen(sock_ep->domain));
+		memcpy(&recv_req->sock_addr, addr, _sock_addrlen(sock_ep->domain));
+	}
 	       
 	if(0 != enqueue_item(sock_ep->recv_list, recv_req)){
 		free(recv_req);
@@ -813,7 +824,6 @@ static inline int _sock_ep_dgram_progress(struct sock_ep *ep, struct sock_cq *cq
 				return -1;
 			}
 			recv_item->done_len = recv_len;
-			fprintf(stderr, "[dgram_progress] after recvfrom, recv_len = %d\n", recv_len);
 			delete_item(ep->recv_list, recv_item);
 			_sock_cq_report_completion(ep->recv_cq, recv_item);
 		}
@@ -874,6 +884,7 @@ int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 	
 	_ep->progress_fn = _sock_ep_dgram_progress;
 	_ep->addr_lookup_fn = _sock_av_lookup_in;
+	memcpy(&_ep->info, info, sizeof(struct fi_info)); /* TODO: why not using a pointer */
 
 	*ep = &_ep->ep;
 
