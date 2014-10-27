@@ -36,10 +36,14 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <stdio.h>
+#include <sys/socket.h>
 
 #include "sock.h"
 #include "sock_util.h"
-
 
 static int sock_dom_close(struct fid *fid)
 {
@@ -234,6 +238,9 @@ static struct fi_ops_mr sock_dom_mr_ops = {
 
 int _sock_verify_domain_attr(struct fi_domain_attr *attr)
 {
+	if(!attr)
+		return 0;
+
 	if(attr->name){
 		if (strcmp(attr->name, sock_dom_name))
 			return -FI_ENODATA;
@@ -299,6 +306,9 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 	fastlock_init(&sock_domain->lock);
 	atomic_init(&sock_domain->ref);
 
+	if(info)
+		sock_domain->info = *info;
+
 	sock_domain->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
 	sock_domain->dom_fid.fid.context = context;
 	sock_domain->dom_fid.fid.ops = &sock_dom_fi_ops;
@@ -307,4 +317,19 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 
 	*dom = &sock_domain->dom_fid;
 	return 0;
+}
+
+socklen_t _sock_addrlen(struct sock_domain *dom)
+{
+	switch(dom->info.addr_format){
+	case FI_SOCKADDR:
+		return sizeof(struct sockaddr);
+	case FI_SOCKADDR_IN:
+		return sizeof (struct sockaddr_in);
+	case FI_SOCKADDR_IN6:
+		return sizeof(struct sockaddr_in6);
+	default:
+		sock_debug(SOCK_ERROR, "Invalid address format\n");
+		return 0;
+	}
 }
