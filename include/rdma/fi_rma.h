@@ -45,13 +45,13 @@ extern "C" {
 
 struct fi_rma_iov {
 	uint64_t		addr;
-	size_t			len;
+	uint64_t		len;
 	uint64_t		key;
 };
 
 struct fi_rma_ioc {
 	uint64_t		addr;
-	size_t			count;
+	uint64_t		count;
 	uint64_t		key;
 };
 

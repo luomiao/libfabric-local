@@ -54,57 +54,7 @@
 #include "sock.h"
 #include "sock_util.h"
 
-int _sock_verify_info(struct fi_info *hints)
-{
-	int ret;
-	if(!hints)
-		return 0;
-
-	switch (hints->ep_type) {
-	case FI_EP_UNSPEC:
-	case FI_EP_MSG:
-	case FI_EP_DGRAM:
-	case FI_EP_RDM:
-		break;
-	default:
-		return -FI_ENODATA;
-	}
-	
-	if(hints->caps){
-		if((SOCK_EP_CAP | hints->caps) != SOCK_EP_CAP)
-			return -FI_ENODATA;
-	}
-
-	switch (hints->addr_format){
-	case FI_ADDR_UNSPEC:
-	case FI_SOCKADDR:
-		break;
-	default:
-		return -FI_ENODATA;
-	}
-
-	if(hints->ep_attr){
-		ret = _sock_verify_ep_attr(hints->ep_attr);
-		if(ret)
-			return ret;
-	}
-
-	if(hints->domain_attr){
-		ret = _sock_verify_domain_attr(hints->domain_attr);
-		if(ret)
-			return ret;
-	}
-
-	if(hints->fabric_attr){
-		ret = _sock_verify_fabric_attr(hints->fabric_attr);
-		if(ret)
-			return ret;
-	}
-
-	return 0;
-}
-
-const struct fi_ep_attr _sock_ep_attr = {
+const struct fi_ep_attr _sock_rdm_ep_attr = {
 	.protocol = FI_PROTO_SOCK_RDS,
 	.max_msg_size = SOCK_EP_MAX_MSG_SZ,
 	.inject_size = SOCK_EP_MAX_INJECT_SZ,
@@ -114,8 +64,8 @@ const struct fi_ep_attr _sock_ep_attr = {
 	.max_order_waw_size = SOCK_EP_MAX_ORDER_WAW_SZ,
 	.mem_tag_format = SOCK_EP_MEM_TAG_FMT,
 	.msg_order = SOCK_EP_MSG_ORDER,
-	.tx_ctx_cnt = SOCK_EP_TX_CTX_CNT,
-	.rx_ctx_cnt = SOCK_EP_RX_CTX_CNT,
+	.tx_ctx_cnt = SOCK_EP_MAX_TX_CNT,
+	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
 };
 
 const struct fi_domain_attr _sock_domain_attr = {
@@ -125,13 +75,13 @@ const struct fi_domain_attr _sock_domain_attr = {
 	.data_progress = FI_PROGRESS_AUTO,
 	.mr_key_size = 0,
 	.cq_data_size = 0,
-	.ep_cnt = 128,
-	.tx_ctx_cnt = 128,
-	.rx_ctx_cnt = 128,
-	.max_ep_tx_ctx = 1,
-	.max_ep_rx_ctx = 1,
-	.op_size = 0,
-	.iov_size = 8,
+	.ep_cnt = SOCK_EP_MAX_EP_CNT,
+	.tx_ctx_cnt = SOCK_EP_MAX_TX_CNT,
+	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
+	.max_ep_tx_ctx = SOCK_EP_MAX_TX_CNT,
+	.max_ep_rx_ctx = SOCK_EP_MAX_RX_CNT,
+	.op_size = -1, /* TODO */
+	.iov_size = -1, /* TODO */
 };
 
 const struct fi_fabric_attr _sock_fabric_attr = {
@@ -142,17 +92,17 @@ const struct fi_fabric_attr _sock_fabric_attr = {
 };
 
 
-const struct fi_tx_ctx_attr _sock_tx_attr = {
+const struct fi_tx_ctx_attr _sock_rdm_tx_attr = {
 	.caps = SOCK_EP_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
 	.inject_size = SOCK_EP_MAX_INJECT_SZ,
-	.size = SOCK_EP_MAX_MSG_SZ,
+	.size = SOCK_EP_MAX_TXRX_SZ,
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
 	.op_alignment = 0,
 };
 
-const struct fi_rx_ctx_attr _sock_rx_attr = {
+const struct fi_rx_ctx_attr _sock_rdm_rx_attr = {
 	.caps = SOCK_EP_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
@@ -186,21 +136,14 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 		_info->caps = SOCK_EP_CAP;
 	}
 
-	memcpy(_info->tx_attr, &_sock_tx_attr, 
-	       sizeof(struct fi_tx_ctx_attr));
+	*(_info->tx_attr) = _sock_rdm_tx_attr;
+	*(_info->rx_attr) = _sock_rdm_rx_attr;
+	*(_info->ep_attr) = _sock_rdm_ep_attr;
 
-	memcpy(_info->rx_attr, &_sock_rx_attr, 
-	       sizeof(struct fi_rx_ctx_attr));
-
-	memcpy(_info->ep_attr, &_sock_ep_attr, 
-	       sizeof(struct fi_ep_attr));
-
-	memcpy(_info->domain_attr, &_sock_domain_attr, 
-	       sizeof(struct fi_domain_attr));
+	*(_info->domain_attr) = _sock_domain_attr;
 	_info->domain_attr->name = strdup(sock_dom_name);
 
-	memcpy(_info->fabric_attr, &_sock_fabric_attr, 
-	       sizeof(struct fi_fabric_attr));
+	*(_info->fabric_attr) = _sock_fabric_attr;
 	_info->fabric_attr->name = strdup(sock_fab_name);
 	_info->fabric_attr->prov_name = strdup(sock_fab_name);
 
@@ -275,12 +218,12 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			socklen_t len;
 			int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
 			if (0 != connect(udp_sock, result->ai_addr, result->ai_addrlen)){
-				sock_debug(SOCK_ERROR, "[SOCK_RDM] %s:%d: Failed to get dest_addr\n", __func__, __LINE__);
+				sock_debug(SOCK_ERROR, "Failed to get dest_addr\n");
 				ret = FI_ENODATA;
 				goto err;
 			}
 			if(0!= getsockname(udp_sock, (struct sockaddr *) dest_addr, &len)){
-				sock_debug(SOCK_ERROR, "[SOCK_RDM] %s:%d: Failed to get dest_addr\n", __func__, __LINE__);
+				sock_debug(SOCK_ERROR, "Failed to get dest_addr\n");
 				close(udp_sock);
 				ret = FI_ENODATA;
 				goto err;
@@ -316,17 +259,9 @@ int sock_rdm_ep_fi_close(struct fid *fid)
 	if(!sock_ep)
 		return -FI_EINVAL;
 
-	if(sock_ep->alias)
-		return -FI_EINVAL;
-
-	if(!sock_ep->is_alias)
-		close(sock_ep->sock_fd);
-
 	free_list(sock_ep->send_list);
 	free_list(sock_ep->recv_list);
 	
-	if(sock_ep->prev)
-		sock_ep->prev->next = sock_ep->next;
 	
 	free(sock_ep);
 	return 0;
@@ -766,11 +701,6 @@ struct fi_ops_msg sock_rdm_ep_msg_ops = {
 	.senddatato = sock_rdm_ep_msg_senddatato,
 };
 
-static inline int _sock_ep_rdm_progress(struct sock_ep *sock_ep, struct sock_cq *sock_cq)
-{
-	return -FI_ENOSYS;
-}
-
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context)
 {
@@ -793,6 +723,8 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep = (struct sock_ep*)calloc(1, sizeof(*sock_ep));
 	if(!sock_ep)
 		return -FI_ENOMEM;
+
+	atomic_init(&sock_ep->ref);
 	
 	sock_ep->ep.fid.fclass = FI_CLASS_EP;
 	sock_ep->ep.fid.context = context;	
@@ -801,6 +733,18 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep->ep.ops = &sock_rdm_ep_ops;
 	sock_ep->ep.cm = &sock_rdm_ep_cm_ops;
 	sock_ep->ep.msg = &sock_rdm_ep_msg_ops;
+
+	rbfdinit(&sock_ep->rx[0].rbfd, SOCK_EP_MAX_TXRX_SZ);
+	fastlock_init(&sock_ep->rx[0].wlock);
+	fastlock_init(&sock_ep->rx[0].rlock);
+	sock_ep->rx[0].ep = sock_ep;
+	sock_ep->rx[0].enabled = 1;
+
+	rbfdinit(&sock_ep->tx[0].rbfd, SOCK_EP_MAX_TXRX_SZ);
+	fastlock_init(&sock_ep->tx[0].wlock);
+	fastlock_init(&sock_ep->tx[0].rlock);
+	sock_ep->tx[0].ep = sock_ep;
+	sock_ep->tx[0].enabled = 1;
 	
 	/* TODO */
 	sock_ep->ep.rma = NULL;
@@ -808,15 +752,16 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep->ep.atomic = NULL;
 
 	sock_ep->domain = sock_dom;
+	atomic_inc(&sock_dom->ref);
 
-	sock_ep->sock_fd = socket(PF_RDS, SOCK_STREAM, 0);
+	sock_ep->sock_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if(sock_ep->sock_fd <0){
 		goto err1;
 	}
 
 	flags = fcntl(sock_ep->sock_fd, F_GETFL, 0);
 	if(-1 == flags)
-		goto err1;
+		goto err2;
 	fcntl(sock_ep->sock_fd, F_SETFL, flags | O_NONBLOCK);
 	
 	*ep = &sock_ep->ep;	
@@ -831,31 +776,11 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 				   sizeof(struct sockaddr));
 			if(!ret){
 				sock_debug(SOCK_ERROR, "Failed to bind to local address\n");
-				return ret;
-			}
-		}
-		
-		if(info->dest_addr){
-			ret = sock_ep_connect(*ep, info->dest_addr, NULL, 0);
-			sock_ep->enabled = 0;
-			if(!ret){
-				sock_debug(SOCK_ERROR, "Failed to connect to remote address\n");
-				return ret;
+				goto err2;
 			}
 		}
 	}
-
-	if(0 != (sock_ep->send_list = new_list(SOCK_EP_SNDQ_LEN)))
-		goto err2;
-
-	if(0 != (sock_ep->recv_list = new_list(SOCK_EP_RCVQ_LEN)))
-		goto err3;
-	
-	sock_ep->progress_fn = _sock_ep_rdm_progress;
 	return 0;
-
-err3:
-	free_list(sock_ep->send_list);
 
 err2:
 	close(sock_ep->sock_fd);
@@ -868,47 +793,5 @@ err1:
 int sock_rdm_pep(struct fid_fabric *fabric, struct fi_info *info,
 			struct fid_pep **pep, void *context)
 {
-	struct sock_pep *sock_pep;
-	sock_pep = (struct sock_pep*)calloc(1, sizeof(*sock_pep));
-	if(!sock_pep)
-		return -FI_ENOMEM;
-
-	sock_pep->pep.fid.fclass = FI_CLASS_PEP;
-	sock_pep->pep.fid.context = context;
-	
-	sock_pep->pep.fid.ops = /*&sock_fi_ops*/ NULL;
-	sock_pep->pep.ops = /*&sock_ep_ops*/ NULL;
-	sock_pep->pep.cm = /*&sock_cm_ops*/ NULL;
-	
-	sock_pep->sock_fd = socket(PF_RDS, SOCK_STREAM, 0);
-	if(sock_pep->sock_fd <0){
-		free(sock_pep);
-		return -FI_EAVAIL;
-	}
-
-	if(info){
-		sock_pep->pep_cap = info->caps;
-
-		if(info->src_addr){
-			if (bind(sock_pep->sock_fd, (struct sockaddr *) info->src_addr,
-				 sizeof(struct sockaddr)) < 0){
-				free(sock_pep);
-				return -FI_EAVAIL;
-			}
-		}
-	}
-
-	*pep = &sock_pep->pep;
-	return 0;
+	return -FI_ENOSYS;
 }
-
-int sock_rdm_recv_progress(struct sock_ep *ep)
-{
-	return 0;
-}
-
-int sock_rdm_progress_send(struct sock_ep *ep)
-{
-	return 0;
-}
-

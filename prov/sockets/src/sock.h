@@ -51,6 +51,7 @@
 #include <fi_indexer.h>
 #include "list.h"
 #include <fi_rbuf.h>
+#include <fi_list.h>
 
 #ifndef _SOCK_H_
 #define _SOCK_H_
@@ -63,11 +64,12 @@
 #define SOCK_EP_MAX_ORDER_WAW_SZ (0)
 #define SOCK_EP_MEM_TAG_FMT (0)
 #define SOCK_EP_MSG_ORDER (0)
-#define SOCK_EP_TX_CTX_CNT (0)
-#define SOCK_EP_RX_CTX_CNT (0)
+#define SOCK_EP_MAX_EP_CNT (128)
+#define SOCK_EP_MAX_TX_CNT (16)
+#define SOCK_EP_MAX_RX_CNT (16)
 #define SOCK_EP_MAX_IOV_LIMIT (8)
+#define SOCK_EP_MAX_TXRX_SZ (1<<12)
 
-#define SOCK_EP_BACKLOG (8)
 #define SOCK_EP_SNDQ_LEN (128)
 #define SOCK_EP_RCVQ_LEN (128)
 
@@ -125,6 +127,8 @@ struct sock_cq {
 	list_t *ep_list;
 	list_t *completed_list;
 	list_t *error_list;
+
+	int64_t table_entry;
 };
 
 struct sock_mr {
@@ -218,7 +222,10 @@ struct sock_comm_item{
 
 enum {
 	SOCK_OP_SEND,
+	SOCK_OP_SEND_INJECT,
+	SOCK_OP_RECV,
 	SOCK_OP_WRITE,
+	SOCK_OP_WRITE_INJECT,
 	SOCK_OP_READ,
 	SOCK_OP_TSEND,
 	SOCK_OP_ATOMIC
@@ -249,10 +256,140 @@ union sock_tx_iov {
 	struct fi_rma_ioc	ioc;
 };
 
+/*
+ * Receive context - ring buffer data:
+ *    rx_op + flags + context + src_addr + [data] + [tag] + rx_iov
+ *     8B       8B      8B         8B         8B       8B      24B+
+ * data - only present if flags indicate
+ * tag - only present for TSEND op
+ */
+struct sock_rx_op {
+	uint8_t src_iov_len;
+	uint8_t reserved[7];
+	/* iov(s) */
+};
+
+#define SOCK_WIRE_PROTO_VERSION (0)
+
+struct sock_msg_hdr{
+	uint8_t version;
+	uint8_t op_type;
+	uint8_t src_iov_len;
+	uint16_t rx_id;
+	uint8_t reserved[3];
+
+	uint64_t flags;
+	uint64_t msg_len;
+};
+
+struct sock_msg_send{
+	struct sock_msg_hdr msg_hdr;
+	/* src iov(s) */
+	/* data */
+};
+
+struct sock_msg_tagsend{
+	struct sock_msg_hdr msg_hdr;
+	uint64_t tag;
+	/* src iov(s) */
+	/* data */
+};
+
+struct sock_msg_rma{
+	struct sock_msg_hdr msg_hdr;
+	uint8_t iov_len;
+	/* src iov(s) */
+	/* dst iov(s) */
+	/* data */
+};
+
+struct sock_msg_atomic{
+	struct sock_msg_hdr msg_hdr;
+	uint8_t op;
+	uint8_t datatype;
+	uint8_t reserved[6];
+	/* src iov(s) */
+	/* dst iov(s) */
+	/* data */
+	};
+};
+
+struct sock_tx_pe_entry{
+	struct sock_tx_op tx_op;
+	
+	uint64_t flags;
+	uint64_t context;
+	uint64_t dest_addr;
+	uint64_t data;
+	uint64_t tag;
+
+	union {
+		union sock_tx_iov tx_iov[SOCK_EP_MAX_IOV_LIMIT];
+		char inject_data[SOCK_EP_MAX_INJECT_SZ];
+	};
+};
+
+struct sock_rx_pe_entry{
+	struct sock_rx_op rx_op;
+	struct sock_msg_hdr msg_hdr;
+	
+	uint64_t flags;
+	uint64_t context;
+	uint64_t src_addr;
+	uint64_t data;
+	uint64_t tag;
+
+	sock_tx_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
+};
+
+enum{
+	SOCK_RX,
+	SOCK_TX,
+};
+
+struct sock_pe_entry{
+
+	union{
+		struct sock_tx_pe_entry tx_entry;
+		struct sock_rx_pe_entry rx_entry;
+	};
+
+	int64_t next;
+	uint64_t done_len;
+
+	uint8_t type;
+	uint16_t conn_key;
+	uint8_t reserved[5];
+
+	struct sock_ep *ep;
+	struct sock_cq *cq;
+	struct dlist_entry cq_list;
+};
+
+#define MAX_PROGRESS_ENTRIES (128)
+
+struct sock_pe{
+	struct sock_domain *domain;
+
+	struct sock_pe_entry pe_table[MAX_PROGRESS_ENTRIES];
+	fastlock_t engine_lock;
+	int64_t free_head;
+	int64_t busy_head;
+
+	struct ringbuffd cq_rb;  /* FIXME: dlist+fd ? */
+	fastlock_t cq_lock;
+
+	pthread_t progress_thread;
+	volatile int do_progress;
+};
+
 struct sock_rxtx {
 	struct ringbuffd	rbfd;
 	fastlock_t		wlock;
 	fastlock_t		rlock;
+	int enabled;
+	struct sock_cq *cq;
+	struct sock_ep *ep;
 };
 
 struct sock_eq{
@@ -271,6 +408,7 @@ struct sock_ep {
 	struct fid_ep		ep;
 	struct sock_domain	*domain;	
 	int sock_fd;
+	atomic_t ref;
 
 	struct sock_eq        *eq;
 	struct sock_av 	*av;
@@ -279,6 +417,9 @@ struct sock_ep {
 	struct sock_cq 	*recv_cq;
 	int send_cq_event_flag;
 	int recv_cq_event_flag;
+
+	struct sock_rxtx rx[SOCK_EP_MAX_RX_CNT+1];
+	struct sock_rxtx tx[SOCK_EP_MAX_TX_CNT+1];
 
 	struct sock_cntr 	*send_cntr;
 	struct sock_cntr 	*recv_cntr;
@@ -312,11 +453,6 @@ struct sock_ep {
 	int enabled;
 	int is_alias;
 
-	struct sock_ep *next;
-	struct sock_ep *prev;
-	struct sock_ep *alias;
-	struct sock_ep *base;
-	
 	int port_num;
 	sock_ep_progress_fn progress_fn;
 };
@@ -397,6 +533,30 @@ int sock_poll_open(struct fid_domain *domain, struct fi_poll_attr *attr,
 		struct fid_poll **pollset);
 int sock_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
 		struct fid_wait **waitset);
+
+struct sock_conn_map *sock_conn_map_init(struct sock_domain *domain);
+void sock_conn_map_destroy(struct sock_conn_map *conn_map);
+uint16_t sock_conn_map_insert(struct sock_conn_map *conn_map, struct sockaddr_in *sockaddr);
+struct sockaddr_in *sock_conn_map_lookup_addr(struct sock_conn_map *conn_map, uint16_t key);
+int sock_conn_map_lookup_fd(struct sock_conn_map *conn_map, uint16_t key);
+int16_t sock_conn_map_lookup_pe_entry(struct sock_conn_map *conn_map, uint16_t key);
+int sock_conn_map_set_pe_entry(struct sock_conn_map *conn_map, uint16_t key, int16_t index);
+int sock_conn_map_clear_pe_entry(struct sock_conn_map *conn_map, uint16_t key);
+
+
+struct sock_conn_map *sock_conn_map_init(struct sock_domain *domain);
+void sock_conn_map_destroy(struct sock_conn_map *conn_map);
+int sock_conn_map_insert(struct sock_conn_map *conn_map, 
+			 struct sockaddr_in *sockaddr, uint16_t *key);
+int sock_conn_map_lookup_addr(struct sock_conn_map *conn_map, 
+			      uint16_t key, struct sockaddr_in *sockaddr);
+int sock_conn_map_lookup_fd(struct sock_conn_map *conn_map, 
+			    uint16_t key, int *fd);
+int sock_conn_map_lookup_pe_entry(struct sock_conn_map *conn_map, 
+				  uint16_t key, int16_t *index);
+int sock_conn_map_set_pe_entry(struct sock_conn_map *conn_map, 
+			       uint16_t key, int16_t index);
+int sock_conn_map_clear_pe_entry(struct sock_conn_map *conn_map, uint16_t key);
 
 
 void free_fi_info(struct fi_info *info);

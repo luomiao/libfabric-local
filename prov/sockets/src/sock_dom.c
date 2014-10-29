@@ -271,10 +271,10 @@ int _sock_verify_domain_attr(struct fi_domain_attr *attr)
 		return -FI_ENODATA;
 	}
 
-	if(attr->max_ep_tx_ctx > SOCK_EP_TX_CTX_CNT)
+	if(attr->max_ep_tx_ctx > SOCK_EP_MAX_TX_CNT)
 		return -FI_ENODATA;
 
-	if(attr->max_ep_rx_ctx > SOCK_EP_RX_CTX_CNT)
+	if(attr->max_ep_rx_ctx > SOCK_EP_MAX_RX_CNT)
 		return -FI_ENODATA;
 
 	return 0;
