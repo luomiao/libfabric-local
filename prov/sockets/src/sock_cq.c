@@ -538,3 +538,15 @@ int _sock_cq_report_error(struct sock_cq *sock_cq,
 	write(sock_cq->fd[SOCK_WR_FD], &byte, 1);
 	return enqueue_item(sock_cq->error_list, error);
 }
+
+int sock_cq_report_tx_completion(struct sock_cq *cq, 
+				 struct sock_pe_entry *cmp_entry)
+{
+	return 0;
+}
+
+int sock_cq_report_rx_completion(struct sock_cq *cq, 
+				 struct sock_pe_entry *cmp_entry)
+{
+	return 0;
+}
