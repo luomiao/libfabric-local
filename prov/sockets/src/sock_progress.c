@@ -55,14 +55,58 @@
 #include "sock.h"
 #include "sock_util.h"
 
-void sock_pe_process_rx_send(struct sock_pe *pe, struct sock_pe_entry *entry)
-{
-	/* pick a rx entry */
+#define IGNORE_TAG (1)
+#define MATCH_TAG (0)
 
-	/* fill in data buffer */
+void sock_pe_process_rx_send(struct sock_pe *pe, struct sock_pe_entry *pe_entry)
+{
+	int i, truncated;
+	uint64_t ignore, len;
+	struct sock_rx_entry *rx_entry;
+
+	rx_entry = sock_cq_get_rx_buffer(pe_entry->cq, addr, rx_id, 
+					 IGNORE_TAG, ignore);
+	if(!rx_entry){
+		sock_debug(SOCK_ERROR, "No matching requests!\n");
+		exit(-1);
+	}
+
+	if(pe_entry->flags & FI_REMOTE_CQ_DATA){
+		rx_entry->data = pe_entry->data;
+	}
+
+	if(pe_entry->flags & FI_REMOTE_COMPLETE){
+		/* TODO: send ack to sender */
+	}
+
+	truncated = 0;
+	if(pe_entry->tx_op.src_iov_len != rx_entry->src_iov_len){
+		truncated = 1;
+	}
+
+	for(i=0; i<min(pe_entry->tx_op.src_iov_len, rx_entry->src_iov_len); i++){
+		
+		if(pe_entry->tx_iov[i].len > rx_entry->iov[i].iov.len){
+			truncated = 1;
+		}
+
+		len = min(pe_entry->tx_iov[i].len, rx_entry->iov[i].iov.len);
+		memcpy(pe_entry->tx_iov[i].iov.addr, rx_entry->iov[i].iov.addr, len);
+		rx_entry->iov[i].iov.len = len;
+	}
+
+	/* report error, if any */
+	if(truncated){
+		sock_cq_report_error(pe_entry->cq);
+	}
 	
 	/* post completion */
-	sock_cq_report_rx_completion(entry->cq, entry);
+	if(pe_entry->ep->recv_cq_event_flag){
+		if(pe_entry->flags & FI_EVENT)
+			sock_cq_report_rx_completion(pe_entry->cq, rx_entry);
+	}else{
+		sock_cq_report_rx_completion(pe_entry->cq, rx_entry);
+	}
 }
 
 void sock_pe_process_recv(struct sock_pe *pe, struct sock_pe_entry *entry)

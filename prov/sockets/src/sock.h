@@ -128,6 +128,8 @@ struct sock_cq {
 	list_t *completed_list;
 	list_t *error_list;
 
+	struct sock_rxtx *rx_list;
+
 	int64_t table_entry;
 };
 
@@ -257,16 +259,20 @@ union sock_tx_iov {
 };
 
 /*
- * Receive context - ring buffer data:
- *    rx_op + flags + context + src_addr + [data] + [tag] + rx_iov
- *     8B       8B      8B         8B         8B       8B      24B+
- * data - only present if flags indicate
- * tag - only present for TSEND op
+ * Receive context
  */
-struct sock_rx_op {
+struct sock_rx_entry {
 	uint8_t src_iov_len;
-	uint8_t reserved[7];
-	/* iov(s) */
+	uint8_t valid_tag;
+	uint8_t reserved[6];
+
+	uint64_t flags;
+	uint64_t context;
+	uint64_t addr;
+	uint64_t tag;
+
+	union sock_tx_iov iov[SOCK_EP_MAX_IOV_LIMIT];
+	struct dlist_entry *list;
 };
 
 #define SOCK_WIRE_PROTO_VERSION (0)
@@ -326,7 +332,10 @@ struct sock_tx_pe_entry{
 	uint64_t dest_addr;
 	uint64_t data;
 	uint64_t tag;
+	
 	uint8_t header_sent;
+	uint16_t rx_id;
+	uint8_t reserved[5];
 
 	union {
 		union sock_tx_iov tx_iov[SOCK_EP_MAX_IOV_LIMIT];
@@ -389,13 +398,33 @@ struct sock_pe{
 	volatile int do_progress;
 };
 
-struct sock_rxtx {
+struct sock_tx_ctx {
 	struct ringbuffd	rbfd;
 	fastlock_t		wlock;
 	fastlock_t		rlock;
-	int enabled;
+
+	uint8_t enabled;
+	uint16_t tx_id;
+	uint8_t reserved[5];
+
+	uint64_t addr;
 	struct sock_cq *cq;
 	struct sock_ep *ep;
+	struct dlist_entry *cq_list;
+};
+
+struct sock_rx_ctx {
+	struct sock_rx_entry *rx_entry;
+	fastlock_t lock;
+
+	uint8_t enabled;
+	uint16_t rx_id;
+	uint8_t reserved[5];
+
+	uint64_t addr;
+	struct sock_cq *cq;
+	struct sock_ep *ep;
+	struct dlist_entry *cq_list;
 };
 
 struct sock_eq{
@@ -424,8 +453,10 @@ struct sock_ep {
 	int send_cq_event_flag;
 	int recv_cq_event_flag;
 
-	struct sock_rxtx rx[SOCK_EP_MAX_RX_CNT+1];
-	struct sock_rxtx tx[SOCK_EP_MAX_TX_CNT+1];
+	int num_rx_ctx;
+	struct sock_rx_ctx *rx_ctx;
+	int num_tx_ctx;
+	struct sock_rxtx *tx_ctx;
 
 	struct sock_cntr 	*send_cntr;
 	struct sock_cntr 	*recv_cntr;

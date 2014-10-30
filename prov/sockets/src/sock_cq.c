@@ -550,3 +550,45 @@ int sock_cq_report_rx_completion(struct sock_cq *cq,
 {
 	return 0;
 }
+
+struct sock_rx_entry *sock_cq_get_rx_buffer(struct sock_cq *cq, uint64_t addr, 
+					    uint16_t rx_id, int ignore_tag, uint64_t tag)
+{
+	struct sock_rx_ctx *rx_ctx, *head_ctx;
+	struct sock_rx_entry *curr, *head;
+
+	head_ctx = rx_ctx = cq->rx_list;
+	while(rx_ctx != NULL){
+		/* find the rx_ctx entry */
+		if(rx_list->addr == addr && rx_list->rx_id == rx_id && 
+		   !rdfdempty(&rx_list->rbfd)){
+
+			head = curr = rx_ctx->rx_entry;
+			if(!ignore_tag){
+				while(curr != NULL){
+					if(curr->valid_tag && curr->tag == tag)
+						break;
+					curr = curr->list.next;
+					
+					if(curr == head)
+						return NULL;
+				}
+			}
+
+			/* read rx entry */
+			curr->list.prev->list.next = curr->list.next;
+			curr->list.prev = NULL;
+			curr->list.next = NULL;
+		
+			/* reset head */
+			cq->rx_list = rx_list;
+			return curr;
+		}
+		
+		rx_ctx = rx_ctx->cq_list.next;
+		if(rx_ctx == head_ctx){
+			return NULL;
+		}
+	}
+	return NULL;
+}
