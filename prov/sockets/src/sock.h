@@ -117,8 +117,8 @@ struct sock_cntr {
 #define SOCK_WR_FD		1
 
 struct sock_cq {
-	struct fid_cq		cq_fid;
-	struct sock_domain	*domain;
+	struct fid_cq cq_fid;
+	struct sock_domain *domain;
 	ssize_t cq_entry_size;
 	atomic_t ref;
 	struct fi_cq_attr attr;
@@ -128,9 +128,9 @@ struct sock_cq {
 	list_t *completed_list;
 	list_t *error_list;
 
-	struct sock_rxtx *rx_list;
-
-	int64_t table_entry;
+	struct sock_tx_ctx tx_list_head;
+	struct sock_rx_ctx rx_list_head;
+	struct sock_pe_entry pe_list_head;
 };
 
 struct sock_mr {
@@ -161,8 +161,6 @@ struct sock_wait {
 	struct fid_wait wait_fid;
 	struct sock_domain *dom;
 };
-
-struct sock_ep;
 
 struct sock_eq_item{
 	int type;
@@ -258,21 +256,16 @@ union sock_tx_iov {
 	struct fi_rma_ioc	ioc;
 };
 
-/*
- * Receive context
- */
 struct sock_rx_entry {
-	uint8_t src_iov_len;
-	uint8_t valid_tag;
-	uint8_t reserved[6];
+	struct sock_tx_op rx_op;
 
 	uint64_t flags;
 	uint64_t context;
 	uint64_t addr;
 	uint64_t tag;
-
+	
 	union sock_tx_iov iov[SOCK_EP_MAX_IOV_LIMIT];
-	struct dlist_entry *list;
+	struct dlist_entry list;
 };
 
 #define SOCK_WIRE_PROTO_VERSION (0)
@@ -281,8 +274,8 @@ struct sock_msg_hdr{
 	uint8_t version;
 	uint8_t op_type;
 	uint8_t src_iov_len;
-	uint16_t rx_id;
-	uint8_t reserved[3];
+	uint8_t rx_id;
+	uint8_t reserved[4];
 
 	uint64_t flags;
 	uint64_t msg_len;
@@ -321,7 +314,6 @@ struct sock_msg_atomic{
 	/* dst iov(s) */
 	/* data */
 	/* user data */
-	};
 };
 
 struct sock_tx_pe_entry{
@@ -334,17 +326,19 @@ struct sock_tx_pe_entry{
 	uint64_t tag;
 	
 	uint8_t header_sent;
-	uint16_t rx_id;
-	uint8_t reserved[5];
+	uint8_t reserved[7];
 
 	union {
-		union sock_tx_iov tx_iov[SOCK_EP_MAX_IOV_LIMIT];
+			union {
+				union sock_tx_iov src_iov[SOCK_EP_MAX_IOV_LIMIT];
+				union sock_tx_iov dst_iov[SOCK_EP_MAX_IOV_LIMIT];
+			};
 		char inject_data[SOCK_EP_MAX_INJECT_SZ];
 	};
 };
 
 struct sock_rx_pe_entry{
-	struct sock_rx_op rx_op;
+	struct sock_tx_op rx_op;
 	
 	uint64_t flags;
 	uint64_t context;
@@ -353,7 +347,7 @@ struct sock_rx_pe_entry{
 	uint64_t tag;
 	void *raw_data;
 
-	sock_tx_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
+	union sock_tx_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
 };
 
 enum{
@@ -370,15 +364,13 @@ struct sock_pe_entry{
 	struct sock_msg_hdr msg_hdr;
 
 	uint8_t type;
-	int16_t index;
-	int16_t next;
 	uint16_t conn_key;
-	uint8_t reserved[1];
+	uint8_t reserved[5];
 
 	uint64_t done_len;
 	struct sock_ep *ep;
 	struct sock_cq *cq;
-	struct dlist_entry cq_list;
+	struct dlist_entry list;
 };
 
 #define MAX_PROGRESS_ENTRIES (128)
@@ -388,8 +380,9 @@ struct sock_pe{
 
 	struct sock_pe_entry pe_table[MAX_PROGRESS_ENTRIES];
 	fastlock_t engine_lock;
-	int64_t free_head;
-	int64_t busy_head;
+	
+	struct sock_pe_entry free_list_head;
+	struct sock_pe_entry busy_list_head;
 
 	struct ringbuffd cq_rb;  /* FIXME: dlist+fd ? */
 	fastlock_t cq_lock;
@@ -410,11 +403,14 @@ struct sock_tx_ctx {
 	uint64_t addr;
 	struct sock_cq *cq;
 	struct sock_ep *ep;
-	struct dlist_entry *cq_list;
+	struct dlist_entry list;
 };
 
+/*
+ * Receive context
+ */
 struct sock_rx_ctx {
-	struct sock_rx_entry *rx_entry;
+	struct sock_rx_entry rx_list_head;
 	fastlock_t lock;
 
 	uint8_t enabled;
@@ -424,7 +420,7 @@ struct sock_rx_ctx {
 	uint64_t addr;
 	struct sock_cq *cq;
 	struct sock_ep *ep;
-	struct dlist_entry *cq_list;
+	struct dlist_entry list;
 };
 
 struct sock_eq{
@@ -525,7 +521,7 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		uint64_t flags, struct fi_info *hints, struct fi_info **info);
 int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 		uint64_t flags, struct fi_info *hints, struct fi_info **info);
-
+void free_fi_info(struct fi_info *info);
 
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context);
@@ -581,34 +577,13 @@ struct sock_conn_map *sock_conn_map_init(struct sock_domain *domain);
 void sock_conn_map_destroy(struct sock_conn_map *conn_map);
 uint16_t sock_conn_map_insert(struct sock_conn_map *conn_map, 
 			      struct sockaddr_in *sockaddr);
-
 int sock_conn_map_lookup_key(struct sock_conn_map *conn_map, 
 			     uint16_t key, struct sock_conn_map_entry **entry);
-int sock_conn_map_lookup_addr(struct sock_conn_map *conn_map, 
-			      struct sockaddr_in, sock_conn_map_entry **entry);
-
+int sock_conn_map_lookup_addr(struct sock_conn_map *conn_map,
+			      fi_addr_t *addr, struct sock_conn_map_entry **entry);
 int sock_conn_map_set_pe_entry(struct sock_conn_map *conn_map, 
 			       uint16_t key, int16_t index);
 int sock_conn_map_clear_pe_entry(struct sock_conn_map *conn_map, 
 				 uint16_t key);
-
-
-struct sock_conn_map *sock_conn_map_init(struct sock_domain *domain);
-void sock_conn_map_destroy(struct sock_conn_map *conn_map);
-int sock_conn_map_insert(struct sock_conn_map *conn_map, 
-			 struct sockaddr_in *sockaddr, uint16_t *key);
-int sock_conn_map_lookup_addr(struct sock_conn_map *conn_map, 
-			      uint16_t key, struct sockaddr_in *sockaddr);
-int sock_conn_map_lookup_fd(struct sock_conn_map *conn_map, 
-			    uint16_t key, int *fd);
-int sock_conn_map_lookup_pe_entry(struct sock_conn_map *conn_map, 
-				  uint16_t key, int16_t *index);
-int sock_conn_map_set_pe_entry(struct sock_conn_map *conn_map, 
-			       uint16_t key, int16_t index);
-int sock_conn_map_clear_pe_entry(struct sock_conn_map *conn_map, uint16_t key);
-
-
-void free_fi_info(struct fi_info *info);
-
 
 #endif

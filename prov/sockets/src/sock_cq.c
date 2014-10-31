@@ -560,8 +560,8 @@ struct sock_rx_entry *sock_cq_get_rx_buffer(struct sock_cq *cq, uint64_t addr,
 	head_ctx = rx_ctx = cq->rx_list;
 	while(rx_ctx != NULL){
 		/* find the rx_ctx entry */
-		if(rx_list->addr == addr && rx_list->rx_id == rx_id && 
-		   !rdfdempty(&rx_list->rbfd)){
+		if(rx_ctx->addr == addr && rx_ctx->rx_id == rx_id && 
+		   !rdfdempty(&rx_ctx->rbfd)){
 
 			head = curr = rx_ctx->rx_entry;
 			if(!ignore_tag){
@@ -581,7 +581,7 @@ struct sock_rx_entry *sock_cq_get_rx_buffer(struct sock_cq *cq, uint64_t addr,
 			curr->list.next = NULL;
 		
 			/* reset head */
-			cq->rx_list = rx_list;
+			cq->rx_list = rx_ctx;
 			return curr;
 		}
 		
