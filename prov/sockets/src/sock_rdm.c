@@ -725,7 +725,6 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		return -FI_ENOMEM;
 
 	atomic_init(&sock_ep->ref);
-	
 	sock_ep->ep.fid.fclass = FI_CLASS_EP;
 	sock_ep->ep.fid.context = context;	
 	sock_ep->ep.fid.ops = &sock_rdm_ep_fi_ops;
@@ -738,9 +737,6 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep->ep.rma = NULL;
 	sock_ep->ep.tagged = NULL;
 	sock_ep->ep.atomic = NULL;
-
-	sock_ep->domain = sock_dom;
-	atomic_inc(&sock_dom->ref);
 
 	sock_ep->sock_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if(sock_ep->sock_fd <0){
@@ -768,7 +764,29 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 			}
 		}
 	}
+
+	sock_ep->rx_ctx = sock_rx_ctx_alloc();
+	if(!sock_ep->rx_ctx)
+		goto err2;
+
+	sock_ep->rx_ctx->rx_id = 0;
+	sock_ep->rx_ctx->addr = 0; /* TODO */
+	sock_ep->rx_ctx->ep = sock_ep;
+	
+	sock_ep->tx_ctx = sock_tx_ctx_alloc(sock_ep->tx_ctx_attr.size);
+	if(!sock_ep->tx_ctx)
+		goto err3;
+
+	sock_ep->tx_ctx->tx_id = 0;
+	sock_ep->tx_ctx->addr = 0; /* TODO */
+	sock_ep->tx_ctx->ep = sock_ep;
+
+	sock_ep->domain = sock_dom;
+	atomic_inc(&sock_dom->ref);
 	return 0;
+
+err3:
+	sock_rx_ctx_free(sock_ep->rx_ctx);
 
 err2:
 	close(sock_ep->sock_fd);

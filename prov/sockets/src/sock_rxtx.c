@@ -39,6 +39,23 @@
 
 #include "sock.h"
 
+struct sock_rx_ctx *sock_rx_ctx_alloc()
+{
+	struct sock_rx_ctx *rx_ctx;
+	rx_ctx = calloc(1, sizeof(*rx_ctx));
+	if(!rx_ctx)
+		return NULL;
+
+	dlist_init(&rx_ctx->list);
+	fastlock_init(&rx_ctx->lock);
+	return rx_ctx;
+}
+
+void sock_rx_ctx_free(struct sock_rx_ctx *rx_ctx)
+{
+	fastlock_destroy(&rx_ctx->lock);
+	free(rx_ctx);
+}
 
 struct sock_tx_ctx *sock_tx_ctx_alloc(size_t size)
 {
