@@ -554,40 +554,36 @@ int sock_cq_report_rx_completion(struct sock_cq *cq,
 struct sock_rx_entry *sock_cq_get_rx_buffer(struct sock_cq *cq, uint64_t addr, 
 					    uint16_t rx_id, int ignore_tag, uint64_t tag)
 {
-	struct sock_rx_ctx *rx_ctx, *head_ctx;
-	struct sock_rx_entry *curr, *head;
+	struct dlist_entry *head_ctx, *curr_ctx;
+	struct dlist_entry *head_entry, *curr_entry;
+	struct sock_rx_ctx *rx_ctx;
+	struct sock_rx_entry *rx_entry;
 
-	head_ctx = rx_ctx = cq->rx_list;
-	while(rx_ctx != NULL){
-		/* find the rx_ctx entry */
-		if(rx_ctx->addr == addr && rx_ctx->rx_id == rx_id && 
-		   !rdfdempty(&rx_ctx->rbfd)){
+	head_ctx = &cq->rx_ctx_head.list;
+	for(curr_ctx = head_ctx->next; !dlist_empty(head_ctx) &&
+		    curr_ctx != head_ctx; curr_ctx = curr_ctx->next){
 
-			head = curr = rx_ctx->rx_entry;
-			if(!ignore_tag){
-				while(curr != NULL){
-					if(curr->valid_tag && curr->tag == tag)
-						break;
-					curr = curr->list.next;
-					
-					if(curr == head)
-						return NULL;
+		rx_ctx = container_of(curr_ctx, struct sock_rx_ctx, list);
+		if(rx_ctx->rx_id != rx_id)
+			continue;
+		
+		head_entry = &rx_ctx->rx_entry_head.list;
+		for(curr_entry = head_entry->next; !dlist_empty(head_entry) &&
+			    curr_entry != head_entry; curr_entry = curr_entry->next){
+			
+			rx_entry = container_of(curr_entry, struct sock_rx_entry, list);
+			if(rx_entry->addr == addr){
+
+				if(!ignore_tag){
+					if(rx_entry->valid_tag && rx_entry->tag == tag){
+						rx_entry->list.prev->next = rx_entry->list.next;
+						return rx_entry;
+					}
+				}else{
+					rx_entry->list.prev->next = rx_entry->list.next;
+					return rx_entry;
 				}
 			}
-
-			/* read rx entry */
-			curr->list.prev->list.next = curr->list.next;
-			curr->list.prev = NULL;
-			curr->list.next = NULL;
-		
-			/* reset head */
-			cq->rx_list = rx_ctx;
-			return curr;
-		}
-		
-		rx_ctx = rx_ctx->cq_list.next;
-		if(rx_ctx == head_ctx){
-			return NULL;
 		}
 	}
 	return NULL;

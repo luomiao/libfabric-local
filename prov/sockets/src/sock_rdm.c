@@ -734,18 +734,6 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep->ep.cm = &sock_rdm_ep_cm_ops;
 	sock_ep->ep.msg = &sock_rdm_ep_msg_ops;
 
-	rbfdinit(&sock_ep->rx[0].rbfd, SOCK_EP_MAX_TXRX_SZ);
-	fastlock_init(&sock_ep->rx[0].wlock);
-	fastlock_init(&sock_ep->rx[0].rlock);
-	sock_ep->rx[0].ep = sock_ep;
-	sock_ep->rx[0].enabled = 1;
-
-	rbfdinit(&sock_ep->tx[0].rbfd, SOCK_EP_MAX_TXRX_SZ);
-	fastlock_init(&sock_ep->tx[0].wlock);
-	fastlock_init(&sock_ep->tx[0].rlock);
-	sock_ep->tx[0].ep = sock_ep;
-	sock_ep->tx[0].enabled = 1;
-	
 	/* TODO */
 	sock_ep->ep.rma = NULL;
 	sock_ep->ep.tagged = NULL;
