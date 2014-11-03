@@ -569,32 +569,38 @@ ssize_t sock_rdm_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void 
 ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
-/*
+	int i;
 	struct sock_ep *sock_ep;
-	struct sock_comm_item *comm_item;
+	struct sock_rx_entry *rx_entry;
+
+	if(msg->iov_count > SOCK_EP_MAX_IOV_LIMIT)
+		return -FI_EINVAL;
 	
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	if(!sock_ep)
+	if(!sock_ep || !sock_ep->enabled || !sock_ep->rx_ctx)
 		return -FI_EINVAL;
 	
-	if(!sock_ep->enabled)
-		return -FI_EINVAL;
-
-	comm_item = (struct sock_comm_item*)calloc(1, sizeof(struct sock_comm_item));
-	if(!comm_item)
+	rx_entry = calloc(1, sizeof(struct sock_rx_entry));
+	if(!rx_entry)
 		return -FI_ENOMEM;
-	
-	comm_item->type = SOCK_SENDMSG;
-	comm_item->context = msg->context;
-	comm_item->done_len = 0;
-	comm_item->flags = flags;
-	memcpy(&comm_item->item.msg, msg, sizeof(struct fi_msg));
 
-	if(0 != enqueue_item(sock_ep->recv_list, comm_item)){
-		free(comm_item);
-		return -FI_ENOMEM;
+	dlist_init(&rx_entry->list);
+
+	rx_entry->rx_op.op = SOCK_OP_RECV;
+	rx_entry->rx_op.dest_iov_len = msg->iov_count;
+
+	rx_entry->flags = flags;
+	rx_entry->context = (uint64_t)msg->context;
+	rx_entry->addr = msg->addr;
+	rx_entry->data = msg->data;
+	rx_entry->valid_tag = 0;
+
+	for(i=0; i< msg->iov_count; i++){
+		rx_entry->iov[i].iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
+		rx_entry->iov[i].iov.len = (uint64_t)msg->msg_iov[i].iov_len;
 	}
-*/		
+
+	dlist_insert_tail(&rx_entry->list, &sock_ep->rx_ctx->rx_entry_head.list);
 	return 0;
 }
 
@@ -624,12 +630,12 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	struct sock_ep *sock_ep;
 	struct sock_tx_op tx_op;
 	union sock_tx_iov tx_iov;
-	
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	if(!sock_ep)
+
+	if(msg->iov_count > SOCK_EP_MAX_IOV_LIMIT)
 		return -FI_EINVAL;
 	
-	if(!sock_ep->tx_ctx || !sock_ep->enabled)
+	sock_ep = container_of(ep, struct sock_ep, ep);
+	if(!sock_ep || !sock_ep->tx_ctx || !sock_ep->enabled)
 		return -FI_EINVAL;
 
 	sock_tx_ctx_start(sock_ep->tx_ctx);
