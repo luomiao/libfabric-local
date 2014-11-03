@@ -560,12 +560,6 @@ ssize_t sock_rdm_ep_msg_recvv(struct fid_ep *ep, const struct iovec *iov, void *
 	return -FI_ENOSYS;
 }
 
-ssize_t sock_rdm_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
-				 fi_addr_t src_addr, void *context)
-{
-	return -FI_ENOSYS;
-}
-
 ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
@@ -604,6 +598,25 @@ ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	return 0;
 }
 
+ssize_t sock_rdm_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
+				 fi_addr_t src_addr, void *context)
+{
+	struct fi_msg msg;
+	struct iovec msg_iov;
+
+	msg_iov.iov_base = buf;
+	msg_iov.iov_len = len;
+
+	msg.msg_iov = &msg_iov;
+	msg.desc = desc;
+	msg.iov_count = 1;
+	msg.addr = src_addr;
+	msg.context = context;
+	msg.data = 0; /* FIXME: Verify */
+
+	return sock_rdm_ep_msg_recvmsg(ep, &msg, 0);
+}
+
 ssize_t sock_rdm_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
 			     void *context)
 {
@@ -612,12 +625,6 @@ ssize_t sock_rdm_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, voi
 
 ssize_t sock_rdm_ep_msg_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
 			      size_t count, void *context)
-{
-	return -FI_ENOSYS;
-}
-
-ssize_t sock_rdm_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
-			       void *desc, fi_addr_t dest_addr, void *context)
 {
 	return -FI_ENOSYS;
 }
@@ -682,6 +689,25 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 err1:
 	sock_tx_ctx_abort(sock_ep->tx_ctx);
 	return ret;
+}
+
+ssize_t sock_rdm_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
+			       void *desc, fi_addr_t dest_addr, void *context)
+{
+	struct fi_msg msg;
+	struct iovec msg_iov;
+
+	msg_iov.iov_base = (void*)buf;
+	msg_iov.iov_len = len;
+
+	msg.msg_iov = &msg_iov;
+	msg.desc = desc;
+	msg.iov_count = 1;
+	msg.addr = dest_addr;
+	msg.context = context;
+	msg.data = 0; /* FIXME: Verify */
+
+	return sock_rdm_ep_msg_sendmsg(ep, &msg, 0);
 }
 
 ssize_t sock_rdm_ep_msg_inject(struct fid_ep *ep, const void *buf, size_t len)
