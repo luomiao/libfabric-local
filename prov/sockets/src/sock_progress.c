@@ -64,7 +64,7 @@ int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_pe_entry *pe_entry)
 	int i, truncated, ret;
 	struct sock_rx_entry *rx_entry;
 
-	rx_entry = sock_cq_get_rx_buffer(pe_entry->cq, pe_entry->rx.src_addr, 
+	rx_entry = sock_cq_get_rx_buffer(pe_entry->cq, pe_entry->addr, 
 					 pe_entry->msg_hdr.rx_id, IGNORE_TAG, 0);
 	if(!rx_entry){
 		sock_debug(SOCK_ERROR, "No matching requests!\n");
@@ -75,7 +75,7 @@ int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_pe_entry *pe_entry)
 	}
 
 	if(pe_entry->msg_hdr.flags & FI_REMOTE_CQ_DATA){
-		rx_entry->data = pe_entry->rx.data;
+		rx_entry->data = pe_entry->data;
 	}
 
 	if(pe_entry->msg_hdr.flags & FI_REMOTE_COMPLETE){
@@ -116,10 +116,10 @@ int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_pe_entry *pe_entry)
 	/* post completion */
 	if(pe_entry->ep->recv_cq_event_flag){
 		if(pe_entry->msg_hdr.flags & FI_EVENT){
-			return sock_cq_report_rx_completion(pe_entry->cq, pe_entry);
+			return sock_cq_report_completion(pe_entry->cq, pe_entry);
 		}
 	}else{
-		return sock_cq_report_rx_completion(pe_entry->cq, pe_entry);
+		return sock_cq_report_completion(pe_entry->cq, pe_entry);
 	}
 	return 0;
 }
@@ -294,7 +294,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 	/* user data */
 	rem = msg_hdr->msg_len - pe_entry->done_len;
 	ret = send(conn_entry->fd, 
-		   (char*)&pe_entry->tx.data + sizeof(uint64_t) - rem, rem, 0);
+		   (char*)&pe_entry->data + sizeof(uint64_t) - rem, rem, 0);
 	if(ret < 0){
 		if(ret == EWOULDBLOCK || ret == EAGAIN)
 			return 0;
@@ -427,7 +427,7 @@ static int sock_pe_progress_table(struct sock_pe *pe,
 			if(pe_entry->msg_hdr.msg_len == pe_entry->done_len){
 				sock_debug(SOCK_INFO, "PE: [%d] TX done\n", 
 					   PE_INDEX(pe, pe_entry));
-				ret = sock_cq_report_tx_completion(pe_entry->cq, pe_entry);
+				ret = sock_cq_report_completion(pe_entry->cq, pe_entry);
 				if(ret < 0)
 					return ret;
 				sock_pe_release_entry(pe, pe_entry);
@@ -463,10 +463,10 @@ static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_cq *cq,
 
 	/* fill in PE rx entry */
 	pe_entry->rx.rx_op = rx_entry->rx_op;
-	pe_entry->rx.flags = rx_entry->flags;
-	pe_entry->rx.context = rx_entry->context;
-	pe_entry->rx.src_addr = rx_entry->addr;
-	pe_entry->rx.tag = rx_entry->tag;
+	pe_entry->flags = rx_entry->flags;
+	pe_entry->context = rx_entry->context;
+	pe_entry->addr = rx_entry->addr;
+	pe_entry->tag = rx_entry->tag;
 
 	/* copy iov(s)*/
 	for(i = 0; i<rx_entry->rx_op.dest_iov_len; i++){
@@ -505,21 +505,21 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_cq *cq,
 	rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_op, 
 		 sizeof(struct sock_tx_op));
 
-	rbfdread(&tx_ctx->rbfd, &pe_entry->tx.flags, sizeof(uint64_t));
-	rbfdread(&tx_ctx->rbfd, &pe_entry->tx.context, sizeof(uint64_t));
-	rbfdread(&tx_ctx->rbfd, &pe_entry->tx.dest_addr, sizeof(uint64_t));
+	rbfdread(&tx_ctx->rbfd, &pe_entry->flags, sizeof(uint64_t));
+	rbfdread(&tx_ctx->rbfd, &pe_entry->context, sizeof(uint64_t));
+	rbfdread(&tx_ctx->rbfd, &pe_entry->addr, sizeof(uint64_t));
 
-	if(pe_entry->tx.flags & FI_REMOTE_CQ_DATA){
-		rbfdread(&tx_ctx->rbfd, &pe_entry->tx.data, sizeof(uint64_t));
+	if(pe_entry->flags & FI_REMOTE_CQ_DATA){
+		rbfdread(&tx_ctx->rbfd, &pe_entry->data, sizeof(uint64_t));
 	}
 
-	if(pe_entry->tx.flags & FI_INJECT){
+	if(pe_entry->flags & FI_INJECT){
 		is_inject = 1;
 		payload_len = pe_entry->tx.tx_op.src_iov_len;
 	}
 
 	if(pe_entry->tx.tx_op.op == SOCK_OP_TSEND){
-		rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tag, sizeof(uint64_t));
+		rbfdread(&tx_ctx->rbfd, &pe_entry->tag, sizeof(uint64_t));
 	}
 
 	if(!is_inject){
@@ -544,7 +544,7 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_cq *cq,
 	msg_hdr->op_type = htons(pe_entry->tx.tx_op.op);
 	msg_hdr->src_iov_len = htons(pe_entry->tx.tx_op.src_iov_len);
 	msg_hdr->rx_id = htons(SOCK_GET_RX_ID(pe_entry->tx.dest_addr));
-	msg_hdr->flags = htonl(pe_entry->tx.flags);
+	msg_hdr->flags = htonl(pe_entry->flags);
 	pe_entry->tx.header_sent = 0;
 
 	/* calculate & set message len */

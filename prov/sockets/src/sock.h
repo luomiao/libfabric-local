@@ -198,12 +198,6 @@ struct sock_rx_ctx {
 struct sock_tx_pe_entry{
 	struct sock_tx_op tx_op;
 	
-	uint64_t flags;
-	uint64_t context;
-	uint64_t dest_addr;
-	uint64_t data;
-	uint64_t tag;
-	
 	uint8_t header_sent;
 	uint8_t reserved[7];
 
@@ -219,11 +213,6 @@ struct sock_tx_pe_entry{
 struct sock_rx_pe_entry{
 	struct sock_tx_op rx_op;
 	
-	uint64_t flags;
-	uint64_t context;
-	uint64_t src_addr;
-	uint64_t data;
-	uint64_t tag;
 	void *raw_data;
 
 	union sock_tx_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
@@ -290,9 +279,14 @@ struct sock_pe_entry{
 
 	struct sock_msg_hdr msg_hdr;
 
+	uint64_t flags;
+	uint64_t context;
+	uint64_t addr;
+	uint64_t data;
+	uint64_t tag;
+
 	uint8_t type;
 	uint8_t reserved[7];
-	uint64_t addr;
 
 	uint64_t done_len;
 	struct sock_ep *ep;
@@ -554,11 +548,9 @@ fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr);
 
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		 struct fid_cq **cq, void *context);
-int sock_cq_report_tx_completion(struct sock_cq *cq, 
-				 struct sock_pe_entry *cmp_entry);
-int sock_cq_report_rx_completion(struct sock_cq *cq, 
-				 struct sock_pe_entry *cmp_entry);
-int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
+int sock_cq_report_completion(struct sock_cq *cq, 
+			      struct sock_pe_entry *pe_entry);
+int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *pe_entry,
 			 size_t olen, int err, int prov_errno, void *err_data);
 struct sock_rx_entry *sock_cq_get_rx_buffer(struct sock_cq *cq, uint64_t addr, 
 					    uint16_t rx_id, int ignore_tag, uint64_t tag);

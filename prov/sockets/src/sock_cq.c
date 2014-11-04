@@ -354,10 +354,10 @@ int _sock_cq_report_error(struct sock_cq *sock_cq,
 	return enqueue_item(sock_cq->error_list, error);
 }
 
-int sock_cq_report_tx_completion(struct sock_cq *cq, 
-				 struct sock_pe_entry *tx_entry)
+int sock_cq_report_completion(struct sock_cq *cq, 
+				 struct sock_pe_entry *pe_entry)
 {
-	size_t i, msg_len;
+	size_t i, msg_len, iov_len;
 	size_t cq_entry_size = sock_cq_entry_size(cq);
 	if(rbfdavail(&cq->cq_rbfd) < cq_entry_size)
 		return -FI_ENOSPC;
@@ -366,7 +366,7 @@ int sock_cq_report_tx_completion(struct sock_cq *cq,
 	case FI_CQ_FORMAT_CONTEXT:
 	{
 		struct fi_cq_entry cq_entry;
-		cq_entry.op_context = (void*)tx_entry->tx.context;
+		cq_entry.op_context = (void*)pe_entry->context;
 
 		rbfdwrite(&cq->cq_rbfd, (void*)&cq_entry, cq_entry_size);
 		break;
@@ -375,12 +375,15 @@ int sock_cq_report_tx_completion(struct sock_cq *cq,
 	case FI_CQ_FORMAT_MSG:
 	{
 		struct fi_cq_msg_entry cq_entry;
-		cq_entry.op_context = (void*)tx_entry->tx.context;
-		cq_entry.flags = tx_entry->tx.flags;
+		cq_entry.op_context = (void*)pe_entry->context;
+		cq_entry.flags = pe_entry->flags;
 
 		msg_len = 0;
-		for(i=0;i<tx_entry->tx.tx_op.src_iov_len; i++)
-			msg_len += tx_entry->tx.src_iov[i].iov.len;
+		iov_len = (pe_entry->type == SOCK_RX) ? 
+			pe_entry->rx.rx_op.src_iov_len :
+			pe_entry->tx.tx_op.src_iov_len;
+		for(i=0;i<iov_len; i++)
+			msg_len += pe_entry->rx.rx_iov[i].iov.len;
 		cq_entry.len = msg_len;
 
 		rbfdwrite(&cq->cq_rbfd, (void*)&cq_entry, cq_entry_size);
@@ -390,16 +393,19 @@ int sock_cq_report_tx_completion(struct sock_cq *cq,
 	case FI_CQ_FORMAT_DATA:
 	{
 		struct fi_cq_data_entry cq_entry;
-		cq_entry.op_context = (void*)tx_entry->tx.context;
-		cq_entry.flags = tx_entry->tx.flags;
+		cq_entry.op_context = (void*)pe_entry->context;
+		cq_entry.flags = pe_entry->flags;
 
 		msg_len = 0;
-		for(i=0;i<tx_entry->tx.tx_op.src_iov_len; i++)
-			msg_len += tx_entry->tx.src_iov[i].iov.len;
+		iov_len = (pe_entry->type == SOCK_RX) ? 
+			pe_entry->rx.rx_op.src_iov_len :
+			pe_entry->tx.tx_op.src_iov_len;
+		for(i=0;i<iov_len; i++)
+			msg_len += pe_entry->rx.rx_iov[i].iov.len;
 		cq_entry.len = msg_len;
 
-		cq_entry.buf = (void*)tx_entry->tx.src_iov[0].iov.addr;
-		cq_entry.data = tx_entry->tx.data;
+		cq_entry.buf = (void*)pe_entry->rx.rx_iov[0].iov.addr;
+		cq_entry.data = pe_entry->data;
 
 		rbfdwrite(&cq->cq_rbfd, (void*)&cq_entry, cq_entry_size);
 		break;
@@ -408,96 +414,20 @@ int sock_cq_report_tx_completion(struct sock_cq *cq,
 	case FI_CQ_FORMAT_TAGGED:
 	{
 		struct fi_cq_tagged_entry cq_entry;
-		cq_entry.op_context = (void*)tx_entry->tx.context;
-		cq_entry.flags = tx_entry->tx.flags;
+		cq_entry.op_context = (void*)pe_entry->context;
+		cq_entry.flags = pe_entry->flags;
 
 		msg_len = 0;
-		for(i=0;i<tx_entry->tx.tx_op.src_iov_len; i++)
-			msg_len += tx_entry->tx.src_iov[i].iov.len;
+		iov_len = (pe_entry->type == SOCK_RX) ? 
+			pe_entry->rx.rx_op.src_iov_len :
+			pe_entry->tx.tx_op.src_iov_len;
+		for(i=0;i<iov_len; i++)
+			msg_len += pe_entry->rx.rx_iov[i].iov.len;
 		cq_entry.len = msg_len;
 
-		cq_entry.buf = (void*)tx_entry->tx.src_iov[0].iov.addr;
-		cq_entry.data = tx_entry->tx.data;
-		cq_entry.tag = tx_entry->tx.tag;
-
-		rbfdwrite(&cq->cq_rbfd, (void*)&cq_entry, cq_entry_size);
-		break;
-	}
-
-	default:
-		sock_debug(SOCK_ERROR, "CQ: Invalid format\n");
-		return -FI_EINVAL;
-	}
-
-	rbfdcommit(&cq->cq_rbfd);
-	return 0;
-}
-
-int sock_cq_report_rx_completion(struct sock_cq *cq, 
-				 struct sock_pe_entry *rx_entry)
-{
-	size_t i, msg_len;
-	size_t cq_entry_size = sock_cq_entry_size(cq);
-	if(rbfdavail(&cq->cq_rbfd) < cq_entry_size)
-		return -FI_ENOSPC;
-
-	switch (cq->attr.format){
-	case FI_CQ_FORMAT_CONTEXT:
-	{
-		struct fi_cq_entry cq_entry;
-		cq_entry.op_context = (void*)rx_entry->rx.context;
-
-		rbfdwrite(&cq->cq_rbfd, (void*)&cq_entry, cq_entry_size);
-		break;
-	}
-		
-	case FI_CQ_FORMAT_MSG:
-	{
-		struct fi_cq_msg_entry cq_entry;
-		cq_entry.op_context = (void*)rx_entry->rx.context;
-		cq_entry.flags = rx_entry->rx.flags;
-
-		msg_len = 0;
-		for(i=0;i<rx_entry->rx.rx_op.src_iov_len; i++)
-			msg_len += rx_entry->rx.rx_iov[i].iov.len;
-		cq_entry.len = msg_len;
-
-		rbfdwrite(&cq->cq_rbfd, (void*)&cq_entry, cq_entry_size);
-		break;
-	}
-
-	case FI_CQ_FORMAT_DATA:
-	{
-		struct fi_cq_data_entry cq_entry;
-		cq_entry.op_context = (void*)rx_entry->rx.context;
-		cq_entry.flags = rx_entry->rx.flags;
-
-		msg_len = 0;
-		for(i=0;i<rx_entry->rx.rx_op.src_iov_len; i++)
-			msg_len += rx_entry->rx.rx_iov[i].iov.len;
-		cq_entry.len = msg_len;
-
-		cq_entry.buf = (void*)rx_entry->rx.rx_iov[0].iov.addr;
-		cq_entry.data = rx_entry->rx.data;
-
-		rbfdwrite(&cq->cq_rbfd, (void*)&cq_entry, cq_entry_size);
-		break;
-	}
-
-	case FI_CQ_FORMAT_TAGGED:
-	{
-		struct fi_cq_tagged_entry cq_entry;
-		cq_entry.op_context = (void*)rx_entry->rx.context;
-		cq_entry.flags = rx_entry->rx.flags;
-
-		msg_len = 0;
-		for(i=0;i<rx_entry->rx.rx_op.src_iov_len; i++)
-			msg_len += rx_entry->rx.rx_iov[i].iov.len;
-		cq_entry.len = msg_len;
-
-		cq_entry.buf = (void*)rx_entry->rx.rx_iov[0].iov.addr;
-		cq_entry.data = rx_entry->rx.data;
-		cq_entry.tag = rx_entry->rx.tag;
+		cq_entry.buf = (void*)pe_entry->rx.rx_iov[0].iov.addr;
+		cq_entry.data = pe_entry->data;
+		cq_entry.tag = pe_entry->tag;
 
 		rbfdwrite(&cq->cq_rbfd, (void*)&cq_entry, cq_entry_size);
 		break;
@@ -528,19 +458,19 @@ int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
 
 	switch(entry->type){
 	case SOCK_RX:
-		err_entry.flags = entry->rx.flags;
+		err_entry.flags = entry->flags;
 		err_entry.buf = (void*)entry->rx.rx_iov[0].iov.addr;
-		err_entry.data = entry->rx.data;
-		err_entry.tag = entry->rx.tag;
-		err_entry.op_context = (void*)entry->rx.context;
+		err_entry.data = entry->data;
+		err_entry.tag = entry->tag;
+		err_entry.op_context = (void*)entry->context;
 		break;
 
 	case SOCK_TX:
-		err_entry.flags = entry->tx.flags;
+		err_entry.flags = entry->flags;
 		err_entry.buf = (void*)entry->tx.src_iov[0].iov.addr;
-		err_entry.data = entry->tx.data;
-		err_entry.tag = entry->tx.tag;
-		err_entry.op_context = (void*)entry->tx.context;
+		err_entry.data = entry->data;
+		err_entry.tag = entry->tag;
+		err_entry.op_context = (void*)entry->context;
 		break;
 	default:
 		sock_debug(SOCK_ERROR, "CQ: Invalid error type\n");
