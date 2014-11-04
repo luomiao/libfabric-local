@@ -366,6 +366,47 @@ int sock_cq_report_rx_completion(struct sock_cq *cq,
 	return 0;
 }
 
+int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
+			 size_t olen, int err, int prov_errno, void *err_data)
+{
+	struct fi_cq_err_entry err_entry;
+
+	if(rbavail(&cq->cqerr_rb) < sizeof(struct fi_cq_err_entry))
+		return -1;
+
+	err_entry.err = err;
+	err_entry.olen = olen;
+	err_entry.err_data = err_data;
+	err_entry.len = entry->done_len;
+	err_entry.prov_errno = prov_errno;
+
+	switch(entry->type){
+	case SOCK_RX:
+		err_entry.flags = entry->rx.flags;
+		err_entry.buf = (void*)entry->rx.rx_iov[0].iov.addr;
+		err_entry.data = entry->rx.data;
+		err_entry.tag = entry->rx.tag;
+		err_entry.op_context = (void*)entry->rx.context;
+		break;
+
+	case SOCK_TX:
+		err_entry.flags = entry->tx.flags;
+		err_entry.buf = (void*)entry->tx.src_iov[0].iov.addr;
+		err_entry.data = entry->tx.data;
+		err_entry.tag = entry->tx.tag;
+		err_entry.op_context = (void*)entry->tx.context;
+		break;
+	default:
+		sock_debug(SOCK_ERROR, "CQ: Invalid error type\n");
+		return -FI_EINVAL;
+	}
+
+	rbwrite(&cq->cqerr_rb, &err_entry, sizeof(struct fi_cq_err_entry));
+	rbcommit(&cq->cqerr_rb);
+	return 0;
+}
+
+
 struct sock_rx_entry *sock_cq_get_rx_buffer(struct sock_cq *cq, uint64_t addr, 
 					    uint16_t rx_id, int ignore_tag, uint64_t tag)
 {

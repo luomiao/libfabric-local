@@ -307,6 +307,7 @@ struct sock_cq {
 	atomic_t ref;
 	struct fi_cq_attr attr;
 
+	/* To remove */
 	int fd[2];
 	list_t *ep_list;
 	list_t *completed_list;
@@ -553,14 +554,14 @@ fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr);
 
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		 struct fid_cq **cq, void *context);
-int _sock_cq_report_error(struct sock_cq *sock_cq, struct fi_cq_err_entry *error);
-struct sock_rx_entry *sock_cq_get_rx_buffer(struct sock_cq *cq, uint64_t addr, 
-					    uint16_t rx_id, int ignore_tag, uint64_t tag);
 int sock_cq_report_tx_completion(struct sock_cq *cq, 
 				 struct sock_pe_entry *cmp_entry);
 int sock_cq_report_rx_completion(struct sock_cq *cq, 
 				 struct sock_pe_entry *cmp_entry);
-
+int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
+			 size_t olen, int err, int prov_errno, void *err_data);
+struct sock_rx_entry *sock_cq_get_rx_buffer(struct sock_cq *cq, uint64_t addr, 
+					    uint16_t rx_id, int ignore_tag, uint64_t tag);
 
 int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 		struct fid_eq **eq, void *context);
