@@ -297,9 +297,6 @@ struct sock_pe_entry{
 
 typedef int (*sock_ep_progress_fn) (struct sock_ep *ep, struct sock_cq *cq);
 
-
-
-
 struct sock_ep {
 	struct fid_ep ep;
 	int sock_fd;
@@ -349,6 +346,7 @@ struct sock_ep {
 
 	int connected;
 	int enabled;
+	fi_addr_t dest_conn_addr; /* to store the conn. addr */
 
 	/* to remove */
 	list_t *send_list;
@@ -356,7 +354,6 @@ struct sock_ep {
 	
 	struct sockaddr src_addr;
 	struct sockaddr dest_addr;
-	fi_addr_t dest_conn_addr;
 
 	int is_alias;
 	int port_num;
@@ -370,22 +367,21 @@ struct sock_cq {
 	atomic_t ref;
 	struct fi_cq_attr attr;
 
-	/* To remove */
-	int fd[2];
-	list_t *ep_list;
-	list_t *completed_list;
-	list_t *error_list;
-
 	struct ringbuf addr_rb;
 	struct ringbuffd cq_rbfd;
 	struct ringbuf cqerr_rb;
 	fastlock_t cq_lock, cqerr_lock;
 
-	struct sock_tx_ctx tx_ctx_head;
+	struct sock_ep ep_list_head;
 	struct sock_rx_ctx rx_ctx_head;
+	struct sock_tx_ctx tx_ctx_head;
 	struct sock_pe_entry pe_entry_head;
 
-	struct sock_ep ep_list_head;
+	/* To remove */
+	int fd[2];
+	list_t *ep_list;
+	list_t *completed_list;
+	list_t *error_list;
 };
 
 struct sock_mr {
@@ -503,8 +499,12 @@ struct sock_eq{
 	struct fid_eq eq;
 	struct fi_eq_attr attr;
 	struct sock_fabric *sock_fab;
-	int fd[2];
 
+	struct ringbuffd eq_rbfd;
+	fastlock_t eq_lock;
+
+	/* remove */
+	int fd[2];
 	list_t *completed_list;
 	list_t *error_list;
 };
