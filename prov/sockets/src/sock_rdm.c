@@ -54,57 +54,7 @@
 #include "sock.h"
 #include "sock_util.h"
 
-int _sock_verify_info(struct fi_info *hints)
-{
-	int ret;
-	if(!hints)
-		return 0;
-
-	switch (hints->ep_type) {
-	case FI_EP_UNSPEC:
-	case FI_EP_MSG:
-	case FI_EP_DGRAM:
-	case FI_EP_RDM:
-		break;
-	default:
-		return -FI_ENODATA;
-	}
-	
-	if(hints->caps){
-		if((SOCK_EP_CAP | hints->caps) != SOCK_EP_CAP)
-			return -FI_ENODATA;
-	}
-
-	switch (hints->addr_format){
-	case FI_ADDR_UNSPEC:
-	case FI_SOCKADDR:
-		break;
-	default:
-		return -FI_ENODATA;
-	}
-
-	if(hints->ep_attr){
-		ret = _sock_verify_ep_attr(hints->ep_attr);
-		if(ret)
-			return ret;
-	}
-
-	if(hints->domain_attr){
-		ret = _sock_verify_domain_attr(hints->domain_attr);
-		if(ret)
-			return ret;
-	}
-
-	if(hints->fabric_attr){
-		ret = _sock_verify_fabric_attr(hints->fabric_attr);
-		if(ret)
-			return ret;
-	}
-
-	return 0;
-}
-
-const struct fi_ep_attr _sock_ep_attr = {
+const struct fi_ep_attr _sock_rdm_ep_attr = {
 	.protocol = FI_PROTO_SOCK_RDS,
 	.max_msg_size = SOCK_EP_MAX_MSG_SZ,
 	.inject_size = SOCK_EP_MAX_INJECT_SZ,
@@ -114,8 +64,8 @@ const struct fi_ep_attr _sock_ep_attr = {
 	.max_order_waw_size = SOCK_EP_MAX_ORDER_WAW_SZ,
 	.mem_tag_format = SOCK_EP_MEM_TAG_FMT,
 	.msg_order = SOCK_EP_MSG_ORDER,
-	.tx_ctx_cnt = SOCK_EP_TX_CTX_CNT,
-	.rx_ctx_cnt = SOCK_EP_RX_CTX_CNT,
+	.tx_ctx_cnt = SOCK_EP_MAX_TX_CNT,
+	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
 };
 
 const struct fi_domain_attr _sock_domain_attr = {
@@ -125,13 +75,13 @@ const struct fi_domain_attr _sock_domain_attr = {
 	.data_progress = FI_PROGRESS_AUTO,
 	.mr_key_size = 0,
 	.cq_data_size = 0,
-	.ep_cnt = 128,
-	.tx_ctx_cnt = 128,
-	.rx_ctx_cnt = 128,
-	.max_ep_tx_ctx = 1,
-	.max_ep_rx_ctx = 1,
-	.op_size = 0,
-	.iov_size = 8,
+	.ep_cnt = SOCK_EP_MAX_EP_CNT,
+	.tx_ctx_cnt = SOCK_EP_MAX_TX_CNT,
+	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
+	.max_ep_tx_ctx = SOCK_EP_MAX_TX_CNT,
+	.max_ep_rx_ctx = SOCK_EP_MAX_RX_CNT,
+	.op_size = -1, /* TODO */
+	.iov_size = -1, /* TODO */
 };
 
 const struct fi_fabric_attr _sock_fabric_attr = {
@@ -142,17 +92,17 @@ const struct fi_fabric_attr _sock_fabric_attr = {
 };
 
 
-const struct fi_tx_ctx_attr _sock_tx_attr = {
+const struct fi_tx_ctx_attr _sock_rdm_tx_attr = {
 	.caps = SOCK_EP_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
 	.inject_size = SOCK_EP_MAX_INJECT_SZ,
-	.size = SOCK_EP_MAX_MSG_SZ,
+	.size = SOCK_EP_MAX_TXRX_SZ,
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
 	.op_alignment = 0,
 };
 
-const struct fi_rx_ctx_attr _sock_rx_attr = {
+const struct fi_rx_ctx_attr _sock_rdm_rx_attr = {
 	.caps = SOCK_EP_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
@@ -186,21 +136,14 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 		_info->caps = SOCK_EP_CAP;
 	}
 
-	memcpy(_info->tx_attr, &_sock_tx_attr, 
-	       sizeof(struct fi_tx_ctx_attr));
+	*(_info->tx_attr) = _sock_rdm_tx_attr;
+	*(_info->rx_attr) = _sock_rdm_rx_attr;
+	*(_info->ep_attr) = _sock_rdm_ep_attr;
 
-	memcpy(_info->rx_attr, &_sock_rx_attr, 
-	       sizeof(struct fi_rx_ctx_attr));
-
-	memcpy(_info->ep_attr, &_sock_ep_attr, 
-	       sizeof(struct fi_ep_attr));
-
-	memcpy(_info->domain_attr, &_sock_domain_attr, 
-	       sizeof(struct fi_domain_attr));
+	*(_info->domain_attr) = _sock_domain_attr;
 	_info->domain_attr->name = strdup(sock_dom_name);
 
-	memcpy(_info->fabric_attr, &_sock_fabric_attr, 
-	       sizeof(struct fi_fabric_attr));
+	*(_info->fabric_attr) = _sock_fabric_attr;
 	_info->fabric_attr->name = strdup(sock_fab_name);
 	_info->fabric_attr->prov_name = strdup(sock_fab_name);
 
@@ -275,12 +218,12 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			socklen_t len;
 			int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
 			if (0 != connect(udp_sock, result->ai_addr, result->ai_addrlen)){
-				sock_debug(SOCK_ERROR, "[SOCK_RDM] %s:%d: Failed to get dest_addr\n", __func__, __LINE__);
+				sock_debug(SOCK_ERROR, "Failed to get dest_addr\n");
 				ret = FI_ENODATA;
 				goto err;
 			}
 			if(0!= getsockname(udp_sock, (struct sockaddr *) dest_addr, &len)){
-				sock_debug(SOCK_ERROR, "[SOCK_RDM] %s:%d: Failed to get dest_addr\n", __func__, __LINE__);
+				sock_debug(SOCK_ERROR, "Failed to get dest_addr\n");
 				close(udp_sock);
 				ret = FI_ENODATA;
 				goto err;
@@ -316,17 +259,9 @@ int sock_rdm_ep_fi_close(struct fid *fid)
 	if(!sock_ep)
 		return -FI_EINVAL;
 
-	if(sock_ep->alias)
-		return -FI_EINVAL;
-
-	if(!sock_ep->is_alias)
-		close(sock_ep->sock_fd);
-
 	free_list(sock_ep->send_list);
 	free_list(sock_ep->recv_list);
 	
-	if(sock_ep->prev)
-		sock_ep->prev->next = sock_ep->next;
 	
 	free(sock_ep);
 	return 0;
@@ -613,118 +548,184 @@ struct fi_ops_cm sock_rdm_ep_cm_ops = {
 	.leave = sock_rdm_ep_cm_leave,
 };
 
-ssize_t sock_rdm_ep_msg_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
-			     void *context)
+ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
+				uint64_t flags)
 {
-	return -FI_ENOSYS;
-}
+	int i;
+	struct sock_ep *sock_ep;
+	struct sock_rx_entry *rx_entry;
 
-ssize_t sock_rdm_ep_msg_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
-			      size_t count, void *context)
-{
-	return -FI_ENOSYS;
+	if(msg->iov_count > SOCK_EP_MAX_IOV_LIMIT)
+		return -FI_EINVAL;
+	
+	sock_ep = container_of(ep, struct sock_ep, ep);
+	if(!sock_ep || !sock_ep->enabled || !sock_ep->rx_ctx)
+		return -FI_EINVAL;
+	
+	rx_entry = calloc(1, sizeof(struct sock_rx_entry));
+	if(!rx_entry)
+		return -FI_ENOMEM;
+
+	dlist_init(&rx_entry->list);
+
+	rx_entry->rx_op.op = SOCK_OP_RECV;
+	rx_entry->rx_op.dest_iov_len = msg->iov_count;
+
+	rx_entry->flags = flags;
+	rx_entry->context = (uint64_t)msg->context;
+	rx_entry->addr = msg->addr;
+	rx_entry->data = msg->data;
+	rx_entry->valid_tag = 0;
+
+	for(i=0; i< msg->iov_count; i++){
+		rx_entry->iov[i].iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
+		rx_entry->iov[i].iov.len = (uint64_t)msg->msg_iov[i].iov_len;
+	}
+
+	dlist_insert_tail(&rx_entry->list, &sock_ep->rx_ctx->rx_entry_head.list);
+	return 0;
 }
 
 ssize_t sock_rdm_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
 				 fi_addr_t src_addr, void *context)
 {
-	return -FI_ENOSYS;
+	struct fi_msg msg;
+	struct iovec msg_iov;
+
+	msg_iov.iov_base = buf;
+	msg_iov.iov_len = len;
+
+	msg.msg_iov = &msg_iov;
+	msg.desc = desc;
+	msg.iov_count = 1;
+	msg.addr = src_addr;
+	msg.context = context;
+
+	return sock_rdm_ep_msg_recvmsg(ep, &msg, 0);
 }
 
-ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
-				uint64_t flags)
-{
-/*
-	struct sock_ep *sock_ep;
-	struct sock_comm_item *comm_item;
-	
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	if(!sock_ep)
-		return -FI_EINVAL;
-	
-	if(!sock_ep->enabled)
-		return -FI_EINVAL;
-
-	comm_item = (struct sock_comm_item*)calloc(1, sizeof(struct sock_comm_item));
-	if(!comm_item)
-		return -FI_ENOMEM;
-	
-	comm_item->type = SOCK_SENDMSG;
-	comm_item->context = msg->context;
-	comm_item->done_len = 0;
-	comm_item->flags = flags;
-	memcpy(&comm_item->item.msg, msg, sizeof(struct fi_msg));
-
-	if(0 != enqueue_item(sock_ep->recv_list, comm_item)){
-		free(comm_item);
-		return -FI_ENOMEM;
-	}
-*/		
-	return 0;
-}
-
-ssize_t sock_rdm_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+ssize_t sock_rdm_ep_msg_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
 			     void *context)
 {
-	return -FI_ENOSYS;
+	return sock_rdm_ep_msg_recvfrom(ep, buf, len, desc, 
+					FI_ADDR_UNSPEC, context);
 }
 
-ssize_t sock_rdm_ep_msg_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+ssize_t sock_rdm_ep_msg_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
 			      size_t count, void *context)
 {
-	return -FI_ENOSYS;
-}
+	struct fi_msg msg;
 
-ssize_t sock_rdm_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
-			       void *desc, fi_addr_t dest_addr, void *context)
-{
-	return -FI_ENOSYS;
+	msg.msg_iov = iov;
+	msg.desc = desc;
+	msg.iov_count = count;
+	msg.addr = FI_ADDR_UNSPEC;
+	msg.context = context;
+
+	return sock_rdm_ep_msg_recvmsg(ep, &msg, 0);
 }
 
 ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
-	int i;
-	ssize_t total_len = 0;
+	int ret, i;
+	uint64_t tmp=0, dest_addr;
 	struct sock_ep *sock_ep;
-	struct sock_comm_item *send_item;
+	struct sock_tx_op tx_op;
+	union sock_tx_iov tx_iov;
 
+	if(msg->iov_count > SOCK_EP_MAX_IOV_LIMIT)
+		return -FI_EINVAL;
+	
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	if(!sock_ep)
+	if(!sock_ep || !sock_ep->tx_ctx || !sock_ep->enabled)
 		return -FI_EINVAL;
 
-	send_item = calloc(1, sizeof(struct sock_comm_item));
-	if(!send_item)
-		return -FI_ENOMEM;
-	
-	memcpy(&send_item->item.msg, msg, sizeof(struct fi_msg));
+	sock_tx_ctx_start(sock_ep->tx_ctx);
 
-/*
-	send_item->type = SOCK_SENDMSG;
-*/
-	send_item->context = msg->context;
-	if(msg->addr){
-		//send_item->addr = malloc(sizeof(struct sockaddr));
-		if(NULL == send_item){
-			free(send_item);
-			return -FI_ENOMEM;
-		}
-		//memcpy(send_item->addr, msg->addr, sizeof(struct sockaddr));
-	}
-	
-	for(i=0; i< msg->iov_count; i++)
-		total_len += msg->msg_iov[i].iov_len;
-	
-	send_item->total_len = total_len;
-	//send_item->completed = 0;
-	send_item->done_len = 0;
+	memset(&tx_op, 0, sizeof(struct sock_tx_op));
+	tx_op.op = SOCK_OP_SEND;
+	tx_op.src_iov_len = msg->iov_count;
 
-	if(0 != enqueue_item(sock_ep->send_list, send_item)){
-		//free(send_item->addr);
-		free(send_item);
-		return -FI_ENOMEM;	
+	/* tx_op */
+	if((ret = sock_tx_ctx_write(sock_ep->tx_ctx, &tx_op, sizeof(struct sock_tx_op))))
+		goto err1;
+
+	/* flags */
+	if((ret = sock_tx_ctx_write(sock_ep->tx_ctx, &flags, sizeof(uint64_t))))
+		goto err1;
+
+	/* context */
+	if((ret = sock_tx_ctx_write(sock_ep->tx_ctx, msg->context ? msg->context: &tmp, 
+				    sizeof(uint64_t))))
+		goto err1;
+
+	/* dest_addr */
+	dest_addr = (msg->addr == FI_ADDR_UNSPEC) ? 
+		sock_ep->dest_conn_addr: msg->addr;
+	if((ret = sock_tx_ctx_write(sock_ep->tx_ctx, &msg->addr, sizeof(uint64_t))))
+		goto err1;
+
+	/* data */
+	if(flags & FI_REMOTE_CQ_DATA){
+		if((ret = sock_tx_ctx_write(sock_ep->tx_ctx, &msg->data, sizeof(uint64_t))))
+			goto err1;
 	}
+
+	/* tx iov */
+	for(i=0; i< msg->iov_count; i++){
+		tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
+		tx_iov.iov.len = msg->msg_iov[i].iov_len;
+
+		if((ret = sock_tx_ctx_write(sock_ep->tx_ctx, 
+					    &tx_iov, sizeof(union sock_tx_iov))))
+			goto err1;
+	}
+	sock_tx_ctx_commit(sock_ep->tx_ctx);
 	return 0;
+
+err1:
+	sock_tx_ctx_abort(sock_ep->tx_ctx);
+	return ret;
+}
+
+ssize_t sock_rdm_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
+			       void *desc, fi_addr_t dest_addr, void *context)
+{
+	struct fi_msg msg;
+	struct iovec msg_iov;
+
+	msg_iov.iov_base = (void*)buf;
+	msg_iov.iov_len = len;
+
+	msg.msg_iov = &msg_iov;
+	msg.desc = desc;
+	msg.iov_count = 1;
+	msg.addr = dest_addr;
+	msg.context = context;
+
+	return sock_rdm_ep_msg_sendmsg(ep, &msg, 0);
+}
+
+ssize_t sock_rdm_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+			     void *context)
+{
+	return sock_rdm_ep_msg_sendto(ep, buf, len, desc, 
+				      FI_ADDR_UNSPEC, context);
+}
+
+ssize_t sock_rdm_ep_msg_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+			      size_t count, void *context)
+{
+	struct fi_msg msg;
+
+	msg.msg_iov = iov;
+	msg.desc = desc;
+	msg.iov_count = count;
+	msg.addr = FI_ADDR_UNSPEC;
+	msg.context = context;
+
+	return sock_rdm_ep_msg_sendmsg(ep, &msg, 0);
 }
 
 ssize_t sock_rdm_ep_msg_inject(struct fid_ep *ep, const void *buf, size_t len)
@@ -738,16 +739,30 @@ ssize_t sock_rdm_ep_msg_injectto(struct fid_ep *ep, const void *buf, size_t len,
 	return -FI_ENOSYS;
 }
 
-ssize_t sock_rdm_ep_msg_senddata(struct fid_ep *ep, const void *buf, size_t len, 
-				 void *desc, uint64_t data, void *context)
-{
-	return -FI_ENOSYS;
-}
-
 ssize_t sock_rdm_ep_msg_senddatato(struct fid_ep *ep, const void *buf, size_t len, 
 				   void *desc, uint64_t data, fi_addr_t dest_addr, void *context)
 {
-	return -FI_ENOSYS;
+	struct fi_msg msg;
+	struct iovec msg_iov;
+
+	msg_iov.iov_base = (void*)buf;
+	msg_iov.iov_len = len;
+	
+	msg.msg_iov = &msg_iov;
+	msg.desc = desc;
+	msg.iov_count = 1;
+	msg.addr = dest_addr;
+	msg.context = context;
+	msg.data = data;
+
+	return sock_rdm_ep_msg_sendmsg(ep, &msg, FI_REMOTE_CQ_DATA);
+}
+
+ssize_t sock_rdm_ep_msg_senddata(struct fid_ep *ep, const void *buf, size_t len, 
+				 void *desc, uint64_t data, void *context)
+{
+	return sock_rdm_ep_msg_senddatato(ep, buf, len, desc, data, 
+					  FI_ADDR_UNSPEC, context);
 }
 
 struct fi_ops_msg sock_rdm_ep_msg_ops = {
@@ -765,11 +780,6 @@ struct fi_ops_msg sock_rdm_ep_msg_ops = {
 	.senddata = sock_rdm_ep_msg_senddata,
 	.senddatato = sock_rdm_ep_msg_senddatato,
 };
-
-static inline int _sock_ep_rdm_progress(struct sock_ep *sock_ep, struct sock_cq *sock_cq)
-{
-	return -FI_ENOSYS;
-}
 
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context)
@@ -793,7 +803,8 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep = (struct sock_ep*)calloc(1, sizeof(*sock_ep));
 	if(!sock_ep)
 		return -FI_ENOMEM;
-	
+
+	atomic_init(&sock_ep->ref);
 	sock_ep->ep.fid.fclass = FI_CLASS_EP;
 	sock_ep->ep.fid.context = context;	
 	sock_ep->ep.fid.ops = &sock_rdm_ep_fi_ops;
@@ -801,22 +812,20 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep->ep.ops = &sock_rdm_ep_ops;
 	sock_ep->ep.cm = &sock_rdm_ep_cm_ops;
 	sock_ep->ep.msg = &sock_rdm_ep_msg_ops;
-	
+
 	/* TODO */
 	sock_ep->ep.rma = NULL;
 	sock_ep->ep.tagged = NULL;
 	sock_ep->ep.atomic = NULL;
 
-	sock_ep->domain = sock_dom;
-
-	sock_ep->sock_fd = socket(PF_RDS, SOCK_STREAM, 0);
+	sock_ep->sock_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if(sock_ep->sock_fd <0){
 		goto err1;
 	}
 
 	flags = fcntl(sock_ep->sock_fd, F_GETFL, 0);
 	if(-1 == flags)
-		goto err1;
+		goto err2;
 	fcntl(sock_ep->sock_fd, F_SETFL, flags | O_NONBLOCK);
 	
 	*ep = &sock_ep->ep;	
@@ -831,31 +840,33 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 				   sizeof(struct sockaddr));
 			if(!ret){
 				sock_debug(SOCK_ERROR, "Failed to bind to local address\n");
-				return ret;
-			}
-		}
-		
-		if(info->dest_addr){
-			ret = sock_ep_connect(*ep, info->dest_addr, NULL, 0);
-			sock_ep->enabled = 0;
-			if(!ret){
-				sock_debug(SOCK_ERROR, "Failed to connect to remote address\n");
-				return ret;
+				goto err2;
 			}
 		}
 	}
 
-	if(0 != (sock_ep->send_list = new_list(SOCK_EP_SNDQ_LEN)))
+	sock_ep->rx_ctx = sock_rx_ctx_alloc();
+	if(!sock_ep->rx_ctx)
 		goto err2;
 
-	if(0 != (sock_ep->recv_list = new_list(SOCK_EP_RCVQ_LEN)))
-		goto err3;
+	sock_ep->rx_ctx->rx_id = 0;
+	sock_ep->rx_ctx->addr = 0; /* TODO */
+	sock_ep->rx_ctx->ep = sock_ep;
 	
-	sock_ep->progress_fn = _sock_ep_rdm_progress;
+	sock_ep->tx_ctx = sock_tx_ctx_alloc(sock_ep->tx_ctx_attr.size);
+	if(!sock_ep->tx_ctx)
+		goto err3;
+
+	sock_ep->tx_ctx->tx_id = 0;
+	sock_ep->tx_ctx->addr = 0; /* TODO */
+	sock_ep->tx_ctx->ep = sock_ep;
+
+	sock_ep->domain = sock_dom;
+	atomic_inc(&sock_dom->ref);
 	return 0;
 
 err3:
-	free_list(sock_ep->send_list);
+	sock_rx_ctx_free(sock_ep->rx_ctx);
 
 err2:
 	close(sock_ep->sock_fd);
@@ -868,47 +879,5 @@ err1:
 int sock_rdm_pep(struct fid_fabric *fabric, struct fi_info *info,
 			struct fid_pep **pep, void *context)
 {
-	struct sock_pep *sock_pep;
-	sock_pep = (struct sock_pep*)calloc(1, sizeof(*sock_pep));
-	if(!sock_pep)
-		return -FI_ENOMEM;
-
-	sock_pep->pep.fid.fclass = FI_CLASS_PEP;
-	sock_pep->pep.fid.context = context;
-	
-	sock_pep->pep.fid.ops = /*&sock_fi_ops*/ NULL;
-	sock_pep->pep.ops = /*&sock_ep_ops*/ NULL;
-	sock_pep->pep.cm = /*&sock_cm_ops*/ NULL;
-	
-	sock_pep->sock_fd = socket(PF_RDS, SOCK_STREAM, 0);
-	if(sock_pep->sock_fd <0){
-		free(sock_pep);
-		return -FI_EAVAIL;
-	}
-
-	if(info){
-		sock_pep->pep_cap = info->caps;
-
-		if(info->src_addr){
-			if (bind(sock_pep->sock_fd, (struct sockaddr *) info->src_addr,
-				 sizeof(struct sockaddr)) < 0){
-				free(sock_pep);
-				return -FI_EAVAIL;
-			}
-		}
-	}
-
-	*pep = &sock_pep->pep;
-	return 0;
+	return -FI_ENOSYS;
 }
-
-int sock_rdm_recv_progress(struct sock_ep *ep)
-{
-	return 0;
-}
-
-int sock_rdm_progress_send(struct sock_ep *ep)
-{
-	return 0;
-}
-

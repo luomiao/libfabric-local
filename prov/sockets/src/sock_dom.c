@@ -49,6 +49,7 @@ static int sock_dom_close(struct fid *fid)
 	if (atomic_get(&dom->ref))
 		return -FI_EBUSY;
 
+	sock_pe_finalize(dom->pe);
 	fastlock_destroy(&dom->lock);
 	free(dom);
 	return 0;
@@ -271,10 +272,10 @@ int _sock_verify_domain_attr(struct fi_domain_attr *attr)
 		return -FI_ENODATA;
 	}
 
-	if(attr->max_ep_tx_ctx > SOCK_EP_TX_CTX_CNT)
+	if(attr->max_ep_tx_ctx > SOCK_EP_MAX_TX_CNT)
 		return -FI_ENODATA;
 
-	if(attr->max_ep_rx_ctx > SOCK_EP_RX_CTX_CNT)
+	if(attr->max_ep_rx_ctx > SOCK_EP_MAX_RX_CNT)
 		return -FI_ENODATA;
 
 	return 0;
@@ -305,6 +306,16 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 	sock_domain->dom_fid.ops = &sock_dom_ops;
 	sock_domain->dom_fid.mr = &sock_dom_mr_ops;
 
+	sock_domain->pe = sock_pe_init(sock_domain);
+	if(!sock_domain->pe){
+		sock_debug(SOCK_ERROR, "Failed to init PE\n");
+		goto err;
+	}
+
 	*dom = &sock_domain->dom_fid;
 	return 0;
+
+err:
+	free(sock_domain);
+	return -FI_EINVAL;
 }
