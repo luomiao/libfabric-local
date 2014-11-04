@@ -144,7 +144,7 @@ inline void sock_pe_progress_rx_entry(struct sock_pe *pe,
 	struct sock_conn_map_entry *conn_entry;
 
 	ret = sock_conn_map_lookup_key(pe->domain->conn_map,
-				       pe_entry->conn_key, &conn_entry);
+				       pe_entry->addr, &conn_entry);
 
 	if(ret != 0 || (conn_entry->pe_entry != NULL && 
 			conn_entry->pe_entry != pe_entry))
@@ -263,7 +263,7 @@ inline void sock_pe_progress_tx_entry(struct sock_pe *pe,
 	struct sock_conn_map_entry *conn_entry;
 
 	ret = sock_conn_map_lookup_key(pe->domain->conn_map,
-				       pe_entry->conn_key, &conn_entry);
+				       pe_entry->addr, &conn_entry);
 
 	if(ret != 0 || (conn_entry->pe_entry != NULL && 
 			conn_entry->pe_entry != pe_entry))
@@ -379,7 +379,6 @@ static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_cq *cq,
 
 	pe_entry->type = SOCK_RX;
 	pe_entry->done_len = 0;
-	pe_entry->conn_key = -1;
 
 	pe_entry->ep = rx_ctx->ep;
 	pe_entry->cq = cq;
@@ -419,7 +418,6 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_cq *cq,
 
 	pe_entry->type = SOCK_TX;
 	pe_entry->done_len = 0;
-	pe_entry->conn_key = -1;
 
 	pe_entry->ep = tx_ctx->ep;
 	pe_entry->cq = cq;

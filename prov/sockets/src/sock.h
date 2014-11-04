@@ -168,6 +168,7 @@ struct sock_rx_entry {
 };
 
 struct sock_tx_ctx {
+	struct fid_ep fid_ep;
 	struct ringbuffd	rbfd;
 	fastlock_t		wlock;
 	fastlock_t		rlock;
@@ -290,8 +291,8 @@ struct sock_pe_entry{
 	struct sock_msg_hdr msg_hdr;
 
 	uint8_t type;
-	uint16_t conn_key;
-	uint8_t reserved[5];
+	uint8_t reserved[7];
+	uint64_t addr;
 
 	uint64_t done_len;
 	struct sock_ep *ep;
@@ -305,11 +306,16 @@ struct sock_cq {
 	ssize_t cq_entry_size;
 	atomic_t ref;
 	struct fi_cq_attr attr;
-	int fd[2];
 
+	int fd[2];
 	list_t *ep_list;
 	list_t *completed_list;
 	list_t *error_list;
+
+	struct ringbuf addr_rb;
+	struct ringbuffd cq_rbfd;
+	struct ringbuf cqerr_rb;
+	fastlock_t cq_lock, cqerr_lock;
 
 	struct sock_tx_ctx tx_ctx_head;
 	struct sock_rx_ctx rx_ctx_head;
@@ -547,7 +553,6 @@ fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr);
 
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		 struct fid_cq **cq, void *context);
-int _sock_cq_report_completion(struct sock_cq *sock_cq, struct sock_req_item *item);
 int _sock_cq_report_error(struct sock_cq *sock_cq, struct fi_cq_err_entry *error);
 struct sock_rx_entry *sock_cq_get_rx_buffer(struct sock_cq *cq, uint64_t addr, 
 					    uint16_t rx_id, int ignore_tag, uint64_t tag);
