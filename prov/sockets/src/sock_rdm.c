@@ -548,18 +548,6 @@ struct fi_ops_cm sock_rdm_ep_cm_ops = {
 	.leave = sock_rdm_ep_cm_leave,
 };
 
-ssize_t sock_rdm_ep_msg_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
-			     void *context)
-{
-	return -FI_ENOSYS;
-}
-
-ssize_t sock_rdm_ep_msg_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
-			      size_t count, void *context)
-{
-	return -FI_ENOSYS;
-}
-
 ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
@@ -612,28 +600,36 @@ ssize_t sock_rdm_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void 
 	msg.iov_count = 1;
 	msg.addr = src_addr;
 	msg.context = context;
-	msg.data = 0; /* FIXME: Verify */
 
 	return sock_rdm_ep_msg_recvmsg(ep, &msg, 0);
 }
 
-ssize_t sock_rdm_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+ssize_t sock_rdm_ep_msg_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
 			     void *context)
 {
-	return -FI_ENOSYS;
+	return sock_rdm_ep_msg_recvfrom(ep, buf, len, desc, 
+					FI_ADDR_UNSPEC, context);
 }
 
-ssize_t sock_rdm_ep_msg_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+ssize_t sock_rdm_ep_msg_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
 			      size_t count, void *context)
 {
-	return -FI_ENOSYS;
+	struct fi_msg msg;
+
+	msg.msg_iov = iov;
+	msg.desc = desc;
+	msg.iov_count = count;
+	msg.addr = FI_ADDR_UNSPEC;
+	msg.context = context;
+
+	return sock_rdm_ep_msg_recvmsg(ep, &msg, 0);
 }
 
 ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
 	int ret, i;
-	uint64_t tmp=0;
+	uint64_t tmp=0, dest_addr;
 	struct sock_ep *sock_ep;
 	struct sock_tx_op tx_op;
 	union sock_tx_iov tx_iov;
@@ -665,6 +661,8 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		goto err1;
 
 	/* dest_addr */
+	dest_addr = (msg->addr == FI_ADDR_UNSPEC) ? 
+		sock_ep->dest_conn_addr: msg->addr;
 	if((ret = sock_tx_ctx_write(sock_ep->tx_ctx, &msg->addr, sizeof(uint64_t))))
 		goto err1;
 
@@ -705,7 +703,27 @@ ssize_t sock_rdm_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len,
 	msg.iov_count = 1;
 	msg.addr = dest_addr;
 	msg.context = context;
-	msg.data = 0; /* FIXME: Verify */
+
+	return sock_rdm_ep_msg_sendmsg(ep, &msg, 0);
+}
+
+ssize_t sock_rdm_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+			     void *context)
+{
+	return sock_rdm_ep_msg_sendto(ep, buf, len, desc, 
+				      FI_ADDR_UNSPEC, context);
+}
+
+ssize_t sock_rdm_ep_msg_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+			      size_t count, void *context)
+{
+	struct fi_msg msg;
+
+	msg.msg_iov = iov;
+	msg.desc = desc;
+	msg.iov_count = count;
+	msg.addr = FI_ADDR_UNSPEC;
+	msg.context = context;
 
 	return sock_rdm_ep_msg_sendmsg(ep, &msg, 0);
 }
@@ -721,16 +739,30 @@ ssize_t sock_rdm_ep_msg_injectto(struct fid_ep *ep, const void *buf, size_t len,
 	return -FI_ENOSYS;
 }
 
-ssize_t sock_rdm_ep_msg_senddata(struct fid_ep *ep, const void *buf, size_t len, 
-				 void *desc, uint64_t data, void *context)
-{
-	return -FI_ENOSYS;
-}
-
 ssize_t sock_rdm_ep_msg_senddatato(struct fid_ep *ep, const void *buf, size_t len, 
 				   void *desc, uint64_t data, fi_addr_t dest_addr, void *context)
 {
-	return -FI_ENOSYS;
+	struct fi_msg msg;
+	struct iovec msg_iov;
+
+	msg_iov.iov_base = (void*)buf;
+	msg_iov.iov_len = len;
+	
+	msg.msg_iov = &msg_iov;
+	msg.desc = desc;
+	msg.iov_count = 1;
+	msg.addr = dest_addr;
+	msg.context = context;
+	msg.data = data;
+
+	return sock_rdm_ep_msg_sendmsg(ep, &msg, FI_REMOTE_CQ_DATA);
+}
+
+ssize_t sock_rdm_ep_msg_senddata(struct fid_ep *ep, const void *buf, size_t len, 
+				 void *desc, uint64_t data, void *context)
+{
+	return sock_rdm_ep_msg_senddatato(ep, buf, len, desc, data, 
+					  FI_ADDR_UNSPEC, context);
 }
 
 struct fi_ops_msg sock_rdm_ep_msg_ops = {
