@@ -93,7 +93,7 @@ ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count,
 		return -FI_EINVAL;
 
 	if (sock_cq->attr.wait_cond == FI_CQ_COND_THRESHOLD){
-		threshold = min((int64_t)cond, count);
+		threshold = MIN((int64_t)cond, count);
 	}else{
 		threshold = count;
 	}
@@ -157,7 +157,7 @@ static ssize_t sock_cq_write(struct fid_cq *cq, const void *buf, size_t len)
 	if(!(sock_cq->attr.flags & FI_WRITE))
 		return -FI_EINVAL;
 	
-	ret = min(rbfdavail(&sock_cq->cq_rbfd), len);
+	ret = MIN(rbfdavail(&sock_cq->cq_rbfd), len);
 	rbfdwrite(&sock_cq->cq_rbfd, buf, ret);
 	return ret;
 }
@@ -212,7 +212,7 @@ ssize_t sock_cq_writeerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
 	if(!(sock_cq->attr.flags & FI_WRITE))
 		return -FI_EINVAL;
 	
-	ret = min(rbavail(&sock_cq->cqerr_rb), len);
+	ret = MIN(rbavail(&sock_cq->cqerr_rb), len);
 	rbfdwrite(&sock_cq->cq_rbfd, buf, ret);
 	return ret;
 }

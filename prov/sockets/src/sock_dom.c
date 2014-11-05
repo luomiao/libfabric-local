@@ -49,6 +49,11 @@ static int sock_dom_close(struct fid *fid)
 	if (atomic_get(&dom->ref))
 		return -FI_EBUSY;
 
+	if (dom->u_cmap.size)
+		sock_conn_map_destroy(&dom->u_cmap);
+	if (dom->r_cmap.size)
+		sock_conn_map_destroy(&dom->r_cmap);
+
 	sock_pe_finalize(dom->pe);
 	fastlock_destroy(&dom->lock);
 	free(dom);
@@ -299,6 +304,9 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 	
 	fastlock_init(&sock_domain->lock);
 	atomic_init(&sock_domain->ref);
+
+	if(info)
+		sock_domain->info = *info;
 
 	sock_domain->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
 	sock_domain->dom_fid.fid.context = context;
