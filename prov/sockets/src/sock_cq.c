@@ -101,13 +101,16 @@ ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count,
 	cq_entry_len = sock_cq_entry_size(sock_cq);
 	bytes_read = rbfdsread(&sock_cq->cq_rbfd, buf, 
 			       cq_entry_len*threshold, timeout);
-	num_read = bytes_read/cq_entry_len;
 
+	if(bytes_read == 0)
+		return -FI_ETIMEDOUT;
+
+	num_read = bytes_read/cq_entry_len;
 	for(i=0; i<num_read; i++){
 		rbread(&sock_cq->addr_rb, &addr, sizeof(fi_addr_t));
 		if(src_addr)
 			src_addr[i] = addr;
-	}	
+	}
 	return num_read;
 }
 
