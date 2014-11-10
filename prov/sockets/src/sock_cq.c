@@ -522,3 +522,44 @@ out:
 	return ret;
 }
 
+struct sock_rx_entry *sock_cq_get_rx_entry(struct sock_cq *cq,
+					   fi_addr_t addr, uint16_t rx_id, 
+					   uint64_t tag, uint64_t tag_mask)
+{
+	return NULL;
+/*
+	struct dlist_entry *head_ctx, *curr_ctx;
+	struct dlist_entry *head_entry, *curr_entry;
+	struct sock_rx_ctx *rx_ctx;
+	struct sock_rx_entry *rx_entry;
+
+	head_ctx = &cq->rx_ctx_head.list;
+	for(curr_ctx = head_ctx->next; !dlist_empty(head_ctx) &&
+		    curr_ctx != head_ctx; curr_ctx = curr_ctx->next){
+
+		rx_ctx = container_of(curr_ctx, struct sock_rx_ctx, list);
+		if(rx_ctx->rx_id != rx_id)
+			continue;
+		
+		head_entry = &rx_ctx->rx_entry_head.list;
+		for(curr_entry = head_entry->next; !dlist_empty(head_entry) &&
+			    curr_entry != head_entry; curr_entry = curr_entry->next){
+			
+			rx_entry = container_of(curr_entry, struct sock_rx_entry, list);
+			if(rx_entry->addr == addr){
+
+				if(!ignore_tag){
+					if(rx_entry->valid_tag && rx_entry->tag == tag){
+						rx_entry->list.prev->next = rx_entry->list.next;
+						return rx_entry;
+					}
+				}else{
+					rx_entry->list.prev->next = rx_entry->list.next;
+					return rx_entry;
+				}
+			}
+		}
+	}
+	return NULL;
+*/
+}
