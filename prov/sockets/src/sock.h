@@ -49,9 +49,12 @@
 #include <fi.h>
 #include <fi_enosys.h>
 #include <fi_indexer.h>
-#include "list.h"
+#include <fi_list.h>
 #include <fi_rbuf.h>
 #include <fi_list.h>
+
+/* TODO: to be removed */
+#include "list.h"
 
 #ifndef _SOCK_H_
 #define _SOCK_H_
@@ -92,6 +95,7 @@ extern const char const sock_dom_name[];
 
 struct sock_fabric{
 	struct fid_fabric fab_fid;
+	atomic_t ref;
 };
 
 struct sock_domain {
@@ -116,6 +120,7 @@ struct sock_cntr {
 	pthread_mutex_t		mut;
 };
 
+/* TODO: to be removed */
 #define SOCK_RD_FD		0
 #define SOCK_WR_FD		1
 
@@ -148,7 +153,7 @@ struct sock_tx_op {
 	};
 };
 
-union sock_tx_iov {
+union sock_iov {
 	struct fi_rma_iov	iov;
 	struct fi_rma_ioc	ioc;
 };
@@ -161,10 +166,11 @@ struct sock_rx_entry {
 	uint64_t addr;
 	uint64_t data;
 	uint64_t tag;
+	uint64_t mask;
 	uint8_t valid_tag;
 	uint8_t reserved[7];
 	
-	union sock_tx_iov iov[SOCK_EP_MAX_IOV_LIMIT];
+	union sock_iov iov[SOCK_EP_MAX_IOV_LIMIT];
 	struct dlist_entry list;
 };
 
@@ -204,8 +210,8 @@ struct sock_tx_pe_entry{
 
 	union {
 			union {
-				union sock_tx_iov src_iov[SOCK_EP_MAX_IOV_LIMIT];
-				union sock_tx_iov dst_iov[SOCK_EP_MAX_IOV_LIMIT];
+				union sock_iov src_iov[SOCK_EP_MAX_IOV_LIMIT];
+				union sock_iov dst_iov[SOCK_EP_MAX_IOV_LIMIT];
 			};
 		char inject_data[SOCK_EP_MAX_INJECT_SZ];
 	};
@@ -215,10 +221,10 @@ struct sock_rx_pe_entry{
 	struct sock_tx_op rx_op;
 	
 	void *raw_data;
-
-	union sock_tx_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
+	union sock_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
 };
 
+/* PE entry type */
 enum{
 	SOCK_RX,
 	SOCK_TX,
@@ -360,6 +366,8 @@ struct sock_ep {
 	sock_ep_progress_fn progress_fn;
 };
 
+typedef int (*sock_cq_report_fn) (struct sock_cq *cq, fi_addr_t addr,
+				  struct sock_pe_entry *pe_entry);
 struct sock_cq {
 	struct fid_cq cq_fid;
 	struct sock_domain *domain;
@@ -376,8 +384,9 @@ struct sock_cq {
 	struct sock_rx_ctx rx_ctx_head;
 	struct sock_tx_ctx tx_ctx_head;
 	struct sock_pe_entry pe_entry_head;
+	sock_cq_report_fn report_completion;
 
-	/* To remove */
+	/* TODO: to be removed */
 	int fd[2];
 	list_t *ep_list;
 	list_t *completed_list;
@@ -413,11 +422,6 @@ struct sock_poll {
 struct sock_wait {
 	struct fid_wait wait_fid;
 	struct sock_domain *dom;
-};
-
-struct sock_eq_item{
-	int type;
-	ssize_t len;
 };
 
 enum {
@@ -495,18 +499,24 @@ struct sock_pe{
 	volatile int do_progress;
 };
 
+struct sock_eq_entry{
+	uint32_t type;
+	size_t len;
+	uint64_t flags;
+	struct dlist_entry list;
+	char event[0];
+};
+
 struct sock_eq{
 	struct fid_eq eq;
 	struct fi_eq_attr attr;
 	struct sock_fabric *sock_fab;
 
-	struct ringbuffd eq_rbfd;
+	struct dlistfd_head eq_head;
 	fastlock_t eq_lock;
 
-	/* remove */
-	int fd[2];
-	list_t *completed_list;
-	list_t *error_list;
+	struct dlistfd_head eqerr_head;
+	fastlock_t eqerr_lock;
 };
 
 struct sock_pep {
@@ -551,6 +561,7 @@ int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 		uint64_t flags, struct fi_info *hints, struct fi_info **info);
 void free_fi_info(struct fi_info *info);
 
+
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context);
 
@@ -568,19 +579,18 @@ void sock_pe_finalize(struct sock_pe *pe);
 
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		 struct fid_cq **cq, void *context);
-int sock_cq_report_completion(struct sock_cq *cq, 
-			      struct sock_pe_entry *pe_entry);
-int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *pe_entry,
+int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
 			 size_t olen, int err, int prov_errno, void *err_data);
-struct sock_rx_entry *sock_cq_get_rx_buffer(struct sock_cq *cq, uint64_t addr, 
-					    uint16_t rx_id, int ignore_tag, uint64_t tag);
-
+struct sock_rx_entry *sock_cq_get_rx_entry(struct sock_cq *cq,
+					   fi_addr_t addr, uint16_t rx_id, 
+					   uint64_t tag, uint64_t tag_mask);
 
 int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 		struct fid_eq **eq, void *context);
-ssize_t _sock_eq_report_error(struct sock_eq *sock_eq, const void *buf, size_t len);
-ssize_t _sock_eq_report_event(struct sock_eq *sock_eq, int event_type, 
-			      const void *buf, size_t len);
+ssize_t sock_eq_report_event(struct sock_eq *sock_eq, uint32_t event, 
+			     const void *buf, size_t len, uint64_t flags);
+ssize_t sock_eq_report_error(struct sock_eq *sock_eq, fid_t fid, void *context,
+			     int err, int prov_errno, void *err_data);
 
 
 int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,

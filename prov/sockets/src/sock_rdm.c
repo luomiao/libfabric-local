@@ -632,7 +632,7 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	uint64_t tmp=0, dest_addr;
 	struct sock_ep *sock_ep;
 	struct sock_tx_op tx_op;
-	union sock_tx_iov tx_iov;
+	union sock_iov tx_iov;
 
 	if(msg->iov_count > SOCK_EP_MAX_IOV_LIMIT)
 		return -FI_EINVAL;
@@ -678,7 +678,7 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		tx_iov.iov.len = msg->msg_iov[i].iov_len;
 
 		if((ret = sock_tx_ctx_write(sock_ep->tx_ctx, 
-					    &tx_iov, sizeof(union sock_tx_iov))))
+					    &tx_iov, sizeof(union sock_iov))))
 			goto err1;
 	}
 	sock_tx_ctx_commit(sock_ep->tx_ctx);
@@ -804,7 +804,7 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	if(!sock_ep)
 		return -FI_ENOMEM;
 
-	atomic_init(&sock_ep->ref);
+	atomic_init(&sock_ep->ref, 0);
 	sock_ep->ep.fid.fclass = FI_CLASS_EP;
 	sock_ep->ep.fid.context = context;	
 	sock_ep->ep.fid.ops = &sock_rdm_ep_fi_ops;

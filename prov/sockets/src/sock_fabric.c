@@ -43,57 +43,6 @@
 const char const sock_fab_name[] = "IP";
 const char const sock_dom_name[] = "sockets";
 
-int _sock_verify_info(struct fi_info *hints)
-{
-	int ret;
-	if(!hints)
-		return 0;
-
-	switch (hints->ep_type) {
-	case FI_EP_UNSPEC:
-	case FI_EP_MSG:
-	case FI_EP_DGRAM:
-	case FI_EP_RDM:
-		break;
-	default:
-		return -FI_ENODATA;
-	}
-	
-	if(hints->caps){
-		if((SOCK_EP_CAP | hints->caps) != SOCK_EP_CAP)
-			return -FI_ENODATA;
-	}
-
-	switch (hints->addr_format){
-	case FI_ADDR_UNSPEC:
-	case FI_SOCKADDR:
-	case FI_SOCKADDR_IN:
-		break;
-	default:
-		return -FI_ENODATA;
-	}
-
-	if(hints->ep_attr){
-		ret = _sock_verify_ep_attr(hints->ep_attr);
-		if(ret)
-			return ret;
-	}
-
-	if(hints->domain_attr){
-		ret = _sock_verify_domain_attr(hints->domain_attr);
-		if(ret)
-			return ret;
-	}
-
-	if(hints->fabric_attr){
-		ret = _sock_verify_fabric_attr(hints->fabric_attr);
-		if(ret)
-			return ret;
-	}
-
-	return 0;
-}
-
 int _sock_verify_fabric_attr(struct fi_fabric_attr *attr)
 {
 	if (attr->name &&
@@ -118,7 +67,14 @@ static struct fi_ops_fabric sock_fab_ops = {
 
 static int sock_fabric_close(fid_t fid)
 {
-	free(fid);
+	struct sock_fabric *fab;
+	fab = container_of(fid, struct sock_fabric, fab_fid);
+
+	if(atomic_get(&fab->ref)) {
+		return -FI_EBUSY;
+	}
+
+	free(fab);
 	return 0;
 }
 
@@ -169,6 +125,7 @@ static int sock_fabric(struct fi_fabric_attr *attr,
 	fab->fab_fid.fid.ops = &sock_fab_fi_ops;
 	fab->fab_fid.ops = &sock_fab_ops;
 	*fabric = &fab->fab_fid;
+	atomic_init(&fab->ref, 0);
 	return 0;
 }
 
