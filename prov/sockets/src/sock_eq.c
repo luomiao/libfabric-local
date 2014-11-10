@@ -81,7 +81,7 @@ ssize_t sock_eq_read(struct fid_eq *eq, uint32_t *event, void *buf, size_t len,
 	}
 
 	if(eq_entry){
-		int copy_len = min(len, eq_entry->len);
+		int copy_len = MIN(len, eq_entry->len);
 		memcpy(buf, (char*)eq_entry + sizeof(struct sock_eq_item), copy_len);
 
 		if(event)
@@ -118,7 +118,7 @@ ssize_t sock_eq_readerr(struct fid_eq *eq, struct fi_eq_err_entry *buf,
 	}
 
 	if(eq_entry){
-		int copy_len = min(len, eq_entry->len);
+		int copy_len = MIN(len, eq_entry->len);
 		memcpy(buf, (char*)eq_entry + sizeof(struct sock_eq_item), copy_len);
 
 		if(!(FI_PEEK & flags))
@@ -197,7 +197,7 @@ ssize_t sock_eq_sread(struct fid_eq *eq, uint32_t *event,
 {
 	int ret;
 	fd_set rfds;
-	struct timeval tv;
+	struct timeval tv, *ptv;
 	struct sock_eq *sock_eq;
 
 	sock_eq = container_of(eq, struct sock_eq, eq);
@@ -208,11 +208,13 @@ ssize_t sock_eq_sread(struct fid_eq *eq, uint32_t *event,
 	FD_SET(sock_eq->fd[SOCK_RD_FD], &rfds);
 	tv.tv_sec = timeout;
 	tv.tv_usec = 0;
+	ptv = (timeout >= 0) ? &tv : NULL;
 
-	ret = select(1, &rfds, NULL, NULL, &tv);
-	
-	if (ret == -1 || ret == 0)
+	ret = select(1, &rfds, NULL, NULL, ptv);
+	if (ret == -1)
 		return ret;
+	else if (ret == 0)
+		return -FI_ETIMEDOUT;
 	else
 		return sock_eq_read(eq, event, buf, len, flags);
 }

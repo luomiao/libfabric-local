@@ -45,9 +45,7 @@
 #include <sys/types.h>
 
 #include <fi_list.h>
-
 #include "sock.h"
-#include "sock_util.h"
 
 
 static ssize_t sock_cq_entry_size(struct sock_cq *sock_cq)

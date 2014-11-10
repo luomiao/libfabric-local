@@ -27,6 +27,11 @@ common_srcs = \
 linkback = -lfabric -Lsrc/.libs/
 
 src_libfabric_la_SOURCES = \
+	include/fi.h \
+	include/fi_enosys.h \
+	include/fi_indexer.h \
+	include/fi_list.h \
+	include/fi_rbuf.h \
 	src/fabric.c \
 	src/fi_tostr.c \
 	$(common_srcs)
@@ -169,6 +174,7 @@ endif HAVE_USNIC
 
 if HAVE_PSM
 _psm_files = \
+	prov/psm/src/psmx.h \
 	prov/psm/src/psmx_init.c \
 	prov/psm/src/psmx_domain.c \
 	prov/psm/src/psmx_cq.c \
@@ -183,6 +189,8 @@ _psm_files = \
 	prov/psm/src/psmx_atomic.c \
 	prov/psm/src/psmx_am.c \
 	prov/psm/src/psmx_mr.c \
+	prov/psm/src/psmx_wait.c \
+	prov/psm/src/psmx_poll.c \
 	prov/psm/src/psmx_util.c
 
 if HAVE_PSM_DL
@@ -223,7 +231,9 @@ nodist_rdmainclude_HEADERS = \
 	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_rma.h \
 	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_atomic_def.h \
 	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_atomic.h \
-	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_cm.h
+	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_cm.h \
+	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_eq.h \
+	$(top_srcdir)/prov/$(PROVIDER_DIRECT)/include/rdma/fi_direct_trigger.h
 endif HAVE_DIRECT
 
 man_MANS = \
@@ -271,6 +281,7 @@ man_MANS = \
 	man/fi_domain.3 \
 	man/fi_domain_query.3 \
 	man/fi_domain_bind.3 \
+	man/fi_dupinfo.3 \
 	man/fi_ep_bind.3 \
 	man/fi_ep_sync.3 \
 	man/fi_eq.3 \
@@ -347,14 +358,8 @@ man_MANS = \
 	man/fi_wait.3 \
 	man/fi_wait_open.3
 
-EXTRA_DIST = libfabric.map libfabric.spec.in $(man_MANS) \
-	include/fi.h \
-	include/fi_enosys.h \
-	include/indexer.h \
-	include/list.h \
-	include/rbuf.h \
-	prov/sockets/src/sock.h \
-	prov/psm/src/psmx.h
+EXTRA_DIST = libfabric.map libfabric.spec.in config/distscript.pl $(man_MANS)
 
 dist-hook: libfabric.spec
 	cp libfabric.spec $(distdir)
+	"$(top_srcdir)/config/distscript.pl" "$(distdir)" "$(PACKAGE_VERSION)"

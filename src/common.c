@@ -88,10 +88,12 @@ int fi_read_file(const char *dir, const char *file, char *buf, size_t size)
 int fi_poll_fd(int fd, int timeout)
 {
 	struct pollfd fds;
+	int ret;
 
 	fds.fd = fd;
 	fds.events = POLLIN;
-	return poll(&fds, 1, timeout) < 0 ? -errno : 0;
+	ret = poll(&fds, 1, timeout);
+	return ret == -1 ? -errno : ret;
 }
 
 struct fi_info *fi_allocinfo_internal(void)
@@ -135,7 +137,6 @@ void fi_freeinfo_internal(struct fi_info *info)
 	}
 	free(info);
 }
-
 uint64_t fi_tag_bits(uint64_t mem_tag_format)
 {
 	return UINT64_MAX >> (ffsll(htonll(mem_tag_format)) -1);
