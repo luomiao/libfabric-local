@@ -446,6 +446,9 @@ static int sockd_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (ep->domain != av->dom)
 			return -EINVAL;
 		ep->av = av;
+		av->connect_fn = sock_dgram_connect_conn_map;
+		av->cmap = &av->dom->u_cmap;
+		av->port_num = ep->port_num;
 		break;
 	default:
 		return -FI_ENOSYS;
@@ -620,6 +623,7 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 	recv_req->total_len = len;
 	recv_req->done_len = 0;
 
+#if 0
 	if (sock_ep->av->attr.type == FI_AV_MAP) {
 		memcpy(&recv_req->addr, (void*)src_addr, sizeof(struct sockaddr_in));
 	} else {
@@ -630,6 +634,7 @@ static ssize_t sockd_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, void
 		}	
 		memcpy(&recv_req->addr, &sock_ep->av->table[idx], sizeof(struct sockaddr_in));
 	}
+#endif
 
 	if(0 != enqueue_item(sock_ep->recv_list, recv_req)){
 		free(recv_req);
@@ -680,6 +685,7 @@ static ssize_t sockd_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
 	send_req->total_len = len;
 	send_req->done_len = 0;
 
+#if 0
 	if (sock_ep->av->attr.type == FI_AV_MAP) {
 		memcpy(&send_req->addr, (void*)dest_addr, sizeof(struct sockaddr_in));
 	} else {
@@ -690,6 +696,7 @@ static ssize_t sockd_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
 		}	
 		memcpy(&send_req->addr, &sock_ep->av->table[idx], sizeof(struct sockaddr_in));
 	}
+#endif
 
 	if(0 != enqueue_item(sock_ep->send_list, send_req)){
 		free(send_req);

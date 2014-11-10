@@ -336,6 +336,9 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (sock_ep->domain != sock_av->dom)
 			return -EINVAL;
 		sock_ep->av = sock_av;
+		sock_av->connect_fn = sock_rdm_connect_conn_map;
+		sock_av->cmap = &sock_av->dom->r_cmap;
+		sock_av->port_num = sock_ep->port_num;
 		break;
 
 	case FI_CLASS_MR:

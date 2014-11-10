@@ -55,7 +55,8 @@ _sockets_files = \
 	prov/sockets/src/sock_progress.c \
 	prov/sockets/src/indexer.c \
 	prov/sockets/src/list.c \
-	prov/sockets/src/list.h
+	prov/sockets/src/list.h \
+	prov/sockets/src/sock_conn.c
 
 if HAVE_SOCKETS_DL
 pkglib_LTLIBRARIES += libsockets-fi.la

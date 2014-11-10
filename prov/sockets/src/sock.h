@@ -98,7 +98,19 @@ struct sock_fabric{
 	atomic_t ref;
 };
 
+struct sock_conn {
+        int sock_fd;
+        struct sockaddr addr;
+        struct sock_pe_entry *pe_entry;
+};
+
+struct sock_conn_map {
+        struct sock_conn *table;
+        int used;
+        int size;
+};
 struct sock_domain {
+	struct fi_info info;
 	struct fid_domain dom_fid;
 	uint64_t		mode;
 	struct sock_fabric *fab;
@@ -107,7 +119,8 @@ struct sock_domain {
 	enum fi_progress progress_mode;
 	struct index_map mr_idm;
 	struct sock_pe *pe;
-	struct sock_conn_map *conn_map;
+	struct sock_conn_map u_cmap;
+	struct sock_conn_map r_cmap;
 };
 
 struct sock_cntr {
@@ -403,15 +416,22 @@ struct sock_mr {
 	struct iovec		mr_iov[1];
 };
 
+typedef int (*sock_connect_fn) (struct sock_conn_map *map, void *addr, 
+		int count, socklen_t addrlen, uint16_t *key_table, int port);
+
 struct sock_av {
 	struct fid_av		av_fid;
 	struct sock_domain	*dom;
 	atomic_t		ref;
 	struct fi_av_attr	attr;
+	uint64_t		mask;
+	int			rx_ctx_bits;
+	int			port_num;
 	size_t			count;
-	struct sockaddr_in	*table;
-	struct sock_conn_map *cmap;
-	uint16_t *key_table;
+	uint16_t		*key_table;
+	socklen_t		addrlen;
+	sock_connect_fn		connect_fn;
+	struct sock_conn_map	*cmap;
 };
 
 struct sock_poll {
@@ -535,20 +555,7 @@ struct sock_pep {
 
 };
 
-struct sock_conn {
-        int sock_fd;
-        struct sockaddr addr;
-        struct sock_pe_entry *pe_entry;
-};
-
-struct sock_conn_map {
-        struct sock_conn *table;
-        int used;
-        int size;
-};
-#define SOCK_GET_RX_ID(_addr) (((uint64_t)_addr) << 48)
-
-
+#define SOCK_GET_RX_ID(_addr, _bits) (((uint64_t)_addr) >> (64 - _bits))
 
 int _sock_verify_info(struct fi_info *hints);
 int _sock_verify_ep_attr(struct fi_ep_attr *attr);
@@ -631,5 +638,14 @@ int sock_av_lookup_addr(struct sock_av *av, fi_addr_t addr,
 			struct sock_conn **entry);
 int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 			     uint16_t key, struct sock_conn **entry);
+
+int sock_conn_check_conn_map(struct sock_conn_map *map, int count);
+int sock_dgram_connect_conn_map(struct sock_conn_map *map, void *addr, 
+		int count, socklen_t addrlen, uint16_t *key_table, int port);
+int sock_rdm_connect_conn_map(struct sock_conn_map *map, void *addr, 
+		int count, socklen_t addrlen, uint16_t *key_table, int port);
+int sock_conn_map_clear_pe_entry(struct sock_conn *conn_entry, 
+		uint16_t key);
+void sock_conn_map_destroy(struct sock_conn_map *cmap);
 
 #endif
