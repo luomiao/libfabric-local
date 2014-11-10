@@ -213,7 +213,9 @@ int sock_eq_fi_close(struct fid *fid)
 	sock_eq = container_of(fid, struct sock_eq, eq);
 
 	dlistfd_head_free(&sock_eq->eq_head);
+	fastlock_destroy(&sock_eq->eq_lock);
 	dlistfd_head_free(&sock_eq->eqerr_head);
+	fastlock_destroy(&sock_eq->eqerr_lock);
 	atomic_dec(&sock_eq->sock_fab->ref);
 
 	free(sock_eq);

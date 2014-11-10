@@ -133,10 +133,6 @@ struct sock_cntr {
 	pthread_mutex_t		mut;
 };
 
-/* TODO: to be removed */
-#define SOCK_RD_FD		0
-#define SOCK_WR_FD		1
-
 enum {
 	SOCK_OP_SEND,
 	SOCK_OP_RECV,
@@ -188,7 +184,6 @@ struct sock_rx_entry {
 };
 
 struct sock_tx_ctx {
-	struct fid_ep fid_ep;
 	struct ringbuffd	rbfd;
 	fastlock_t		wlock;
 	fastlock_t		rlock;
@@ -199,7 +194,12 @@ struct sock_tx_ctx {
 	uint64_t addr;
 	struct sock_cq *cq;
 	struct sock_ep *ep;
-	struct dlist_entry list;
+	
+	struct dlist_entry ep_list; /* link TX ctx in EP */
+	struct dlist_entry cq_list; /* link TX ctx in CQ */
+	struct dlist_entry pe_list;  /* link TX ctx in PE */
+
+	struct dlist_entry pe_entry_head; /* PE entry head for TX ctx */
 };
 
 struct sock_rx_ctx {
@@ -212,7 +212,12 @@ struct sock_rx_ctx {
 	uint64_t addr;
 	struct sock_cq *cq;
 	struct sock_ep *ep;
-	struct dlist_entry list;
+
+	struct dlist_entry ep_list; /* link RX ctx in EP */
+	struct dlist_entry cq_list; /* link RX ctx in CQ */
+	struct dlist_entry pe_list;  /* link RX ctx in PE */
+
+	struct dlist_entry pe_entry_head; /* PE entry head for RX ctx */
 };
 
 struct sock_tx_pe_entry{
@@ -311,7 +316,9 @@ struct sock_pe_entry{
 	uint64_t done_len;
 	struct sock_ep *ep;
 	struct sock_cq *cq;
-	struct dlist_entry list;
+
+	struct dlist_entry list; /* link free/busy PE entries */
+	struct dlist_entry ctx_list; /* link PE entries for RX/TX ctx  */
 };
 
 typedef int (*sock_ep_progress_fn) (struct sock_ep *ep, struct sock_cq *cq);
@@ -393,17 +400,12 @@ struct sock_cq {
 	struct ringbuf cqerr_rb;
 	fastlock_t cq_lock, cqerr_lock;
 
-	struct sock_ep ep_list_head;
-	struct sock_rx_ctx rx_ctx_head;
-	struct sock_tx_ctx tx_ctx_head;
-	struct sock_pe_entry pe_entry_head;
-	sock_cq_report_fn report_completion;
+	struct dlist_entry ep_list_head; /* head of EP list */
+	struct dlist_entry rx_list_head; /* head of RX ctx list */
+	struct dlist_entry tx_list_head; /* head of TX ctx list */
+	fastlock_t cq_list_lock;
 
-	/* TODO: to be removed */
-	int fd[2];
-	list_t *ep_list;
-	list_t *completed_list;
-	list_t *error_list;
+	sock_cq_report_fn report_completion;
 };
 
 struct sock_mr {
@@ -497,23 +499,20 @@ struct sock_comm_item{
 	}item;
 };
 
-
-
-
-#define MAX_PROGRESS_ENTRIES (128)
-#define SOCK_NUM_PROGRESS_CQS (16)
+#define SOCK_PE_MAX_ENTRIES (128)
 
 struct sock_pe{
 	struct sock_domain *domain;
 
-	struct sock_pe_entry pe_table[MAX_PROGRESS_ENTRIES];
+	struct sock_pe_entry pe_table[SOCK_PE_MAX_ENTRIES];
 	fastlock_t pe_lock;
 
-	struct sock_pe_entry free_list_head;
-	struct sock_pe_entry busy_list_head;
+	struct dlist_entry free_list_head; /* head of free PE entry list */
+	struct dlist_entry busy_list_head; /* head of busy PE entry list */
 
-	struct ringbuffd cq_rb;  /* FIXME: dlist+fd ? */
-	fastlock_t cq_lock;
+	struct dlistfd_head tx_list_head; /* head of TX ctx list */
+	struct dlistfd_head rx_list_head; /* head of RX ctx list */
+	fastlock_t pe_list_lock;
 
 	pthread_t progress_thread;
 	volatile int do_progress;

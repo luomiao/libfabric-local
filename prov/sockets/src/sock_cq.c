@@ -359,6 +359,8 @@ int sock_cq_close(struct fid *fid)
 
 	fastlock_destroy(&cq->cq_lock);
 	fastlock_destroy(&cq->cqerr_lock);
+	fastlock_destroy(&cq->cq_list_lock);
+
 	atomic_dec(&cq->domain->ref);
 
 	free(cq);
@@ -453,9 +455,9 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	sock_cq->cq_entry_size = sock_cq_entry_size(sock_cq);
 	sock_cq_set_report_fn(sock_cq);
 
-	dlist_init(&sock_cq->tx_ctx_head.list);
-	dlist_init(&sock_cq->rx_ctx_head.list);
-	dlist_init(&sock_cq->pe_entry_head.list);
+	dlist_init(&sock_cq->ep_list_head);
+	dlist_init(&sock_cq->tx_list_head);
+	dlist_init(&sock_cq->rx_list_head);
 
 	if((ret = rbfdinit(&sock_cq->cq_rbfd, sock_cq->attr.size)))
 		goto err1;
@@ -468,6 +470,7 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 
 	fastlock_init(&sock_cq->cq_lock);
 	fastlock_init(&sock_cq->cqerr_lock);
+	fastlock_init(&sock_cq->cq_list_lock);
 
 	*cq = &sock_cq->cq_fid;
 	atomic_inc(&sock_dom->ref);

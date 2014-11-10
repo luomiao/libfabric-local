@@ -426,9 +426,11 @@ static int sockd_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 				return -EINVAL;
 			ep->recv_cq = cq;
 		}
+/*
 		if(enqueue_item(cq->ep_list, ep)) {
 			return -ENOMEM;
 		}
+*/
 		break;
 	case FI_CLASS_EQ:
 		sock_debug(SOCK_ERROR,"[sockd] bind EQ to ep\n");

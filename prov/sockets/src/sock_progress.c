@@ -55,9 +55,6 @@
 #include "sock.h"
 #include "sock_util.h"
 
-#define IGNORE_TAG (1)
-#define MATCH_TAG (0)
-
 int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_pe_entry *pe_entry)
 {
 	uint64_t len;
@@ -383,7 +380,7 @@ void sock_pe_release_entry(struct sock_pe *pe,
 			struct sock_pe_entry *entry)
 {
 	dlist_remove(&entry->list);
-	dlist_insert_tail(&entry->list, &pe->free_list_head.list);
+	dlist_insert_tail(&entry->list, &pe->free_list_head);
 }
 
 struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
@@ -391,62 +388,14 @@ struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
 	struct dlist_entry *list_entry;
 	struct sock_pe_entry *pe_entry;
 
-	list_entry = pe->free_list_head.list.next;
+	list_entry = pe->free_list_head.next;
 	pe_entry = container_of(list_entry, struct sock_pe_entry, list);
 	dlist_remove(list_entry);
-	dlist_insert_tail(&pe_entry->list, &pe->busy_list_head.list);
+	dlist_insert_tail(&pe_entry->list, &pe->busy_list_head);
 	return pe_entry;
 }
 
-static int sock_pe_progress_table(struct sock_pe *pe,
-				  struct sock_cq *cq)
-{
-	int ret;
-	struct dlist_entry *head, *curr, *next;
-	struct sock_pe_entry *pe_entry;
-	
-	head = &cq->pe_entry_head.list;
-	curr = head->next;
-	
-	while(curr != head){
-		next = curr->next;
-		pe_entry = container_of(curr, struct sock_pe_entry, list);
-		
-		if(pe_entry->type == SOCK_RX){
-			ret = sock_pe_progress_rx_entry(pe, pe_entry);
-			if(ret < 0)
-				return ret;
-
-			if(pe_entry->msg_hdr.msg_len == pe_entry->done_len){
-				sock_debug(SOCK_INFO, "PE: [%d] RX done\n", 
-					   PE_INDEX(pe, pe_entry));
-				ret = sock_pe_process_recv(pe, pe_entry);
-				if(ret < 0)
-					return ret;
-				sock_pe_release_entry(pe, pe_entry);
-			}
-		}else{
-			ret = sock_pe_progress_tx_entry(pe, pe_entry);
-			if(ret < 0)
-				return ret;
-			
-			if(pe_entry->msg_hdr.msg_len == pe_entry->done_len){
-				sock_debug(SOCK_INFO, "PE: [%d] TX done\n", 
-					   PE_INDEX(pe, pe_entry));
-				ret = pe_entry->cq->report_completion(
-					pe_entry->cq, FI_ADDR_UNSPEC, pe_entry);
-				if(ret < 0)
-					return ret;
-				sock_pe_release_entry(pe, pe_entry);
-			}
-		}
-		curr = next;
-	}
-	return 0;
-}
-
-static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_cq *cq,
-				struct sock_ep *ep)
+static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 {
 	struct sock_pe_entry *pe_entry;	
 	pe_entry = sock_pe_acquire_entry(pe);
@@ -458,18 +407,17 @@ static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_cq *cq,
 	pe_entry->type = SOCK_RX;
 	pe_entry->done_len = 0;
 
-	pe_entry->ep = ep;
-	pe_entry->cq = cq;
+	pe_entry->ep = rx_ctx->ep;
+	pe_entry->cq = rx_ctx->cq;
 
-	/* link to tracking list in CQ */
-	dlist_init(&pe_entry->list);
-	dlist_insert_tail(&pe_entry->list, &cq->pe_entry_head.list);
+	/* link to tracking list in rx_ctx */
+	dlist_init(&pe_entry->ctx_list);
+	dlist_insert_tail(&pe_entry->ctx_list, &rx_ctx->pe_entry_head);
 
 	return 0;
 }
 
-static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_cq *cq, 
-				struct sock_tx_ctx *tx_ctx)
+static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 {
 	int i, is_inject;
 	uint64_t msg_len, payload_len;
@@ -481,7 +429,7 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_cq *cq,
 	
 	pe_entry = sock_pe_acquire_entry(pe);
 	if(!pe_entry){
-		sock_debug(SOCK_ERROR, "Error in acquiring free PE entry \n");
+		sock_debug(SOCK_ERROR, "PE: Error in acquiring free PE entry \n");
 		return -FI_EINVAL;
 	}
 
@@ -489,16 +437,15 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_cq *cq,
 	pe_entry->done_len = 0;
 
 	pe_entry->ep = tx_ctx->ep;
-	pe_entry->cq = cq;
+	pe_entry->cq = tx_ctx->cq;
 
-	/* link to tracking list in CQ */
-	dlist_init(&pe_entry->list);
-	dlist_insert_tail(&pe_entry->list, &cq->pe_entry_head.list);
+	/* link to tracking list in tx_ctx */
+	dlist_init(&pe_entry->ctx_list);
+	dlist_insert_tail(&pe_entry->ctx_list, &tx_ctx->pe_entry_head);
 
 	/* fill in PE tx entry */
 	memset(&pe_entry->msg_hdr, 0, sizeof(struct sock_msg_hdr));
-	rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_op, 
-		 sizeof(struct sock_tx_op));
+	rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_op, sizeof(struct sock_tx_op));
 
 	rbfdread(&tx_ctx->rbfd, &pe_entry->flags, sizeof(uint64_t));
 	rbfdread(&tx_ctx->rbfd, &pe_entry->context, sizeof(uint64_t));
@@ -555,118 +502,175 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_cq *cq,
 	return 0;
 }
 
-int sock_pe_progress_cq(struct sock_pe *pe, struct sock_cq *cq)
+int sock_pe_add_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *ctx)
 {
-	int ret = 0, i;
-	struct sock_ep *ep;
-	struct pollfd poll_fd;
-	struct sock_tx_ctx *tx_ctx;
-	struct sock_conn *conn;
-	struct dlist_entry *curr_ctx, *curr;
+	fastlock_acquire(&pe->pe_list_lock);
+	dlistfd_insert_tail(&ctx->pe_list, &pe->tx_list_head);
+	fastlock_release(&pe->pe_list_lock);
+	sock_debug(SOCK_INFO, "PE: TX added to PE\n");
+	return 0;
+}
 
+int sock_pe_add_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *ctx)
+{
+	fastlock_acquire(&pe->pe_list_lock);
+	dlistfd_insert_tail(&ctx->pe_list, &pe->rx_list_head);
+	fastlock_release(&pe->pe_list_lock);
+	sock_debug(SOCK_INFO, "PE: RX added to PE\n");
+	return 0;
+}
+
+static int sock_pe_progress_rx_ctx(struct sock_pe *pe, 
+				   struct sock_rx_ctx *rx_ctx)
+{
+	int i, ret = 0;
+	struct pollfd poll_fd;
+	struct dlist_entry *list;
+	struct sock_conn *conn;
+	struct sock_pe_entry *pe_entry;
+
+	poll_fd.events = POLLIN;
 	fastlock_acquire(&pe->pe_lock);
 
-	if(!dlist_empty(&cq->pe_entry_head.list)){
-		ret = sock_pe_progress_table(pe, cq);
-		if(ret) goto out;
-	}
-
-	/* iterate over tx_ctx list */
-	for(curr_ctx = cq->tx_ctx_head.list.next; 
-	    curr_ctx != &cq->tx_ctx_head.list && 
-		    !dlist_empty(&pe->free_list_head.list); 
-	    curr_ctx = curr_ctx->next){
-		
-		tx_ctx = container_of(curr_ctx, struct sock_tx_ctx, list);
-			
-		/* iterate over rbuf of tx_ctx */
-		while(!rbfdempty(&tx_ctx->rbfd) && 
-		      !dlist_empty(&pe->free_list_head.list)){
-			/* new TX PE entry */
-			ret = sock_pe_new_tx_entry(pe, cq, tx_ctx);
+	/* check for incoming data */
+	for (i=0; i < rx_ctx->ep->av->count && 
+		     !dlist_empty(&pe->free_list_head); i++) {
+		sock_conn_map_lookup_key(rx_ctx->ep->av->cmap, 
+					 rx_ctx->ep->av->key_table[i], &conn);
+		poll_fd.fd = conn->sock_fd;
+		ret = poll(&poll_fd, 1, 0);
+		if(ret<0) goto out;
+		if(ret == 1) {
+			/* new RX PE entry */
+			ret = sock_pe_new_rx_entry(pe, rx_ctx);
 			if(ret) goto out;
 		}
 	}
 
-	/* check for rx */
-	for(curr = cq->ep_list_head.list.next;
-	    !dlist_empty(&pe->free_list_head.list) && curr != &cq->ep_list_head.list;
-	    curr = curr->next){
+	/* progress tx_ctx in PE table */
+	for(list = rx_ctx->pe_entry_head.next;
+	    list != &rx_ctx->pe_entry_head; list = list->next) {
 		
-		ep = container_of(curr, struct sock_ep, list);
-		if(ep->recv_cq != cq)
-			continue;
+		pe_entry = container_of(list, struct sock_pe_entry, ctx_list);
+		ret = sock_pe_progress_rx_entry(pe, pe_entry);
+		if(ret < 0) goto out;
 
-		/* check for incoming data */
-		for (i=0; i<ep->av->count; i++) {
-			sock_conn_map_lookup_key(ep->av->cmap, 
-						 ep->av->key_table[i], &conn);
-			poll_fd.fd = conn->sock_fd;
-			poll_fd.events = POLLIN;	
-			ret = poll(&poll_fd, 1, 0);
-			
-			if(ret == 1){
-				/* new RX PE entry */
-				ret = sock_pe_new_rx_entry(pe, cq, ep);
-				if(ret) goto out;
-			}else if(ret < 0){
-				sock_debug(SOCK_ERROR, "PE: poll() failed!\n");
-				goto out;
-			}else{
-				/* try next */
-				break;
-			}
+		if(pe_entry->msg_hdr.msg_len == pe_entry->done_len) {
+			ret = sock_pe_process_recv(pe, pe_entry);
+			if(ret < 0) goto out;
+			sock_pe_release_entry(pe, pe_entry);
+			sock_debug(SOCK_INFO, "PE: [%d] RX done\n", 
+				   PE_INDEX(pe, pe_entry));
 		}
 	}
-
-out:
+		
+out:	
+	if(ret) 
+		sock_debug(SOCK_ERROR, "PE: failed to progress RX ctx\n");
 	fastlock_release(&pe->pe_lock);
 	return ret;
 }
 
-int sock_pe_add_cq(struct sock_pe *pe, struct sock_cq *cq)
+static int sock_pe_progress_tx_ctx(struct sock_pe *pe, 
+				   struct sock_tx_ctx *tx_ctx)
 {
-	if(rbfdavail(&pe->cq_rb) < sizeof(struct sock_cq*))
-		return -FI_ENOMEM;
+	int ret = 0;
+	struct dlist_entry *list;
+	struct sock_pe_entry *pe_entry;
 
-	fastlock_acquire(&pe->cq_lock);
-	rbfdwrite(&pe->cq_rb, cq, sizeof(struct sock_cq*));
-	rbfdcommit(&pe->cq_rb);
-	fastlock_release(&pe->cq_lock);
-	sock_debug(SOCK_INFO, "cq: %p added to PE\n", cq);
-	return 0;
+	fastlock_acquire(&pe->pe_lock);
+
+	/* check tx_ctx rbuf */
+	while(!rbfdempty(&tx_ctx->rbfd) && 
+	      !dlist_empty(&pe->free_list_head)) {
+		/* new TX PE entry */
+		ret = sock_pe_new_tx_entry(pe, tx_ctx);
+		if(ret) goto out;
+	}
+
+	/* progress tx_ctx in PE table */
+	for(list = tx_ctx->pe_entry_head.next;
+	    list != &tx_ctx->pe_entry_head; list = list->next) {
+		
+		pe_entry = container_of(list, struct sock_pe_entry, ctx_list);
+		ret = sock_pe_progress_tx_entry(pe, pe_entry);
+		if(ret < 0) goto out;
+			
+		if(pe_entry->msg_hdr.msg_len == pe_entry->done_len) {
+			ret = pe_entry->cq->report_completion(
+				pe_entry->cq, FI_ADDR_UNSPEC, pe_entry);
+			if(ret) goto out;
+			sock_pe_release_entry(pe, pe_entry);
+
+			sock_debug(SOCK_INFO, "PE: [%d] TX done\n", 
+				   PE_INDEX(pe, pe_entry));
+		}
+	}
+		
+out:	
+	if(ret) 
+		sock_debug(SOCK_ERROR, "PE: failed to progress TX ctx\n");
+	fastlock_release(&pe->pe_lock);
+	return ret;
 }
 
+#define SOCK_PE_TIMEOUT (100000)
 static void *sock_pe_progress_thread(void *data)
 {
-	size_t ret;
-	struct sock_cq *cq;
-	struct sock_pe *pe = 
-		(struct sock_pe *)data;
+	int ret;
+	struct pollfd fds[2];
+	struct dlist_entry *list;
+	struct sock_tx_ctx *tx_ctx;
+	struct sock_rx_ctx *rx_ctx;
+	struct sock_pe *pe = (struct sock_pe *)data;
 
 	sock_debug(SOCK_INFO, "PE: Progress thread started\n");
 
-	while(pe->do_progress){
+	fds[0].events = POLLIN;
+	fds[0].fd = pe->tx_list_head.fd[LIST_READ_FD];
 
-		cq = NULL;
-		if(rbfdempty(&pe->cq_rb) && 
-		   dlist_empty(&pe->busy_list_head.list)){
-			ret = rbfdsread(&pe->cq_rb,
-					(void*)&cq, sizeof(struct sock_cq*), 10000);
-			if(ret < 0)
+	fds[1].events = POLLIN;	
+	fds[1].fd = pe->rx_list_head.fd[LIST_READ_FD];
+	
+	while(pe->do_progress) {
+
+		if(dlistfd_empty(&pe->tx_list_head) &&
+		   dlistfd_empty(&pe->rx_list_head)) {
+			ret = poll(fds, 2, SOCK_PE_TIMEOUT);
+			if(ret == 0)
 				continue;
 		}
-				
-		if(cq != NULL){
-			ret = sock_pe_progress_cq(pe, cq);
-			if(ret){
-				sock_debug(SOCK_ERROR, "PE: failed to progress CQ\n");
-				return NULL;
+		fastlock_acquire(&pe->pe_list_lock);
+
+		/* progress tx */
+		if(!dlistfd_empty(&pe->tx_list_head)) {
+			for(list = pe->tx_list_head.list.next;
+			    list != &pe->tx_list_head.list; list = list->next) {
+				tx_ctx = container_of(list, struct sock_tx_ctx, pe_list);
+				ret = sock_pe_progress_tx_ctx(pe, tx_ctx);
+				if(ret) {
+					sock_debug(SOCK_ERROR, "PE: failed to progress TX\n");
+					return NULL;
+				}
 			}
-			sock_pe_add_cq(pe, cq);
 		}
+
+		/* progress rx */
+		if(!dlistfd_empty(&pe->rx_list_head)) {
+			for(list = pe->rx_list_head.list.next;
+			    list != &pe->rx_list_head.list; list = list->next) {
+				rx_ctx = container_of(list, struct sock_rx_ctx, pe_list);
+				ret = sock_pe_progress_rx_ctx(pe, rx_ctx);
+				if(ret) {
+					sock_debug(SOCK_ERROR, "PE: failed to progress RX\n");
+					return NULL;
+				}
+			}
+		}
+		fastlock_release(&pe->pe_list_lock);
 	}
-	sock_debug(SOCK_INFO, "Stopping progress thread\n");
+	
+	sock_debug(SOCK_INFO, "PE: Progress thread terminated\n");
 	return NULL;
 }
 
@@ -676,13 +680,13 @@ static void sock_pe_init_table(
 	int64_t i;
 	
 	memset(&pe->pe_table, 0, 
-	       sizeof(struct sock_pe_entry) * MAX_PROGRESS_ENTRIES);
+	       sizeof(struct sock_pe_entry) * SOCK_PE_MAX_ENTRIES);
 
-	dlist_init(&pe->free_list_head.list);
-	dlist_init(&pe->busy_list_head.list);
+	dlist_init(&pe->free_list_head);
+	dlist_init(&pe->busy_list_head);
 
-	for(i=0; i<MAX_PROGRESS_ENTRIES; i++){
-		dlist_insert_tail(&pe->pe_table[i].list, &pe->free_list_head.list);
+	for(i=0; i<SOCK_PE_MAX_ENTRIES; i++){
+		dlist_insert_tail(&pe->pe_table[i].list, &pe->free_list_head);
 	}
 	fastlock_init(&pe->pe_lock);
 	sock_debug(SOCK_INFO, "PE table init: OK\n");
@@ -696,12 +700,9 @@ struct sock_pe *sock_pe_init(struct sock_domain *domain)
 
 	sock_pe_init_table(pe);
 
-	if(rbfdinit(&pe->cq_rb, 
-		    SOCK_NUM_PROGRESS_CQS * sizeof(struct sock_cq*))){
-		sock_debug(SOCK_ERROR, "PE: Couldn't create CQ rb\n");
-		goto err;
-	}
-	fastlock_init(&pe->cq_lock);
+	dlistfd_head_init(&pe->tx_list_head);
+	dlistfd_head_init(&pe->rx_list_head);
+	fastlock_init(&pe->pe_list_lock);
 
 	pe->do_progress = 1;
 	if(pthread_create(&pe->progress_thread, NULL, sock_pe_progress_thread,
@@ -710,24 +711,28 @@ struct sock_pe *sock_pe_init(struct sock_domain *domain)
 		goto err;
 	}
 	sock_debug(SOCK_INFO, "PE init: OK\n");
+	return pe;
 
 err:
+	dlistfd_head_free(&pe->tx_list_head);
+	dlistfd_head_free(&pe->rx_list_head);
+
 	free(pe);
 	return NULL;
 }
 
 void sock_pe_finalize(struct sock_pe *pe)
 {
-	/* FIXME: wait until PE table is empty? 
-	   what about posted recv buffers */
-	
 	pe->do_progress = 0;
 	pthread_join(pe->progress_thread, NULL);
 	
-	rbfdfree(&pe->cq_rb);
-	fastlock_destroy(&pe->cq_lock);
 	fastlock_destroy(&pe->pe_lock);
+	fastlock_destroy(&pe->pe_list_lock);
 	atomic_dec(&pe->domain->ref);
+
+	dlistfd_head_free(&pe->tx_list_head);
+	dlistfd_head_free(&pe->rx_list_head);
+
 	free(pe);
 	sock_debug(SOCK_INFO, "Progress engine finalize: OK\n");
 }
