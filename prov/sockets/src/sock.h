@@ -549,8 +549,8 @@ fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr);
 
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		 struct fid_cq **cq, void *context);
-int _sock_cq_report_completion(struct sock_cq *sock_cq, struct sock_req_item *item);
-int _sock_cq_report_error(struct sock_cq *sock_cq, struct fi_cq_err_entry *error);
+int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
+			 size_t olen, int err, int prov_errno, void *err_data);
 
 
 int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
