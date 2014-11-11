@@ -70,12 +70,11 @@
 #define SOCK_EP_MAX_IOV_LIMIT (8)
 #define SOCK_EP_MAX_TX_CTX_SZ (1<<12)
 
-#define SOCK_EP_BACKLOG (8)
-#define SOCK_EP_SNDQ_LEN (128)
-#define SOCK_EP_RCVQ_LEN (128)
+#define SOCK_PE_POLL_TIMEOUT (100000)
+#define SOCK_PE_MAX_ENTRIES (128)
 
-#define SOCK_EQ_DEF_LEN (128)
-#define SOCK_CQ_DEF_LEN (128)
+#define SOCK_EQ_DEF_SZ (1<<12)
+#define SOCK_CQ_DEF_SZ (1<<12)
 
 #define SOCK_EP_CAP ( FI_MSG | \
 		      FI_INJECT |			\
@@ -87,6 +86,11 @@
 
 #define SOCK_MAJOR_VERSION 1
 #define SOCK_MINOR_VERSION 0
+
+/* TODO: to remove */
+#define SOCK_EP_SNDQ_LEN (128)
+#define SOCK_EP_RCVQ_LEN (128)
+
 
 extern const char const sock_fab_name[];
 extern const char const sock_dom_name[];
@@ -230,7 +234,8 @@ enum {
 	SOCK_OP_WRITE,
 	SOCK_OP_READ,
 	SOCK_OP_TSEND,
-	SOCK_OP_ATOMIC
+	SOCK_OP_ATOMIC,
+	SOCK_OP_SEND_INJECT,
 };
 
 /*
@@ -240,7 +245,7 @@ enum {
  * data - only present if flags indicate
  * tag - only present for TSEND op
  */
-struct sock_tx_op {
+struct sock_op {
 	uint8_t			op;
 	uint8_t			src_iov_len;
 	uint8_t			dest_iov_len;
@@ -425,7 +430,7 @@ struct sock_tx_iov {
 };
 
 struct sock_tx_pe_entry{
-	struct sock_tx_op tx_op;	
+	struct sock_op tx_op;	
 	uint8_t header_sent;
 	uint8_t reserved[7];
 
@@ -436,7 +441,7 @@ struct sock_tx_pe_entry{
 };
 
 struct sock_rx_pe_entry{
-	struct sock_tx_op rx_op;
+	struct sock_op rx_op;
 	void *raw_data;
 	union sock_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
 };
@@ -462,7 +467,8 @@ struct sock_pe_entry{
 	uint64_t tag;
 
 	uint8_t type;
-	uint8_t reserved[7];
+	uint8_t is_complete;
+	uint8_t reserved[6];
 
 	uint64_t done_len;
 	struct sock_ep *ep;
@@ -472,13 +478,11 @@ struct sock_pe_entry{
 	struct dlist_entry ctx_entry;
 };
 
-#define SOCK_PE_MAX_ENTRIES (128)
-
 struct sock_pe{
 	struct sock_domain *domain;
 
 	struct sock_pe_entry pe_table[SOCK_PE_MAX_ENTRIES];
-	fastlock_t pe_lock;
+	fastlock_t lock;
 
 	struct dlist_entry free_list;
 	struct dlist_entry busy_list;
@@ -512,7 +516,7 @@ struct sock_cq {
 };
 
 struct sock_rx_entry {
-	struct sock_tx_op rx_op;
+	struct sock_op rx_op;
 
 	uint64_t flags;
 	uint64_t context;
@@ -520,11 +524,9 @@ struct sock_rx_entry {
 	uint64_t data;
 	uint64_t tag;
 	uint64_t mask;
-	uint8_t valid_tag;
-	uint8_t reserved[7];
 	
 	union sock_iov iov[SOCK_EP_MAX_IOV_LIMIT];
-	struct dlist_entry list;
+	struct dlist_entry entry;
 };
 
 int _sock_verify_info(struct fi_info *hints);
