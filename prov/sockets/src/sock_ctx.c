@@ -59,9 +59,7 @@ struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, void *context
 
 	rx_ctx->fid_ctx.fid.fclass = FI_CLASS_RX_CTX;
 	rx_ctx->fid_ctx.fid.context = context;
-
-	if(attr)
-		*(&rx_ctx->attr) = *attr;
+	rx_ctx->attr = *attr;
 	return rx_ctx;
 }
 
@@ -79,7 +77,7 @@ void sock_rx_ctx_free(struct sock_rx_ctx *rx_ctx)
 	free(rx_ctx);
 }
 
-struct sock_tx_ctx *sock_tx_ctx_alloc(struct sock_ep *ep, size_t size)
+struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr, void *context)
 {
 	struct sock_tx_ctx *tx_ctx;
 
@@ -87,7 +85,7 @@ struct sock_tx_ctx *sock_tx_ctx_alloc(struct sock_ep *ep, size_t size)
 	if (!tx_ctx)
 		return NULL;
 
-	if (rbfdinit(&tx_ctx->rbfd, size))
+	if (rbfdinit(&tx_ctx->rbfd, attr->size))
 		goto err;
 
 	dlist_init(&tx_ctx->ep_entry);
@@ -98,6 +96,11 @@ struct sock_tx_ctx *sock_tx_ctx_alloc(struct sock_ep *ep, size_t size)
 
 	fastlock_init(&tx_ctx->rlock);
 	fastlock_init(&tx_ctx->wlock);
+
+	tx_ctx->fid_ctx.fid.fclass = FI_CLASS_TX_CTX;
+	tx_ctx->fid_ctx.fid.context = context;
+	tx_ctx->attr = *attr;
+
 	return tx_ctx;
 err:
 	free(tx_ctx);

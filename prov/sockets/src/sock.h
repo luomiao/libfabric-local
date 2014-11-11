@@ -403,7 +403,7 @@ struct sock_rx_ctx {
 	struct dlist_entry ep_list;
 	fastlock_t lock;
 
-	struct fi_rx_ctx_attr ctx_attr;
+	struct fi_rx_ctx_attr attr;
 };
 
 struct sock_tx_ctx {
@@ -428,7 +428,7 @@ struct sock_tx_ctx {
 	struct dlist_entry ep_list;
 	fastlock_t lock;
 
-	struct fi_tx_ctx_attr ctx_attr;
+	struct fi_tx_ctx_attr attr;
 };
 
 
@@ -595,11 +595,12 @@ int sock_ep_connect(struct fid_ep *ep, const void *addr,
 struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep, fi_addr_t addr,
 					   uint16_t rx_id, uint64_t tag, uint64_t mask);
 
-struct sock_rx_ctx *sock_rx_ctx_alloc(void);
+struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, void *context);
 void sock_rx_ctx_add_ep(struct sock_rx_ctx *rx_ctx, struct sock_ep *ep);
 void sock_rx_ctx_free(struct sock_rx_ctx *rx_ctx);
 
-struct sock_tx_ctx *sock_tx_ctx_alloc(size_t size);
+struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr, void *context);
+void sock_tx_ctx_add_ep(struct sock_tx_ctx *tx_ctx, struct sock_ep *ep);
 void sock_tx_ctx_free(struct sock_tx_ctx *tx_ctx);
 void sock_tx_ctx_start(struct sock_tx_ctx *tx_ctx);
 int sock_tx_ctx_write(struct sock_tx_ctx *tx_ctx, const void *buf, size_t len);
