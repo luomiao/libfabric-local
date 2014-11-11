@@ -113,8 +113,7 @@ const struct fi_rx_ctx_attr _sock_rdm_rx_attr = {
 };
 
 static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type, 
-					int addr_format,
-					struct fi_info *hints,
+					int addr_format, struct fi_info *hints,
 					void *src_addr, void *dest_addr)
 {
 	struct fi_info *_info = fi_allocinfo_internal();
@@ -254,14 +253,13 @@ err:
 int sock_rdm_ep_fi_close(struct fid *fid)
 {
 	struct sock_ep *sock_ep;
-	
 	sock_ep = container_of(fid, struct sock_ep, ep.fid);
-	if(!sock_ep)
-		return -FI_EINVAL;
 
-	free_list(sock_ep->send_list);
-	free_list(sock_ep->recv_list);
-	
+	if(atomic_get(&sock_ep->ref != 2))
+		return -FI_EBUSY;
+
+	sock_tx_ctx_free(sock_ep->tx_ctx);
+	sock_rx_ctx_free(sock_ep->rx_ctx);
 	
 	free(sock_ep);
 	return 0;
@@ -274,11 +272,6 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 	struct sock_av *sock_av;
 
 	sock_ep = container_of(fid, struct sock_ep, ep.fid);
-	if(!sock_ep)
-		return -FI_EINVAL;
-
-	if (!bfid)
-		return -FI_EINVAL;
 	
 	switch (bfid->fclass) {
 	case FI_CLASS_EQ:
@@ -361,19 +354,43 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 
 int sock_rdm_ep_fi_sync(struct fid *fid, uint64_t flags, void *context)
 {
-	return -FI_ENOSYS;
-}
+	struct sock_ep *ep;
+	uint64_t out_send;
+	uint64_t out_tag_send;
+	uint64_t out_rma_read;
+	uint64_t out_rma_write;
 
-int sock_rdm_ep_fi_control(struct fid *fid, int command, void *arg)
-{
-	return -FI_ENOSYS;
-}
+	ep = container_of(fid, struct sock_ep, ep.fid);
+	out_send = ep->out_send;
+	out_tag_send = ep->out_tag_send;
+	out_rma_read = ep->out_rma_read;
+	out_rma_write = ep->out_rma_write;
 
-int sock_rdm_ep_fi_ops_open(struct fid *fid, const char *name,
-			uint64_t flags, void **ops, void *context)
-{
-	/* TODO */
-	return -FI_ENOSYS;
+	/* FIXME: yield CPU & sleep ? */
+
+	if(flags & FI_SEND) {
+		while(out_send > ep->cmpl_send && 
+		      out_tag_send > ep->cmpl_tag_send) {
+			sched_yield();
+	}
+
+	if(flags & FI_READ) {
+		while(out_rma_read > ep->cmpl_rma_read) {
+			sched_yield();
+		}
+	}
+
+	if(flags & FI_WRITE) {
+		while(out_rma_write > ep->cmpl_rma_write) {
+			sched_yield();
+		}
+	}
+
+	if(flags & FI_REMOTE_WRITE) {
+		sock_debug(SOCK_ERROR, "EP: FI_REMOTE_WRITE not implemented\n");
+	}
+	
+	return 0;
 }
 
 struct fi_ops sock_rdm_ep_fi_ops = {
@@ -381,59 +398,77 @@ struct fi_ops sock_rdm_ep_fi_ops = {
 	.close = sock_rdm_ep_fi_close,
 	.bind = sock_rdm_ep_fi_bind,
 	.sync = sock_rdm_ep_fi_sync,
-	.control = sock_rdm_ep_fi_control,
-	.ops_open = sock_rdm_ep_fi_ops_open,
+	.control = fi_no_control,
+	.ops_open = fi_no_ops_open,
 };
 
 int sock_rdm_ep_enable(struct fid_ep *ep)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	if(!sock_ep)
-		return -FI_EINVAL;
-
 	sock_ep->enabled = 1;
 	return 0;
-}
-
-ssize_t sock_rdm_ep_cancel(fid_t fid, void *context)
-{
-	return -FI_ENOSYS;
 }
 
 int sock_rdm_ep_getopt(fid_t fid, int level, int optname,
 		       void *optval, size_t *optlen)
 {
-	/* TODO */
-	return -FI_ENOSYS;
+	switch (level) {
+	case FI_OPT_ENDPOINT:
+		return -FI_ENOPROTOOPT;
+	default:
+		return -FI_ENOPROTOOPT;
+	}
+	return 0;
 }
 
 int sock_rdm_ep_setopt(fid_t fid, int level, int optname,
 		       const void *optval, size_t optlen)
 {
-	/* TODO */
+	switch (level) {
+	case FI_OPT_ENDPOINT:
+		return -FI_ENOPROTOOPT;
+	default:
+		return -FI_ENOPROTOOPT;
+	}
+	return 0;
+}
+
+int sock_rdm_ep_tx_ctx(struct fid_ep *ep, int index, struct fi_tx_ctx_attr *attr, 
+		    struct fid_ep **tx_ep, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+
+
+int sock_rdm_ep_rx_ctx(struct fid_ep *ep, int index, struct fi_rx_ctx_attr *attr,
+		    struct fid_ep **rx_ep, void *context)
+{
+	struct sock_ep *sock_ep;
+	sock_ep = container_of(fid, struct sock_ep, ep.fid);
+
+	
+
 	return -FI_ENOSYS;
 }
 
 struct fi_ops_ep sock_rdm_ep_ops ={
 	.size = sizeof(struct fi_ops_ep),
 	.enable = sock_rdm_ep_enable,
+	.cancel = fi_no_cancel,
 	.getopt = sock_rdm_ep_getopt,
 	.setopt = sock_rdm_ep_setopt,
+	.tx_ctx = sock_rdm_ep_tx_ctx,
+	.rx_ctx = sock_rdm_ep_rx_ctx,
 };
 
 int sock_rdm_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
 {
 	size_t len;
 	struct sock_ep *sock_ep;
-	
-	if (!addr || !addrlen)
-		return -FI_EINVAL;
 
 	sock_ep = container_of(fid, struct sock_ep, ep.fid);
-	if(!sock_ep)
-		return -FI_EINVAL;
-
 	len = MIN(*addrlen, sizeof(struct sockaddr));
 	memcpy(addr, &sock_ep->src_addr, len);
 	*addrlen = sizeof(struct sockaddr);
@@ -443,16 +478,9 @@ int sock_rdm_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
 int sock_rdm_ep_cm_getpeer(struct fid_ep *ep, void *addr, size_t *addrlen)
 {
 	struct sock_ep *sock_ep;
-	
-	if (!addr || !addrlen)
-		return -FI_EINVAL;
 
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	if(!sock_ep)
-		return -FI_EINVAL;
-
 	*addrlen = MIN(*addrlen, sizeof(struct sockaddr));
-
 	memcpy(addr, &sock_ep->dest_addr, *addrlen);
 	return 0;
 }
@@ -462,13 +490,7 @@ int sock_rdm_ep_cm_connect(struct fid_ep *ep, const void *addr,
 {
 	struct sock_ep *sock_ep;
 
-	if(!addr)
-		return -FI_EINVAL;
-
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	if(!sock_ep)
-		return -FI_EINVAL;
-
 	if(sock_ep->info.addr_format == FI_SOCKADDR){
 		if(memcmp((void*)&(sock_ep->dest_addr), 
 			  addr, sizeof(struct sockaddr)) != 0){
@@ -477,7 +499,7 @@ int sock_rdm_ep_cm_connect(struct fid_ep *ep, const void *addr,
 	}else{
 		return -FI_EINVAL;
 	}
-
+	
 	if(paramlen > 0){
 		int ret;
 		struct iovec msg_iov ={
@@ -816,7 +838,7 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep->ep.ops = &sock_rdm_ep_ops;
 	sock_ep->ep.cm = &sock_rdm_ep_cm_ops;
 	sock_ep->ep.msg = &sock_rdm_ep_msg_ops;
-
+	
 	/* TODO */
 	sock_ep->ep.rma = NULL;
 	sock_ep->ep.tagged = NULL;
@@ -827,21 +849,16 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		goto err1;
 	}
 
-	flags = fcntl(sock_ep->sock_fd, F_GETFL, 0);
-	if(-1 == flags)
-		goto err2;
-	fcntl(sock_ep->sock_fd, F_SETFL, flags | O_NONBLOCK);
-	
 	*ep = &sock_ep->ep;	
 	if(info){
 		sock_ep->info.caps = info->caps;
-		sock_ep->info.addr_format = FI_SOCKADDR;
+		sock_ep->info.addr_format = FI_SOCKADDR_IN;
 		
 		if(info->src_addr){
 			memcpy(&sock_ep->src_addr, info->src_addr, 
-			       sizeof(struct sockaddr));
+			       sizeof(struct sockaddr_in));
 			ret = bind(sock_ep->sock_fd, &sock_ep->src_addr, 
-				   sizeof(struct sockaddr));
+				   sizeof(struct sockaddr_in));
 			if(!ret){
 				sock_debug(SOCK_ERROR, "Failed to bind to local address\n");
 				goto err2;
@@ -849,21 +866,20 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		}
 	}
 
-	sock_ep->rx_ctx = sock_rx_ctx_alloc();
+	atomic_init(&sock_ep->ref, 0);
+	sock_ep->rx_ctx = sock_rx_ctx_alloc(sock_ep);
 	if(!sock_ep->rx_ctx)
 		goto err2;
+	sock_rx_ctx_add_ep(sock_ep->rx_ctx, ep);
 
-	sock_ep->rx_ctx->rx_id = 0;
-	sock_ep->rx_ctx->addr = 0; /* TODO */
-	sock_ep->rx_ctx->ep = sock_ep;
-	
 	sock_ep->tx_ctx = sock_tx_ctx_alloc(sock_ep->tx_ctx_attr.size);
 	if(!sock_ep->tx_ctx)
 		goto err3;
-
-	sock_ep->tx_ctx->tx_id = 0;
-	sock_ep->tx_ctx->addr = 0; /* TODO */
 	sock_ep->tx_ctx->ep = sock_ep;
+	atomic_inc(&ep->ref); 
+
+	dlist_init(&sock_ep->rx_ctx_list);
+	dlist_init(&sock_ep->tx_ctx_list);
 
 	sock_ep->domain = sock_dom;
 	atomic_inc(&sock_dom->ref);
@@ -871,10 +887,8 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 
 err3:
 	sock_rx_ctx_free(sock_ep->rx_ctx);
-
 err2:
-	close(sock_ep->sock_fd);
-
+	close(sock_ep->sock_fd);	
 err1:
 	free(sock_ep);
 	return -FI_EAVAIL;
@@ -883,5 +897,209 @@ err1:
 int sock_rdm_pep(struct fid_fabric *fabric, struct fi_info *info,
 			struct fid_pep **pep, void *context)
 {
+	return -FI_EINVAL;
+}
+
+int sock_rdm_tx_ctx_enable(struct fid_ep *ep)
+{
+	struct sock_tx_ctx *ctx;
+	ctx = container_of(ep, struct sock_tx_ctx, fid_ctx);
+	ctx->enabled = 1;
+}
+
+int sock_rdm_rx_ctx_enable(struct fid_ep *ep)
+{
+	struct sock_rx_ctx *ctx;
+	ctx = container_of(ep, struct sock_rx_ctx, fid_ctx);
+	ctx->enabled = 1;
+}
+
+int sock_rdm_ctx_enable(struct fid_ep *ep)
+{
+	switch(ep.fid.fclass){
+
+	case FI_CLASS_RX_CTX:
+		return sock_rdm_rx_ctx_enable(ep);
+
+	case FI_CLASS_TX_CTX:
+		return sock_rdm_tx_ctx_enable(ep);
+
+	default:
+		sock_debug(SOCK_ERROR, "RDM: Invalid CTX\n");
+		return -FI_EINVAL;
+	}
+	return -FI_EINVAL;
+}
+
+int sock_rdm_ctx_getopt(fid_t fid, int level, int optname,
+			void *optval, size_t *optlen)
+{
+	switch (level) {
+	case FI_OPT_ENDPOINT:
+		return -FI_ENOPROTOOPT;
+	default:
+		return -FI_ENOPROTOOPT;
+	}
+	return 0;
+}
+
+int sock_rdm_ctx_setopt(fid_t fid, int level, int optname,
+			const void *optval, size_t optlen)
+{
+	switch (level) {
+	case FI_OPT_ENDPOINT:
+		return -FI_ENOPROTOOPT;
+	default:
+		return -FI_ENOPROTOOPT;
+	}
+	return 0;
+}
+
+struct fi_ops_ep sock_rdm_ctx_ep_ops = {
+	.size = sizeof(struct fi_ops_ep),
+	.enable = sock_rdm_ctx_enable,
+	.cancel = fi_no_cancel,
+	.getopt = sock_rdm_ctx_getopt,
+	.setopt = sock_rdm_ctx_setopt,
+	.tx_ctx = fi_no_tx_ctx,
+	.rx_ctx = fi_no_rx_ctx,
+};
+
+ssize_t sock_rdm_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
+		   uint64_t flags)
+{
+	struct sock_rx_ctx *rx_ctx;
+	struct sock_rx_entry *rx_entry;
+
+	rx_ctx = container_of(ep, struct sock_rx_ctx, fid_ctx);
+	if(!rx_ctx->enabled || msg->iov_count > SOCK_EP_MAX_IOV_LIMIT)
+		return -FI_EINVAL;
+
+	rx_entry = calloc(1, sizeof(struct sock_rx_entry));
+	if(!rx_entry)
+		return -FI_ENOMEM;
+	
+	dlist_init(&rx_entry->entry);
+
+	rx_entry->rx_op.op = SOCK_OP_RECV;
+	rx_entry->rx_op.dest_iov_len = msg->iov_count;
+
+	rx_entry->flags = flags;
+	rx_entry->context = (uint64_t)msg->context;
+	rx_entry->addr = msg->addr;
+	rx_entry->data = msg->data;
+
+	for(i=0; i< msg->iov_count; i++){
+		rx_entry->iov[i].iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
+		rx_entry->iov[i].iov.len = (uint64_t)msg->msg_iov[i].iov_len;
+	}
+
+	fastlock_acquire(&rx_ctx->lock);
+	dlist_insert_tail(&rx_entry->entry, &sock_ep->rx_ctx->rx_entry_list);
+	fastlock_release(&rx_ctx->lock);
+	return 0;
+}
+
+ssize_t sock_rdm_ctx_recvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
+		    fi_addr_t src_addr, void *context)
+{
+	struct fi_msg msg;
+	struct iovec msg_iov;
+
+	msg_iov.iov_base = buf;
+	msg_iov.iov_len = len;
+
+	msg.msg_iov = &msg_iov;
+	msg.desc = desc;
+	msg.iov_count = 1;
+	msg.addr = src_addr;
+	msg.context = context;
+
+	return sock_rdm_ctx_recvmsg(ep, &msg, 0);
+}
+
+ssize_t sock_rdm_ctx_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
+			  void *context)
+{
+	return sock_rdm_ctx_recvfrom(ep, buf, len, desc, FI_ADDR_UNSPEC, 
+				     context);
+}
+
+ssize_t sock_rdm_ctx_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+		 size_t count, void *context)
+{
+	struct fi_msg msg;
+
+	msg.msg_iov = iov;
+	msg.desc = desc;
+	msg.iov_count = count;
+	msg.addr = FI_ADDR_UNSPEC;
+	msg.context = context;
+	return sock_rdm_ctx_recvmsg(ep, &msg, 0);
+}
+
+
+ssize_t sock_rdm_ctx_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+		void *context)
+{
 	return -FI_ENOSYS;
 }
+
+ssize_t sock_rdm_ctx_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+		 size_t count, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_sendto(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+		  fi_addr_t dest_addr, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
+		   uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_inject(struct fid_ep *ep, const void *buf, size_t len)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_injectto(struct fid_ep *ep, const void *buf, size_t len,
+		    fi_addr_t dest_addr)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_senddata(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+		    uint64_t data, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_senddatato(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+		      uint64_t data, fi_addr_t dest_addr, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+
+struct fi_ops_msg sock_rdm_ctx_msg_ops = {
+	.size = sizeof(struct fi_ops_msg),
+	.recv = sock_rdm_ctx_recv,
+	.recvv = sock_rdm_ctx_recvv,
+	.recvfrom = sock_rdm_ctx_recvfrom,
+	.recvmsg = sock_rdm_ctx_recvmsg,
+	.send = sock_rdm_ctx_send,
+	.sendv = sock_rdm_ctx_sendv,
+	.sendto = sock_rdm_ctx_sendto,
+	.sendmsg = sock_rdm_ctx_sendmsg,
+	.inject = sock_rdm_ctx_inject,
+	.injectto = sock_rdm_ctx_injectto,
+	.senddata = sock_rdm_ctx_senddata,
+	.senddatato = sock_rdm_ctx_senddatato,
+};
+
