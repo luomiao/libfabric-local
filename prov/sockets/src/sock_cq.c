@@ -48,6 +48,7 @@
 #include "sock.h"
 #include "sock_util.h"
 
+
 static ssize_t sock_cq_entry_size(struct sock_cq *sock_cq)
 {
 	ssize_t size;
@@ -83,7 +84,7 @@ static ssize_t _sock_cq_write(struct sock_cq *cq, fi_addr_t addr,
 {
 	ssize_t ret;
 
-	fastlock_acquire(&cq->cq_lock);
+	fastlock_acquire(&cq->lock);
 
 	if(rbfdavail(&cq->cq_rbfd) < len) {
 		ret = -FI_ENOSPC;
@@ -98,7 +99,7 @@ static ssize_t _sock_cq_write(struct sock_cq *cq, fi_addr_t addr,
 	rbcommit(&cq->addr_rb);
 
 out:
-	fastlock_release(&cq->cq_lock);
+	fastlock_release(&cq->lock);
 	return ret;
 }
 
@@ -107,7 +108,7 @@ static ssize_t _sock_cq_writeerr(struct sock_cq *cq,
 {
 	ssize_t ret;
 	
-	fastlock_acquire(&cq->cqerr_lock);
+	fastlock_acquire(&cq->lock);
 	if(rbavail(&cq->cqerr_rb) < len) {
 		ret = -FI_ENOSPC;
 		goto out;
@@ -118,85 +119,51 @@ static ssize_t _sock_cq_writeerr(struct sock_cq *cq,
 	ret = len;
 
 out:
-	fastlock_release(&cq->cqerr_lock);
+	fastlock_release(&cq->lock);
 	return ret;
 }
 
 
-static int sock_cq_report_completion_context(struct sock_cq *cq, fi_addr_t addr,
-					     struct sock_pe_entry *pe_entry)
+static int sock_cq_report_context(struct sock_cq *cq, fi_addr_t addr,
+				  struct sock_pe_entry *pe_entry)
 {
 	struct fi_cq_entry cq_entry;
-
 	cq_entry.op_context = (void*)pe_entry->context;
 	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
 }
 
-static int sock_cq_report_completion_msg(struct sock_cq *cq, fi_addr_t addr,
-					 struct sock_pe_entry *pe_entry)
+static int sock_cq_report_msg(struct sock_cq *cq, fi_addr_t addr,
+			      struct sock_pe_entry *pe_entry)
 {
-	size_t i, msg_len, iov_len;
 	struct fi_cq_msg_entry cq_entry;
-
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
-
-	msg_len = 0;
-	iov_len = (pe_entry->type == SOCK_RX) ? 
-		pe_entry->rx.rx_op.src_iov_len :
-		pe_entry->tx.tx_op.src_iov_len;
-	for(i=0; i < iov_len; i++)
-		msg_len += pe_entry->rx.rx_iov[i].iov.len;
-	cq_entry.len = msg_len;
-
+	cq_entry.len = pe_entry->done_len;
 	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
 }
 
-static int sock_cq_report_completion_data(struct sock_cq *cq, fi_addr_t addr,
-					  struct sock_pe_entry *pe_entry)
+static int sock_cq_report_data(struct sock_cq *cq, fi_addr_t addr,
+			       struct sock_pe_entry *pe_entry)
 {
-	size_t i, msg_len, iov_len;
 	struct fi_cq_data_entry cq_entry;
-
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
-
-	msg_len = 0;
-	iov_len = (pe_entry->type == SOCK_RX) ? 
-		pe_entry->rx.rx_op.src_iov_len :
-		pe_entry->tx.tx_op.src_iov_len;
-
-	for(i=0; i < iov_len; i++)
-		msg_len += pe_entry->rx.rx_iov[i].iov.len;
-	cq_entry.len = msg_len;
-	
+	cq_entry.len = pe_entry->done_len;
 	cq_entry.buf = (void*)pe_entry->rx.rx_iov[0].iov.addr;
 	cq_entry.data = pe_entry->data;
-	
 	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
 }
 
-static int sock_cq_report_completion_tagged(struct sock_cq *cq, fi_addr_t addr,
-					    struct sock_pe_entry *pe_entry)
+static int sock_cq_report_tagged(struct sock_cq *cq, fi_addr_t addr,
+				 struct sock_pe_entry *pe_entry)
 {
-	size_t i, msg_len, iov_len;
 	struct fi_cq_tagged_entry cq_entry;
-	
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
-
-	msg_len = 0;
-	iov_len = (pe_entry->type == SOCK_RX) ? 
-		pe_entry->rx.rx_op.src_iov_len :
-		pe_entry->tx.tx_op.src_iov_len;
-	for(i=0; i < iov_len; i++)
-		msg_len += pe_entry->rx.rx_iov[i].iov.len;
-	cq_entry.len = msg_len;
-	
+	cq_entry.len = pe_entry->done_len;
 	cq_entry.buf = (void*)pe_entry->rx.rx_iov[0].iov.addr;
 	cq_entry.data = pe_entry->data;
 	cq_entry.tag = pe_entry->tag;
-	
 	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
 }
 
@@ -204,23 +171,19 @@ static void sock_cq_set_report_fn(struct sock_cq *sock_cq)
 {
 	switch(sock_cq->attr.format) {
 	case FI_CQ_FORMAT_CONTEXT:
-		sock_cq->report_completion = 
-			&sock_cq_report_completion_context;
+		sock_cq->report_completion = &sock_cq_report_context;
 		break;
 
 	case FI_CQ_FORMAT_MSG:
-		sock_cq->report_completion = 
-			&sock_cq_report_completion_msg;
+		sock_cq->report_completion = &sock_cq_report_msg;
 		break;
 
 	case FI_CQ_FORMAT_DATA:
-		sock_cq->report_completion = 
-			&sock_cq_report_completion_data;
+		sock_cq->report_completion = &sock_cq_report_data;
 		break;
 
 	case FI_CQ_FORMAT_TAGGED:
-		sock_cq->report_completion = 
-			&sock_cq_report_completion_tagged;
+		sock_cq->report_completion = &sock_cq_report_tagged;
 		break;
 
 	case FI_CQ_FORMAT_UNSPEC:
@@ -240,7 +203,7 @@ ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count,
 	struct sock_cq *sock_cq;
 	
 	sock_cq = container_of(cq, struct sock_cq, cq_fid);
-	cq_entry_len = sock_cq_entry_size(sock_cq);
+	cq_entry_len = sock_cq->cq_entry_size;
 
 	if (sock_cq->attr.wait_cond == FI_CQ_COND_THRESHOLD) {
 		threshold = MIN((int64_t)cond, count);
@@ -248,7 +211,7 @@ ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count,
 		threshold = count;
 	}
 
-	fastlock_acquire(&sock_cq->cq_lock);
+	fastlock_acquire(&sock_cq->lock);
 	bytes_read = rbfdsread(&sock_cq->cq_rbfd, buf, 
 			       cq_entry_len*threshold, timeout);
 
@@ -266,7 +229,7 @@ ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count,
 	ret = num_read;
 
 out:
-	fastlock_release(&sock_cq->cq_lock);
+	fastlock_release(&sock_cq->lock);
 	return ret;
 }
 
@@ -301,7 +264,7 @@ ssize_t sock_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
 		return -FI_ETOOSMALL;
 
 	num_read = 0;
-	fastlock_acquire(&sock_cq->cqerr_lock);
+	fastlock_acquire(&sock_cq->lock);
 
 	while(rbused(&sock_cq->cqerr_rb) >= sizeof(struct fi_cq_err_entry)) {
 		rbread(&sock_cq->cqerr_rb, 
@@ -310,7 +273,7 @@ ssize_t sock_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
 		num_read++;
 	}
 
-	fastlock_release(&sock_cq->cqerr_lock);
+	fastlock_release(&sock_cq->lock);
 	return num_read;
 }
 
@@ -357,10 +320,7 @@ int sock_cq_close(struct fid *fid)
 	rbfree(&cq->cqerr_rb);
 	rbfdfree(&cq->cq_rbfd);
 
-	fastlock_destroy(&cq->cq_lock);
-	fastlock_destroy(&cq->cqerr_lock);
-	fastlock_destroy(&cq->cq_list_lock);
-
+	fastlock_destroy(&cq->lock);
 	atomic_dec(&cq->domain->ref);
 
 	free(cq);
@@ -455,22 +415,21 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	sock_cq->cq_entry_size = sock_cq_entry_size(sock_cq);
 	sock_cq_set_report_fn(sock_cq);
 
-	dlist_init(&sock_cq->ep_list_head);
-	dlist_init(&sock_cq->tx_list_head);
-	dlist_init(&sock_cq->rx_list_head);
+	dlist_init(&sock_cq->tx_list);
+	dlist_init(&sock_cq->rx_list);
+	dlist_init(&sock_cq->ep_list);
 
 	if((ret = rbfdinit(&sock_cq->cq_rbfd, sock_cq->attr.size)))
 		goto err1;
 
-	if((ret = rbinit(&sock_cq->addr_rb, sock_cq->attr.size)))
+	if((ret = rbinit(&sock_cq->addr_rb, 
+			 (sock_cq->attr.size/sock_cq->cq_entry_size) * sizeof(fi_addr_t))))
 		goto err2;
-
+	
 	if((ret = rbinit(&sock_cq->cqerr_rb, sock_cq->attr.size)))
 		goto err3;
 
-	fastlock_init(&sock_cq->cq_lock);
-	fastlock_init(&sock_cq->cqerr_lock);
-	fastlock_init(&sock_cq->cq_list_lock);
+	fastlock_init(&sock_cq->lock);
 
 	*cq = &sock_cq->cq_fid;
 	atomic_inc(&sock_dom->ref);
@@ -478,10 +437,8 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 
 err3:
 	rbfree(&sock_cq->addr_rb);
-
 err2:
 	rbfdfree(&sock_cq->cq_rbfd);
-
 err1:
 	free(sock_cq);
 	return ret;
@@ -493,7 +450,7 @@ int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
 	int ret;
 	struct fi_cq_err_entry err_entry;
 
-	fastlock_acquire(&cq->cqerr_lock);
+	fastlock_acquire(&cq->lock);
 
 	if(rbavail(&cq->cqerr_rb) < sizeof(struct fi_cq_err_entry)) {
 		ret = -FI_ENOSPC;
@@ -510,10 +467,10 @@ int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
 	err_entry.tag = entry->tag;
 	err_entry.op_context = (void*)entry->context;
 	
-	if(entry->type == SOCK_RX) {
+	if(entry->type == SOCK_PE_RX) {
 		err_entry.buf = (void*)entry->rx.rx_iov[0].iov.addr;
 	}else {
-		err_entry.buf = (void*)entry->tx.src_iov[0].iov.addr;
+		err_entry.buf = (void*)entry->tx.tx_iov[0].src.iov.addr;
 	}
 
 	rbwrite(&cq->cqerr_rb, &err_entry, sizeof(struct fi_cq_err_entry));
@@ -521,48 +478,7 @@ int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
 	ret = 0;
 
 out:
-	fastlock_release(&cq->cqerr_lock);
+	fastlock_release(&cq->lock);
 	return ret;
 }
 
-struct sock_rx_entry *sock_cq_get_rx_entry(struct sock_cq *cq,
-					   fi_addr_t addr, uint16_t rx_id, 
-					   uint64_t tag, uint64_t tag_mask)
-{
-	return NULL;
-/*
-	struct dlist_entry *head_ctx, *curr_ctx;
-	struct dlist_entry *head_entry, *curr_entry;
-	struct sock_rx_ctx *rx_ctx;
-	struct sock_rx_entry *rx_entry;
-
-	head_ctx = &cq->rx_ctx_head.list;
-	for(curr_ctx = head_ctx->next; !dlist_empty(head_ctx) &&
-		    curr_ctx != head_ctx; curr_ctx = curr_ctx->next){
-
-		rx_ctx = container_of(curr_ctx, struct sock_rx_ctx, list);
-		if(rx_ctx->rx_id != rx_id)
-			continue;
-		
-		head_entry = &rx_ctx->rx_entry_head.list;
-		for(curr_entry = head_entry->next; !dlist_empty(head_entry) &&
-			    curr_entry != head_entry; curr_entry = curr_entry->next){
-			
-			rx_entry = container_of(curr_entry, struct sock_rx_entry, list);
-			if(rx_entry->addr == addr){
-
-				if(!ignore_tag){
-					if(rx_entry->valid_tag && rx_entry->tag == tag){
-						rx_entry->list.prev->next = rx_entry->list.next;
-						return rx_entry;
-					}
-				}else{
-					rx_entry->list.prev->next = rx_entry->list.next;
-					return rx_entry;
-				}
-			}
-		}
-	}
-	return NULL;
-*/
-}

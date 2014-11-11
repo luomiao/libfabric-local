@@ -56,20 +56,20 @@ ssize_t sock_eq_sread(struct fid_eq *eq, uint32_t *event, void *buf, size_t len,
 
 	sock_eq = container_of(eq, struct sock_eq, eq);
 
-	fastlock_acquire(&sock_eq->eq_lock);
-	if(!dlistfd_empty(&sock_eq->eqerr_head)) {
-		ret = -FI_EINVAL;
+	fastlock_acquire(&sock_eq->lock);
+	if(!dlistfd_empty(&sock_eq->err_list)) {
+		ret = -FI_EAVAIL;
 		goto out;
 	}
 		
-	if(dlistfd_empty(&sock_eq->eq_head)) {
-		ret = dlistfd_wait_avail(&sock_eq->eq_head, timeout);
+	if(dlistfd_empty(&sock_eq->list)) {
+		ret = dlistfd_wait_avail(&sock_eq->list, timeout);
 		if(ret <= 0)
 			goto out;
 	}
 
-	list = sock_eq->eq_head.list.next;
-	entry = container_of(list, struct sock_eq_entry, list);
+	list = sock_eq->list.list.next;
+	entry = container_of(list, struct sock_eq_entry, entry);
 
 	if(entry->len > len) {
 		ret = -FI_ETOOSMALL;
@@ -81,12 +81,12 @@ ssize_t sock_eq_sread(struct fid_eq *eq, uint32_t *event, void *buf, size_t len,
 	memcpy(buf, entry->event, entry->len);
 
 	if(!(flags & FI_PEEK)) {
-		dlistfd_remove(list, &sock_eq->eq_head);
+		dlistfd_remove(list, &sock_eq->list);
 		free(entry);
 	}
 
 out:
-	fastlock_release(&sock_eq->eq_lock);
+	fastlock_release(&sock_eq->lock);
 	return ret;
 }
 
@@ -107,14 +107,14 @@ ssize_t sock_eq_readerr(struct fid_eq *eq, struct fi_eq_err_entry *buf,
 
 	sock_eq = container_of(eq, struct sock_eq, eq);
 
-	fastlock_acquire(&sock_eq->eqerr_lock);
-	if(dlistfd_empty(&sock_eq->eqerr_head)) {
+	fastlock_acquire(&sock_eq->lock);
+	if(dlistfd_empty(&sock_eq->err_list)) {
 		ret = 0;
 		goto out;
 	}
 
-	list = sock_eq->eqerr_head.list.next;
-	entry = container_of(list, struct sock_eq_entry, list);
+	list = sock_eq->err_list.list.next;
+	entry = container_of(list, struct sock_eq_entry, entry);
 
 	if(entry->len > len) {
 		ret = -FI_ETOOSMALL;
@@ -125,12 +125,12 @@ ssize_t sock_eq_readerr(struct fid_eq *eq, struct fi_eq_err_entry *buf,
 	memcpy(buf, entry->event, entry->len);
 
 	if(!(flags & FI_PEEK)) {
-		dlistfd_remove(list, &sock_eq->eqerr_head);
+		dlistfd_remove(list, &sock_eq->err_list);
 		free(entry);
 	}
 
 out:
-	fastlock_release(&sock_eq->eqerr_lock);
+	fastlock_release(&sock_eq->lock);
 	return ret;
 }
 
@@ -142,15 +142,15 @@ ssize_t sock_eq_report_event(struct sock_eq *sock_eq, uint32_t event,
 	if(!entry)
 		return -FI_ENOMEM;
 
-	fastlock_acquire(&sock_eq->eq_lock);
+	fastlock_acquire(&sock_eq->lock);
 	
 	entry->type = event;
 	entry->len = len;
 	entry->flags = flags;
 	memcpy(entry->event, buf, len);
 
-	dlistfd_insert_tail(&entry->list, &sock_eq->eq_head);
-	fastlock_release(&sock_eq->eq_lock);
+	dlistfd_insert_tail(&entry->entry, &sock_eq->list);
+	fastlock_release(&sock_eq->lock);
 	return 0;
 }
 
@@ -163,7 +163,7 @@ ssize_t sock_eq_report_error(struct sock_eq *sock_eq, fid_t fid, void *context,
 	if(!entry)
 		return -FI_ENOMEM;
 
-	fastlock_acquire(&sock_eq->eqerr_lock);
+	fastlock_acquire(&sock_eq->lock);
 
 	err_entry = (struct fi_eq_err_entry*)entry->event;
 	err_entry->fid = fid;
@@ -173,8 +173,8 @@ ssize_t sock_eq_report_error(struct sock_eq *sock_eq, fid_t fid, void *context,
 	err_entry->err_data = err_data;	
 	entry->len = sizeof(struct fi_eq_err_entry);
 
-	dlistfd_insert_tail(&entry->list, &sock_eq->eqerr_head);
-	fastlock_release(&sock_eq->eqerr_lock);
+	dlistfd_insert_tail(&entry->entry, &sock_eq->err_list);
+	fastlock_release(&sock_eq->lock);
 	return 0;
 }
 
@@ -212,10 +212,9 @@ int sock_eq_fi_close(struct fid *fid)
 	struct sock_eq *sock_eq;
 	sock_eq = container_of(fid, struct sock_eq, eq);
 
-	dlistfd_head_free(&sock_eq->eq_head);
-	fastlock_destroy(&sock_eq->eq_lock);
-	dlistfd_head_free(&sock_eq->eqerr_head);
-	fastlock_destroy(&sock_eq->eqerr_lock);
+	dlistfd_head_free(&sock_eq->list);
+	dlistfd_head_free(&sock_eq->err_list);
+	fastlock_destroy(&sock_eq->lock);
 	atomic_dec(&sock_eq->sock_fab->ref);
 
 	free(sock_eq);
@@ -231,7 +230,7 @@ int sock_eq_fi_control(struct fid *fid, int command, void *arg)
 	
 	switch (command) {
 	case FI_GETWAIT:
-		*(void **) arg = &eq->eq_head.fd[LIST_READ_FD];
+		*(void **) arg = &eq->list.fd[LIST_READ_FD];
 		break;
 	default:
 		ret = -FI_ENOSYS;
@@ -304,19 +303,20 @@ int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 	else
 		memcpy(&sock_eq->attr, attr, sizeof(struct fi_cq_attr));
 
-	ret = dlistfd_head_init(&sock_eq->eq_head);
+	ret = dlistfd_head_init(&sock_eq->list);
 	if(ret)
 		goto err1;
 
-	ret = dlistfd_head_init(&sock_eq->eqerr_head);
+	ret = dlistfd_head_init(&sock_eq->err_list);
 	if(ret)
 		goto err2;
-		
+	
+	fastlock_init(&sock_eq->lock);
 	atomic_inc(&sock_eq->sock_fab->ref);
 	return 0;
 
 err2:
-	dlistfd_head_free(&sock_eq->eq_head);
+	dlistfd_head_free(&sock_eq->list);
 err1:
 	free(sock_eq);
 	return ret;

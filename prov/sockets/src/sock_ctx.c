@@ -39,6 +39,7 @@
 
 #include "sock.h"
 
+
 struct sock_rx_ctx *sock_rx_ctx_alloc()
 {
 	struct sock_rx_ctx *rx_ctx;
@@ -46,9 +47,12 @@ struct sock_rx_ctx *sock_rx_ctx_alloc()
 	if(!rx_ctx)
 		return NULL;
 
-	dlist_init(&rx_ctx->ep_list);
-	dlist_init(&rx_ctx->pe_list);
-	dlist_init(&rx_ctx->pe_entry_head);
+	dlist_init(&rx_ctx->ep_entry);
+	dlist_init(&rx_ctx->cq_entry);
+	dlist_init(&rx_ctx->pe_entry);
+
+	dlist_init(&rx_ctx->pe_entry_list);
+	dlist_init(&rx_ctx->rx_entry_list);
 
 	fastlock_init(&rx_ctx->lock);
 	return rx_ctx;
@@ -71,9 +75,11 @@ struct sock_tx_ctx *sock_tx_ctx_alloc(size_t size)
 	if (rbfdinit(&tx_ctx->rbfd, size))
 		goto err;
 
-	dlist_init(&tx_ctx->ep_list);
-	dlist_init(&tx_ctx->pe_list);
-	dlist_init(&tx_ctx->pe_entry_head);
+	dlist_init(&tx_ctx->ep_entry);
+	dlist_init(&tx_ctx->cq_entry);
+	dlist_init(&tx_ctx->pe_entry);
+
+	dlist_init(&tx_ctx->pe_entry_list);
 
 	fastlock_init(&tx_ctx->rlock);
 	fastlock_init(&tx_ctx->wlock);

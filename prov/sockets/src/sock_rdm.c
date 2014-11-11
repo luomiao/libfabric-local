@@ -97,7 +97,7 @@ const struct fi_tx_ctx_attr _sock_rdm_tx_attr = {
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
 	.inject_size = SOCK_EP_MAX_INJECT_SZ,
-	.size = SOCK_EP_MAX_TXRX_SZ,
+	.size = SOCK_EP_MAX_TX_CTX_SZ,
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
 	.op_alignment = 0,
 };
@@ -585,7 +585,9 @@ ssize_t sock_rdm_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		rx_entry->iov[i].iov.len = (uint64_t)msg->msg_iov[i].iov_len;
 	}
 
+/*
 	dlist_insert_tail(&rx_entry->list, &sock_ep->rx_ctx->rx_entry_head.list);
+*/
 	return 0;
 }
 
@@ -632,7 +634,7 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
 	int ret, i;
-	uint64_t tmp=0, dest_addr;
+	uint64_t tmp=0;
 	struct sock_ep *sock_ep;
 	struct sock_tx_op tx_op;
 	union sock_iov tx_iov;
@@ -664,8 +666,10 @@ ssize_t sock_rdm_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		goto err1;
 
 	/* dest_addr */
+/*
 	dest_addr = (msg->addr == FI_ADDR_UNSPEC) ? 
 		sock_ep->dest_conn_addr: msg->addr;
+*/
 	if((ret = sock_tx_ctx_write(sock_ep->tx_ctx, &msg->addr, sizeof(uint64_t))))
 		goto err1;
 
