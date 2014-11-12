@@ -301,9 +301,9 @@ struct sock_ep {
 	int send_cq_event_flag;
 	int recv_cq_event_flag;
 
-	int num_rx_ctx;
+	atomic_t num_rx_ctx;
+	atomic_t num_tx_ctx;
 	int max_rx_ctx;
-	int num_tx_ctx;
 	int max_tx_ctx;
 
 	struct sock_rx_ctx *rx_ctx;
@@ -377,9 +377,11 @@ struct sock_rx_entry {
 
 struct sock_rx_ctx {
 	struct fid_ep ctx;
+
 	uint16_t rx_id;
 	uint8_t enabled;
-	uint8_t reserved[5];
+	uint8_t cq_event_flag;
+	uint8_t reserved[4];
 	uint64_t addr;
 
 	struct sock_cq *cq;
@@ -398,17 +400,18 @@ struct sock_rx_ctx {
 
 struct sock_tx_ctx {
 	struct fid_ep ctx;
+
 	struct ringbuffd	rbfd;
 	fastlock_t		wlock;
 	fastlock_t		rlock;
 
 	uint16_t tx_id;
 	uint8_t enabled;
-	uint8_t reserved[5];
+	uint8_t cq_event_flag;
+	uint8_t reserved[4];
 	uint64_t addr;
 
 	struct sock_cq *cq;
-	struct sock_ep *ep;
 
 	struct dlist_entry ep_entry;
 	struct dlist_entry cq_entry;
@@ -491,7 +494,6 @@ struct sock_pe_entry{
 
 	uint64_t done_len;
 	struct sock_ep *ep;
-	struct sock_cq *cq;
 
 	struct dlist_entry entry;
 	struct dlist_entry ctx_entry;
@@ -515,6 +517,7 @@ struct sock_pe{
 
 typedef int (*sock_cq_report_fn) (struct sock_cq *cq, fi_addr_t addr,
 				  struct sock_pe_entry *pe_entry);
+
 struct sock_cq {
 	struct fid_cq cq_fid;
 	struct sock_domain *domain;

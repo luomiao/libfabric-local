@@ -67,7 +67,7 @@ void sock_rx_ctx_add_ep(struct sock_rx_ctx *rx_ctx, struct sock_ep *ep)
 {
 	fastlock_acquire(&rx_ctx->lock);
 	dlist_insert_tail(&ep->rx_ctx_entry, &rx_ctx->ep_list);
-	atomic_inc(&ep->ref); 
+	atomic_inc(&ep->num_rx_ctx); 
 	fastlock_release(&rx_ctx->lock);
 }
 
@@ -111,7 +111,7 @@ void sock_tx_ctx_add_ep(struct sock_tx_ctx *tx_ctx, struct sock_ep *ep)
 {
 	fastlock_acquire(&tx_ctx->lock);
 	dlist_insert_tail(&ep->tx_ctx_entry, &tx_ctx->ep_list);
-	atomic_inc(&ep->ref); 
+	atomic_inc(&ep->num_tx_ctx); 
 	fastlock_release(&tx_ctx->lock);
 }
 
