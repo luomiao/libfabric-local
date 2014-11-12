@@ -57,8 +57,8 @@ struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, void *context
 
 	fastlock_init(&rx_ctx->lock);
 
-	rx_ctx->fid_ctx.fid.fclass = FI_CLASS_RX_CTX;
-	rx_ctx->fid_ctx.fid.context = context;
+	rx_ctx->ctx.fid.fclass = FI_CLASS_RX_CTX;
+	rx_ctx->ctx.fid.context = context;
 	rx_ctx->attr = *attr;
 	return rx_ctx;
 }
@@ -97,8 +97,8 @@ struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr, void *context
 	fastlock_init(&tx_ctx->rlock);
 	fastlock_init(&tx_ctx->wlock);
 
-	tx_ctx->fid_ctx.fid.fclass = FI_CLASS_TX_CTX;
-	tx_ctx->fid_ctx.fid.context = context;
+	tx_ctx->ctx.fid.fclass = FI_CLASS_TX_CTX;
+	tx_ctx->ctx.fid.context = context;
 	tx_ctx->attr = *attr;
 
 	return tx_ctx;

@@ -322,16 +322,6 @@ struct sock_ep {
 	struct sock_cntr 	*rem_read_cntr;
 	struct sock_cntr 	*rem_write_cntr;
 
-	uint64_t out_send;
-	uint64_t out_tag_send;
-	uint64_t out_rma_read;
-	uint64_t out_rma_write;
-
-	volatile uint64_t cmpl_send;
-	volatile uint64_t cmpl_tag_send;
-	volatile uint64_t cmpl_rma_read;
-	volatile uint64_t cmpl_rma_write;
-
 	struct fi_info info;
 	struct fi_ep_attr ep_attr;
 	struct fi_tx_ctx_attr tx_ctx_attr;
@@ -386,7 +376,7 @@ struct sock_rx_entry {
 };
 
 struct sock_rx_ctx {
-	struct fid_ep fid_ctx;
+	struct fid_ep ctx;
 	uint16_t rx_id;
 	uint8_t enabled;
 	uint8_t reserved[5];
@@ -407,7 +397,7 @@ struct sock_rx_ctx {
 };
 
 struct sock_tx_ctx {
-	struct fid_ep fid_ctx;
+	struct fid_ep ctx;
 	struct ringbuffd	rbfd;
 	fastlock_t		wlock;
 	fastlock_t		rlock;
