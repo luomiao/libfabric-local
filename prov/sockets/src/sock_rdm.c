@@ -451,15 +451,60 @@ ssize_t sock_rdm_ctx_senddata(struct fid_ep *ep, const void *buf, size_t len,
 				       FI_ADDR_UNSPEC, context);
 }
 
-ssize_t sock_rdm_ctx_inject(struct fid_ep *ep, const void *buf, size_t len)
-{
-	return -FI_ENOSYS;
-}
-
 ssize_t sock_rdm_ctx_injectto(struct fid_ep *ep, const void *buf, size_t len,
 			      fi_addr_t dest_addr)
 {
-	return -FI_ENOSYS;
+	int ret;
+	uint64_t tmp=0;
+	struct sock_op tx_op;
+	struct sock_tx_ctx *tx_ctx;
+
+	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+
+	if(!tx_ctx->enabled || len > SOCK_EP_MAX_INJECT_SZ)
+		return -FI_EINVAL;
+
+	fastlock_acquire(&tx_ctx->wlock);
+	sock_tx_ctx_start(tx_ctx);
+
+	memset(&tx_op, 0, sizeof(struct sock_op));
+	tx_op.op = SOCK_OP_SEND_INJECT;
+	tx_op.src_iov_len = len;
+
+	/* tx_op */
+	if((ret = sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op))))
+		goto err;
+
+	/* flags */
+	if((ret = sock_tx_ctx_write(tx_ctx, &tmp, sizeof(uint64_t))))
+		goto err;
+
+	/* context */
+	if((ret = sock_tx_ctx_write(tx_ctx, &tmp, sizeof(uint64_t))))
+		goto err;
+
+	/* dest_addr */
+	/* TODO: handle case where addr == UNSPEC */
+	if((ret = sock_tx_ctx_write(tx_ctx, &dest_addr, sizeof(uint64_t))))
+		goto err;
+	
+	/* payload */
+	if((ret = sock_tx_ctx_write(tx_ctx, buf, len)))
+		goto err;
+
+	sock_tx_ctx_commit(tx_ctx);
+	fastlock_release(&tx_ctx->wlock);
+	return 0;
+	
+err:
+	sock_tx_ctx_abort(tx_ctx);
+	fastlock_release(&tx_ctx->wlock);
+	return ret;
+}
+
+ssize_t sock_rdm_ctx_inject(struct fid_ep *ep, const void *buf, size_t len)
+{
+	return sock_rdm_ctx_injectto(ep, buf, len, FI_ADDR_UNSPEC);
 }
 
 int sock_rdm_ep_fi_close(struct fid *fid)
