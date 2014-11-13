@@ -66,8 +66,8 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 	int i, truncated, ret;
 	struct sock_rx_entry *rx_entry;
 
-	rx_entry = sock_ep_get_rx_entry(pe_entry->ep, pe_entry->addr, 
-					pe_entry->msg_hdr.rx_id, 0, 0);
+	rx_entry = sock_ep_get_rx_entry(pe_entry->ep, pe_entry);
+
 	if(!rx_entry) {
 		sock_debug(SOCK_ERROR, "PE: No matching recv!\n");
 		sock_cq_report_error(rx_ctx->cq, pe_entry, 0,
@@ -481,7 +481,7 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	msg_hdr->op_type = htons(pe_entry->tx.tx_op.op);
 	msg_hdr->src_iov_len = htons(pe_entry->tx.tx_op.src_iov_len);
 
-	/* FIXME: rx_ctx bits- why */
+	/* FIXME: double check */
 	msg_hdr->rx_id = htons(SOCK_GET_RX_ID(pe_entry->addr, 
 				pe_entry->ep->av->rx_ctx_bits));
 	msg_hdr->flags = htonl(pe_entry->flags);

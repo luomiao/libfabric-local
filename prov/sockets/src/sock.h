@@ -132,7 +132,6 @@ struct sock_cntr {
 	pthread_mutex_t		mut;
 };
 
-
 struct sock_mr {
 	struct fid_mr		mr_fid;
 	struct sock_domain	*dom;
@@ -230,13 +229,15 @@ enum {
 	SOCK_OP_WRITE,
 	SOCK_OP_READ,
 	SOCK_OP_TSEND,
+	SOCK_OP_TRECV,
 	SOCK_OP_ATOMIC,
 	SOCK_OP_SEND_INJECT,
+	SOCK_OP_TSEND_INJECT,
 };
 
 /*
  * Transmit context - ring buffer data:
- *    tx_op + flags + context + dest_addr + [data] + [tag] + tx_iov
+ *    tx_op + flags + context + dest_addr + conn + [data] + [tag] + tx_iov
  *     8B       8B      8B         8B         8B       8B      24B+
  * data - only present if flags indicate
  * tag - only present for TSEND op
@@ -365,7 +366,7 @@ struct sock_rx_entry {
 	uint64_t addr;
 	uint64_t data;
 	uint64_t tag;
-	uint64_t mask;
+	uint64_t ignore;
 	
 	union sock_iov iov[SOCK_EP_MAX_IOV_LIMIT];
 	struct dlist_entry entry;
@@ -554,9 +555,14 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context);
 
 
+#define SOCK_GET_RX_ID(_addr, _bits) (((uint64_t)_addr) >> (64 - _bits))
 int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		struct fid_av **av, void *context);
 fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr);
+int sock_av_lookup_addr(struct sock_av *av, fi_addr_t addr, 
+			struct sock_conn **entry);
+int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
+			     uint16_t key, struct sock_conn **entry);
 
 
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
@@ -587,14 +593,18 @@ int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
 
 int sock_ep_connect(struct fid_ep *ep, const void *addr,
 		    const void *param, size_t paramlen);
-struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep, fi_addr_t addr,
-					   uint16_t rx_id, uint64_t tag, uint64_t mask);
+struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep, 
+					   struct sock_pe_entry *pe_entry);
 
-struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, void *context);
+
+struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, 
+				      void *context);
 void sock_rx_ctx_add_ep(struct sock_rx_ctx *rx_ctx, struct sock_ep *ep);
 void sock_rx_ctx_free(struct sock_rx_ctx *rx_ctx);
 
-struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr, void *context);
+
+struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr, 
+				      void *context);
 void sock_tx_ctx_add_ep(struct sock_tx_ctx *tx_ctx, struct sock_ep *ep);
 void sock_tx_ctx_free(struct sock_tx_ctx *tx_ctx);
 void sock_tx_ctx_start(struct sock_tx_ctx *tx_ctx);
