@@ -41,6 +41,9 @@
 
 int _sock_verify_ep_attr(struct fi_ep_attr *attr)
 {
+	if(!attr)
+		return 0;
+
 	switch (attr->protocol) {
 	case FI_PROTO_UNSPEC:
 	case FI_PROTO_SOCK_RDS:

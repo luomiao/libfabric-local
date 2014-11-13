@@ -240,6 +240,9 @@ static struct fi_ops_mr sock_dom_mr_ops = {
 
 int _sock_verify_domain_attr(struct fi_domain_attr *attr)
 {
+	if(!attr)
+		return 0;
+
 	if(attr->name){
 		if (strcmp(attr->name, sock_dom_name))
 			return -FI_ENODATA;

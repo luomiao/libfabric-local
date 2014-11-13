@@ -347,17 +347,11 @@ int sock_rdm_connect_conn_map(struct sock_conn_map *map, void *addr, int count,
 {
 	switch(((struct sockaddr *)addr)->sa_family) {
 	case AF_INET:
-		if (addrlen == sizeof(struct sockaddr_in6)) {
-			sock_debug(SOCK_ERROR, "Invalid address type\n");
-			return -EINVAL;
-		}
-		return _connect_conn_map_in(map, addr, count, key_table, port);
-	case AF_INET6:
 		if (addrlen == sizeof(struct sockaddr_in)) {
 			sock_debug(SOCK_ERROR, "Invalid address type\n");
 			return -EINVAL;
 		}
-		return _connect_conn_map_in6(map, addr, count, key_table, port);
+		return _connect_conn_map_in(map, addr, count, key_table, port);
 	default:
 		sock_debug(SOCK_ERROR, "inserted address not supported\n");
 		return -EINVAL;

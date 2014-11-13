@@ -76,12 +76,8 @@
 #define SOCK_EQ_DEF_SZ (1<<12)
 #define SOCK_CQ_DEF_SZ (1<<12)
 
-#define SOCK_EP_CAP ( FI_MSG | \
-		      FI_INJECT |			\
-		      FI_SOURCE |			\
-		      FI_SEND | FI_RECV |		\
-		      FI_CANCEL )
-
+#define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV)
+#define SOCK_EP_DGRAM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV)
 #define SOCK_OPS_CAP (FI_INJECT | FI_SEND | FI_RECV )
 
 #define SOCK_MAJOR_VERSION 1
@@ -329,6 +325,9 @@ struct sock_ep {
 
 	enum fi_ep_type ep_type;
 
+	struct sockaddr_in *src_addr;
+	struct sockaddr_in *dest_addr;
+
 	int connected;
 	int enabled;
 	int port_num;
@@ -341,9 +340,6 @@ struct sock_ep {
 
 	list_t *send_list;
 	list_t *recv_list;
-
-	struct sockaddr src_addr;
-	struct sockaddr dest_addr;
 };
 
 struct sock_pep {
@@ -412,6 +408,7 @@ struct sock_tx_ctx {
 	uint64_t addr;
 
 	struct sock_cq *cq;
+	struct sock_ep *ep;
 
 	struct dlist_entry ep_entry;
 	struct dlist_entry cq_entry;
@@ -494,6 +491,7 @@ struct sock_pe_entry{
 
 	uint64_t done_len;
 	struct sock_ep *ep;
+	struct sock_conn *conn;
 
 	struct dlist_entry entry;
 	struct dlist_entry ctx_entry;

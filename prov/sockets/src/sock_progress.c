@@ -168,18 +168,11 @@ out:
 	return ret;
 }
 
-static int sock_pe_progress_rx_entry(struct sock_pe *pe,
-				      struct sock_pe_entry *pe_entry)
+static int sock_pe_progress_rx_entry(struct sock_pe *pe, 
+				     struct sock_pe_entry *pe_entry)
 {
 	int ret; 
-	struct sock_conn *conn;
-
-	ret = sock_av_lookup_addr(pe_entry->ep->av, pe_entry->addr, &conn);
-	if(ret != 0) {
-		sock_debug(SOCK_ERROR, "PE: Failed to lookup addr\n");
-		return ret;
-	}
-
+	struct sock_conn *conn = pe_entry->conn;
 	if(conn->pe_entry != NULL && conn->pe_entry != pe_entry)
 		return 0;
 
@@ -327,15 +320,7 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 				      struct sock_pe_entry *pe_entry)
 {
 	int ret; 
-	struct sock_conn *conn;
-
-	/* FIXME - conn ID should be embedded in TX entry */
-	ret = sock_av_lookup_addr(pe_entry->ep->av, pe_entry->addr, &conn);
-	if(ret != 0) {
-		sock_debug(SOCK_ERROR, "PE: Failed to lookup address\n");
-		return ret;
-	}
-	
+	struct sock_conn *conn = pe_entry->conn;
 	if(conn->pe_entry != NULL && conn->pe_entry != pe_entry)
 		return 0;
 
@@ -391,6 +376,7 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 static void sock_pe_release_entry(struct sock_pe *pe, 
 			struct sock_pe_entry *pe_entry)
 {
+	pe_entry->conn = NULL;
 	dlist_remove(&pe_entry->entry);
 	dlist_insert_tail(&pe_entry->entry, &pe->free_list);
 }
@@ -408,7 +394,7 @@ static struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
 }
 
 static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
-				struct sock_ep *ep)
+				struct sock_ep *ep, struct sock_conn *conn)
 {
 	struct sock_pe_entry *pe_entry;	
 	pe_entry = sock_pe_acquire_entry(pe);
@@ -417,6 +403,7 @@ static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 		return -FI_EINVAL;
 	}
 
+	pe_entry->conn = conn;
 	pe_entry->type = SOCK_PE_RX;
 	pe_entry->ep = ep;
 	pe_entry->is_complete = 0;
@@ -455,6 +442,7 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	rbfdread(&tx_ctx->rbfd, &pe_entry->flags, sizeof(uint64_t));
 	rbfdread(&tx_ctx->rbfd, &pe_entry->context, sizeof(uint64_t));
 	rbfdread(&tx_ctx->rbfd, &pe_entry->addr, sizeof(uint64_t));
+	rbfdread(&tx_ctx->rbfd, &pe_entry->conn, sizeof(uint64_t));
 
 	if(pe_entry->flags & FI_REMOTE_CQ_DATA) {
 		rbfdread(&tx_ctx->rbfd, &pe_entry->data, sizeof(uint64_t));
@@ -548,7 +536,7 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 			if(ret<0) goto out;
 			if(ret == 1) {
 				/* new RX PE entry */
-				ret = sock_pe_new_rx_entry(pe, rx_ctx, ep);
+				ret = sock_pe_new_rx_entry(pe, rx_ctx, ep, conn);
 				if(ret) goto out;
 			}
 		}

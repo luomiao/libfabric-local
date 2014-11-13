@@ -245,9 +245,8 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 {
 	struct sock_domain *dom;
 	struct sock_av *_av;
-//	int ret;
 
-	if (attr->name || attr->flags)
+	if (attr->flags)
 		return -FI_ENOSYS;
 
 	dom = container_of(domain, struct sock_domain, dom_fid);
@@ -271,12 +270,8 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 	default:
 		return -FI_ENOSYS;
 	}
-#if 0
-	if (ret)
-		return ret;
-#endif
 
-	if (attr->count) {
+	if (attr->count && _av->cmap) {
 		if (sock_conn_check_conn_map(_av->cmap, attr->count))
 			return -errno;
 	}

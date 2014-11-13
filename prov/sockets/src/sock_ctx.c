@@ -93,6 +93,7 @@ struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr, void *context
 	dlist_init(&tx_ctx->pe_entry);
 
 	dlist_init(&tx_ctx->pe_entry_list);
+	dlist_init(&tx_ctx->ep_list);
 
 	fastlock_init(&tx_ctx->rlock);
 	fastlock_init(&tx_ctx->wlock);

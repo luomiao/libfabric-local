@@ -93,7 +93,7 @@ const struct fi_fabric_attr _sock_fabric_attr = {
 
 
 const struct fi_tx_ctx_attr _sock_rdm_tx_attr = {
-	.caps = SOCK_EP_CAP,
+	.caps = SOCK_EP_RDM_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
 	.inject_size = SOCK_EP_MAX_INJECT_SZ,
@@ -103,7 +103,7 @@ const struct fi_tx_ctx_attr _sock_rdm_tx_attr = {
 };
 
 const struct fi_rx_ctx_attr _sock_rdm_rx_attr = {
-	.caps = SOCK_EP_CAP,
+	.caps = SOCK_EP_RDM_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
 	.total_buffered_recv = 0,
@@ -124,15 +124,20 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 	_info->ep_type = ep_type;
 	_info->addr_format = addr_format;
 
-	_info->src_addr = calloc(1, sizeof(struct sockaddr));
-	memcpy(_info->src_addr, src_addr, sizeof(struct sockaddr));
-	_info->dest_addr = calloc(1, sizeof(struct sockaddr));
-	memcpy(_info->dest_addr, dest_addr, sizeof(struct sockaddr));
+	if(src_addr){
+		_info->src_addr = calloc(1, sizeof(struct sockaddr_in));
+		memcpy(_info->src_addr, src_addr, sizeof(struct sockaddr_in));
+	}
+	
+	if(dest_addr){
+		_info->dest_addr = calloc(1, sizeof(struct sockaddr_in));
+		memcpy(_info->dest_addr, dest_addr, sizeof(struct sockaddr_in));
+	}
 
 	if(hints->caps){
 		_info->caps = hints->caps;
 	}else{
-		_info->caps = SOCK_EP_CAP;
+		_info->caps = SOCK_EP_RDM_CAP;
 	}
 
 	*(_info->tx_attr) = _sock_rdm_tx_attr;
@@ -151,9 +156,10 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 
 void free_fi_info(struct fi_info *info)
 {
-	if(!info)
-		return;
-	
+	if(info->src_addr)
+		free(info->src_addr);
+	if(info->dest_addr)
+		free(info->dest_addr);
 	fi_freeinfo_internal(info);
 }
 
@@ -176,22 +182,19 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 				 SOCK_MINOR_VERSION))
 		return -FI_ENODATA;
 
-	if (hints){
-		ret = _sock_verify_info(hints);
-		if(ret){
-			sock_debug(SOCK_INFO, "Cannot support requested options!\n");
-			return ret;
-		}
+	if (hints && ((SOCK_EP_RDM_CAP | hints->caps) != SOCK_EP_RDM_CAP)){
+		sock_debug(SOCK_INFO, "Cannot support requested options!\n");
+		return -FI_ENODATA;
 	}
 
 	if(node || service){
 		struct addrinfo sock_hints;
 		struct addrinfo *result = NULL;
 	
-		src_addr = malloc(sizeof(struct sockaddr));
-		dest_addr = malloc(sizeof(struct sockaddr));
+		src_addr = malloc(sizeof(struct sockaddr_in));
+		dest_addr = malloc(sizeof(struct sockaddr_in));
 			
-		memset(&sock_hints, 0, sizeof(struct sockaddr));
+		memset(&sock_hints, 0, sizeof(struct sockaddr_in));
 		sock_hints.ai_family = AF_INET;
 		sock_hints.ai_socktype = SOCK_SEQPACKET;
 		
@@ -212,7 +215,7 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			goto err;
 		}
 		
-		memcpy(src_addr, result->ai_addr, sizeof(struct sockaddr));
+		memcpy(src_addr, result->ai_addr, sizeof(struct sockaddr_in));
 		if(AI_PASSIVE == sock_hints.ai_flags){
 			socklen_t len;
 			int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -324,19 +327,20 @@ ssize_t sock_rdm_ctx_recvv(struct fid_ep *ep, const struct iovec *iov, void **de
 	return sock_rdm_ctx_recvmsg(ep, &msg, 0);
 }
 
-ssize_t sock_rdm_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
-		   uint64_t flags)
+static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
+				const struct fi_msg *msg, uint64_t flags)
 {
 	int ret, i;
 	uint64_t tmp=0;
 	struct sock_op tx_op;
 	union sock_iov tx_iov;
-	struct sock_tx_ctx *tx_ctx;
-
-	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+	struct sock_conn *conn;
 
 	if(!tx_ctx->enabled || msg->iov_count > SOCK_EP_MAX_IOV_LIMIT)
 		return -FI_EINVAL;
+
+	ret = sock_av_lookup_addr(av, msg->addr, &conn);
+	if(ret) return -FI_EINVAL;
 
 	fastlock_acquire(&tx_ctx->wlock);
 	sock_tx_ctx_start(tx_ctx);
@@ -359,8 +363,11 @@ ssize_t sock_rdm_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		goto err;
 
 	/* dest_addr */
-	/* TODO: handle case where addr == UNSPEC */
 	if((ret = sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t))))
+		goto err;
+
+	/* conn */
+	if((ret = sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t))))
 		goto err;
 
 	/* data */
@@ -387,6 +394,14 @@ err:
 	return ret;
 }
 
+ssize_t sock_rdm_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
+		   uint64_t flags)
+{
+	struct sock_tx_ctx *tx_ctx;
+
+	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+	return sock_rdm_sendmsg(tx_ctx, tx_ctx->ep->av, msg, flags);
+}
 
 ssize_t sock_rdm_ctx_sendto(struct fid_ep *ep, const void *buf, size_t len, void *desc,
 		  fi_addr_t dest_addr, void *context)
@@ -681,6 +696,11 @@ int sock_rdm_ep_fi_close(struct fid *fid)
 
 	sock_tx_ctx_free(sock_ep->tx_ctx);
 	sock_rx_ctx_free(sock_ep->rx_ctx);
+
+	if(sock_ep->src_addr)
+		free(sock_ep->src_addr);
+	if(sock_ep->dest_addr)
+		free(sock_ep->dest_addr);
 	
 	free(sock_ep);
 	return 0;
@@ -848,8 +868,9 @@ int sock_rdm_ep_tx_ctx(struct fid_ep *ep, int index, struct fi_tx_ctx_attr *attr
 	tx_ctx = sock_tx_ctx_alloc(attr, context);
 	if(!tx_ctx)
 		return -FI_EINVAL;
-	
+
 	sock_tx_ctx_add_ep(tx_ctx, sock_ep);
+	tx_ctx->ep = sock_ep;
 	tx_ctx->ctx.ops = &sock_rdm_ctx_ep_ops;
 	tx_ctx->ctx.msg = &sock_rdm_ctx_msg_ops;
 
@@ -859,6 +880,7 @@ int sock_rdm_ep_tx_ctx(struct fid_ep *ep, int index, struct fi_tx_ctx_attr *attr
 	tx_ctx->ctx.atomic = NULL;
 
 	*tx_ep = &tx_ctx->ctx;
+	dlist_insert_tail(&tx_ctx->ep_entry, &sock_ep->tx_ctx_list);
 	return 0;
 }
 
@@ -886,6 +908,7 @@ int sock_rdm_ep_rx_ctx(struct fid_ep *ep, int index, struct fi_rx_ctx_attr *attr
 	rx_ctx->ctx.atomic = NULL;
 
 	*rx_ep = &rx_ctx->ctx;
+	dlist_insert_tail(&rx_ctx->ep_entry, &sock_ep->rx_ctx_list);
 	return 0;
 }
 
@@ -904,10 +927,15 @@ int sock_rdm_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
 	size_t len;
 	struct sock_ep *sock_ep;
 
+	if(*addrlen == 0) {
+		*addrlen = sizeof(struct sockaddr_in);
+		return -FI_ETOOSMALL;
+	}
+
 	sock_ep = container_of(fid, struct sock_ep, ep.fid);
-	len = MIN(*addrlen, sizeof(struct sockaddr));
+	len = MIN(*addrlen, sizeof(struct sockaddr_in));
 	memcpy(addr, &sock_ep->src_addr, len);
-	*addrlen = sizeof(struct sockaddr);
+	*addrlen = sizeof(struct sockaddr_in);
 	return 0;
 }
 
@@ -1139,14 +1167,15 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		sock_ep->info.addr_format = FI_SOCKADDR_IN;
 		
 		if(info->src_addr){
+			sock_ep->src_addr = calloc(1, sizeof(struct sockaddr_in));
 			memcpy(&sock_ep->src_addr, info->src_addr, 
 			       sizeof(struct sockaddr_in));
-			ret = bind(sock_ep->sock_fd, &sock_ep->src_addr, 
-				   sizeof(struct sockaddr_in));
-			if(!ret){
-				sock_debug(SOCK_ERROR, "Failed to bind to local address\n");
-				goto err2;
-			}
+		}
+
+		if(info->dest_addr){
+			sock_ep->dest_addr = calloc(1, sizeof(struct sockaddr_in));
+			memcpy(&sock_ep->dest_addr, info->dest_addr, 
+			       sizeof(struct sockaddr_in));
 		}
 	}
 
@@ -1157,15 +1186,20 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	atomic_init(&sock_ep->num_rx_ctx, -1);
 	atomic_init(&sock_ep->num_tx_ctx, -1);
 
+	/* FIXME: will change after defining shared RX/TX ctxts */
 	sock_ep->rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_ctx_attr, context);
 	if(!sock_ep->rx_ctx)
 		goto err2;
 	sock_rx_ctx_add_ep(sock_ep->rx_ctx, sock_ep);
+	sock_ep->rx_ctx->enabled = 1;
 
 	sock_ep->tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_ctx_attr, context);
 	if(!sock_ep->tx_ctx)
 		goto err3;
 	sock_tx_ctx_add_ep(sock_ep->tx_ctx, sock_ep);
+	sock_ep->tx_ctx->ep = sock_ep;
+	sock_ep->tx_ctx->enabled = 1;
+
 
 	sock_ep->domain = sock_dom;
 	atomic_inc(&sock_dom->ref);
