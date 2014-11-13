@@ -123,6 +123,7 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 	_info->next = NULL;	
 	_info->ep_type = ep_type;
 	_info->addr_format = addr_format;
+	_info->dest_addrlen =_info->src_addrlen = sizeof(struct sockaddr_in);
 
 	if(src_addr){
 		_info->src_addr = calloc(1, sizeof(struct sockaddr_in));
@@ -191,22 +192,22 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		struct addrinfo sock_hints;
 		struct addrinfo *result = NULL;
 	
-		src_addr = malloc(sizeof(struct sockaddr_in));
-		dest_addr = malloc(sizeof(struct sockaddr_in));
+		src_addr = calloc(1, sizeof(struct sockaddr_in));
+		dest_addr = calloc(1, sizeof(struct sockaddr_in));
 			
 		memset(&sock_hints, 0, sizeof(struct sockaddr_in));
 		sock_hints.ai_family = AF_INET;
-		sock_hints.ai_socktype = SOCK_SEQPACKET;
-		
-		if(flags & FI_SOURCE)
-			sock_hints.ai_flags = AI_PASSIVE;
-		else
-			sock_hints.ai_flags = 0;
-
 		sock_hints.ai_protocol = 0;
 		sock_hints.ai_canonname = NULL;
 		sock_hints.ai_addr = NULL;
 		sock_hints.ai_next = NULL;
+
+		if(flags & FI_SOURCE)
+			sock_hints.ai_flags = AI_PASSIVE;
+
+		if(flags & FI_NUMERICHOST)
+			sock_hints.ai_flags |= AI_NUMERICHOST;
+
 		
 		ret = getaddrinfo(node, service, &sock_hints, &result);
 		if (ret != 0) {
@@ -214,9 +215,9 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			sock_debug(SOCK_INFO, "Cannot support requested node, service!\n");
 			goto err;
 		}
-		
 		memcpy(src_addr, result->ai_addr, sizeof(struct sockaddr_in));
-		if(AI_PASSIVE == sock_hints.ai_flags){
+
+		if(!(FI_SOURCE & flags)) {
 			socklen_t len;
 			int udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
 			if (0 != connect(udp_sock, result->ai_addr, result->ai_addrlen)){
@@ -235,7 +236,7 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		freeaddrinfo(result); 
 	}
 
-	_info = allocate_fi_info(FI_EP_RDM, FI_SOCKADDR, hints, src_addr, dest_addr);
+	_info = allocate_fi_info(FI_EP_RDM, FI_SOCKADDR_IN, hints, src_addr, dest_addr);
 	if(!_info){
 		ret = FI_ENOMEM;
 		goto err;
@@ -924,18 +925,15 @@ struct fi_ops_ep sock_rdm_ep_ops ={
 
 int sock_rdm_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
 {
-	size_t len;
 	struct sock_ep *sock_ep;
-
 	if(*addrlen == 0) {
 		*addrlen = sizeof(struct sockaddr_in);
 		return -FI_ETOOSMALL;
 	}
 
 	sock_ep = container_of(fid, struct sock_ep, ep.fid);
-	len = MIN(*addrlen, sizeof(struct sockaddr_in));
-	memcpy(addr, &sock_ep->src_addr, len);
-	*addrlen = sizeof(struct sockaddr_in);
+	*addrlen = MIN(*addrlen, sizeof(struct sockaddr_in));
+	memcpy(addr, sock_ep->src_addr, *addrlen);
 	return 0;
 }
 
@@ -943,9 +941,14 @@ int sock_rdm_ep_cm_getpeer(struct fid_ep *ep, void *addr, size_t *addrlen)
 {
 	struct sock_ep *sock_ep;
 
+	if(*addrlen == 0) {
+		*addrlen = sizeof(struct sockaddr_in);
+		return -FI_ETOOSMALL;
+	}
+
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	*addrlen = MIN(*addrlen, sizeof(struct sockaddr));
-	memcpy(addr, &sock_ep->dest_addr, *addrlen);
+	memcpy(addr, sock_ep->dest_addr, *addrlen);
 	return 0;
 }
 
@@ -956,9 +959,9 @@ int sock_rdm_ep_cm_connect(struct fid_ep *ep, const void *addr,
 
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	if(sock_ep->info.addr_format == FI_SOCKADDR){
-		if(memcmp((void*)&(sock_ep->dest_addr), 
-			  addr, sizeof(struct sockaddr)) != 0){
-			memcpy(&(sock_ep->dest_addr), addr, sizeof(struct sockaddr));
+		if(memcmp((void*)sock_ep->dest_addr,
+			  addr, sizeof(struct sockaddr_in)) != 0){
+			memcpy(sock_ep->dest_addr, addr, sizeof(struct sockaddr));
 		}
 	}else{
 		return -FI_EINVAL;
@@ -1168,13 +1171,13 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		
 		if(info->src_addr){
 			sock_ep->src_addr = calloc(1, sizeof(struct sockaddr_in));
-			memcpy(&sock_ep->src_addr, info->src_addr, 
+			memcpy(sock_ep->src_addr, info->src_addr, 
 			       sizeof(struct sockaddr_in));
 		}
 
 		if(info->dest_addr){
 			sock_ep->dest_addr = calloc(1, sizeof(struct sockaddr_in));
-			memcpy(&sock_ep->dest_addr, info->dest_addr, 
+			memcpy(sock_ep->dest_addr, info->dest_addr, 
 			       sizeof(struct sockaddr_in));
 		}
 	}
