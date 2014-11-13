@@ -591,6 +591,10 @@ int	sock_rdm_ctx_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 			if (flags & FI_EVENT)
 				tx_ctx->cq_event_flag = 1;
 		}
+		if(!tx_ctx->progress) {
+			tx_ctx->progress = 1;
+			sock_pe_add_tx_ctx(tx_ctx->domain->pe, tx_ctx);
+		}
 		break;
 		
 	case FI_CLASS_RX_CTX:
@@ -599,6 +603,10 @@ int	sock_rdm_ctx_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 			rx_ctx->cq = sock_cq;
 			if (flags & FI_EVENT)
 				rx_ctx->cq_event_flag = 1;
+		}
+		if(!rx_ctx->progress) {
+			rx_ctx->progress = 1;
+			sock_pe_add_rx_ctx(rx_ctx->domain->pe, rx_ctx);
 		}
 		break;
 			
@@ -872,6 +880,7 @@ int sock_rdm_ep_tx_ctx(struct fid_ep *ep, int index, struct fi_tx_ctx_attr *attr
 
 	sock_tx_ctx_add_ep(tx_ctx, sock_ep);
 	tx_ctx->ep = sock_ep;
+	tx_ctx->domain = sock_ep->domain;
 	tx_ctx->ctx.ops = &sock_rdm_ctx_ep_ops;
 	tx_ctx->ctx.msg = &sock_rdm_ctx_msg_ops;
 
@@ -900,6 +909,7 @@ int sock_rdm_ep_rx_ctx(struct fid_ep *ep, int index, struct fi_rx_ctx_attr *attr
 		return -FI_EINVAL;
 	
 	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
+	rx_ctx->domain = sock_ep->domain;
 	rx_ctx->ctx.ops = &sock_rdm_ctx_ep_ops;
 	rx_ctx->ctx.msg = &sock_rdm_ctx_msg_ops;
 
@@ -1194,12 +1204,14 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	if(!sock_ep->rx_ctx)
 		goto err2;
 	sock_rx_ctx_add_ep(sock_ep->rx_ctx, sock_ep);
+	sock_ep->rx_ctx->domain = sock_dom;
 	sock_ep->rx_ctx->enabled = 1;
 
 	sock_ep->tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_ctx_attr, context);
 	if(!sock_ep->tx_ctx)
 		goto err3;
 	sock_tx_ctx_add_ep(sock_ep->tx_ctx, sock_ep);
+	sock_ep->tx_ctx->domain = sock_dom;
 	sock_ep->tx_ctx->ep = sock_ep;
 	sock_ep->tx_ctx->enabled = 1;
 

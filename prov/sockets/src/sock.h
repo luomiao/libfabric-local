@@ -376,11 +376,13 @@ struct sock_rx_ctx {
 
 	uint16_t rx_id;
 	uint8_t enabled;
+	uint8_t progress;
 	uint8_t cq_event_flag;
-	uint8_t reserved[4];
+	uint8_t reserved[3];
 	uint64_t addr;
 
 	struct sock_cq *cq;
+ 	struct sock_domain *domain;
 
 	struct dlist_entry ep_entry;
 	struct dlist_entry cq_entry;
@@ -403,12 +405,14 @@ struct sock_tx_ctx {
 
 	uint16_t tx_id;
 	uint8_t enabled;
+	uint8_t progress;
 	uint8_t cq_event_flag;
-	uint8_t reserved[4];
+	uint8_t reserved[3];
 	uint64_t addr;
 
 	struct sock_cq *cq;
 	struct sock_ep *ep;
+ 	struct sock_domain *domain;
 
 	struct dlist_entry ep_entry;
 	struct dlist_entry cq_entry;
