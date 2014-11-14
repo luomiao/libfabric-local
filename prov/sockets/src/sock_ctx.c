@@ -174,7 +174,7 @@ struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep,
 	struct sock_rx_ctx *rx_ctx;
 	struct sock_rx_entry *rx_entry;
 
-	for(entry = ep->rx_ctx_list.next;
+	for (entry = ep->rx_ctx_list.next;
 	    entry != &ep->rx_ctx_list; entry = entry->next) {
 		rx_ctx = container_of(entry, struct sock_rx_ctx, ep_entry);
 		if(rx_ctx->rx_id == pe_entry->msg_hdr.rx_id)
@@ -186,16 +186,16 @@ struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep,
 	
 	fastlock_acquire(&rx_ctx->lock);
 
-	for(entry = rx_ctx->rx_entry_list.next;
+	for (entry = rx_ctx->rx_entry_list.next;
 	    entry != &rx_ctx->rx_entry_list; entry = entry->next) {
 		rx_entry = container_of(entry, struct sock_rx_entry, entry);
 
-		switch(pe_entry->msg_hdr.op_type){
+		switch (pe_entry->msg_hdr.op_type) {
 		case SOCK_OP_SEND:
 		case SOCK_OP_SEND_INJECT:
 
 			if(rx_entry->addr == FI_ADDR_UNSPEC ||
-			   rx_entry->addr == pe_entry->addr){
+			   rx_entry->addr == pe_entry->addr) {
 				dlist_remove(&rx_entry->entry);
 				goto out;
 			}

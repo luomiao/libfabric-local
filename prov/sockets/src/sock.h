@@ -432,9 +432,8 @@ struct sock_tx_ctx {
 struct sock_msg_hdr{
 	uint8_t version;
 	uint8_t op_type;
-	uint8_t src_iov_len;
 	uint16_t rx_id;
-	uint8_t reserved[3];
+	uint8_t reserved[4];
 
 	uint64_t src_addr;
 	uint64_t flags;
@@ -443,7 +442,6 @@ struct sock_msg_hdr{
 
 struct sock_msg_send{
 	struct sock_msg_hdr msg_hdr;
-	/* src iov(s) */
 	/* data */
 	/* user data */
 };
