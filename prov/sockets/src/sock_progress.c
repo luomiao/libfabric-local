@@ -101,13 +101,12 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 	if (remaining) {
 		ret = sock_cq_report_error(rx_ctx->cq, pe_entry, remaining,
 					   -FI_ENOSPC, -FI_ENOSPC, NULL);
-		if (ret) 
-			goto out;
+		goto out;
 	}
 	
 	/* post completion */
 	if (rx_ctx->cq) {
-		if (rx_ctx->cq_event_flag) {
+		if (rx_ctx->recv_cq_event) {
 			if (pe_entry->msg_hdr.flags & FI_EVENT) {
 				ret = rx_ctx->cq->report_completion(
 					rx_ctx->cq, pe_entry->msg_hdr.src_addr,
@@ -116,6 +115,16 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		}else{
 			ret = rx_ctx->cq->report_completion(
 				rx_ctx->cq, pe_entry->msg_hdr.src_addr, pe_entry);
+		}
+	}
+
+	if (rx_ctx->recv_cntr) {
+		if (rx_ctx->recv_cntr_event) {
+			if (pe_entry->msg_hdr.flags & FI_EVENT) {
+				_sock_cntr_add(rx_ctx->recv_cntr, 1);
+			}
+		} else {
+			_sock_cntr_add(rx_ctx->recv_cntr, 1);
 		}
 	}
 
@@ -432,14 +441,14 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 			 pe_entry->tx.tx_op.src_iov_len);
 		msg_hdr->msg_len += pe_entry->tx.tx_op.src_iov_len;
 	}else {
-		/* copy src iov(s)*/
+		/* read src iov(s)*/
 		for(i = 0; i<pe_entry->tx.tx_op.src_iov_len; i++) {
 			rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_iov[i].src, 
 				 sizeof(union sock_iov));
 			msg_hdr->msg_len += pe_entry->tx.tx_iov[i].src.iov.len;
 		}
 
-		/* copy dst iov(s)*/
+		/* read dst iov(s)*/
 		for(i = 0; i<pe_entry->tx.tx_op.dest_iov_len; i++) {
 			rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_iov[i].dst, 
 			       sizeof(union sock_iov));
@@ -574,7 +583,7 @@ int sock_pe_progress_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 			continue;
 
 		if (tx_ctx->cq) {
-			if (tx_ctx->cq_event_flag) {
+			if (tx_ctx->send_cq_event) {
 				if (pe_entry->msg_hdr.flags & FI_EVENT) {
 					ret = tx_ctx->cq->report_completion(
 						tx_ctx->cq, pe_entry->addr, pe_entry);
@@ -584,6 +593,16 @@ int sock_pe_progress_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 			}else {
 				ret = tx_ctx->cq->report_completion(
 					tx_ctx->cq, pe_entry->addr, pe_entry);
+			}
+		}
+
+		if (tx_ctx->send_cntr) {
+			if (tx_ctx->send_cntr_event) {
+				if (pe_entry->msg_hdr.flags & FI_EVENT) {
+					_sock_cntr_add(tx_ctx->send_cntr, 1);
+				}
+			}else {
+				_sock_cntr_add(tx_ctx->send_cntr, 1);
 			}
 		}
 		

@@ -128,6 +128,7 @@ struct sock_cntr {
 	uint64_t		value;
 	uint64_t		threshold;
 	atomic_t		ref;
+	atomic_t err_cnt;
 	pthread_cond_t		cond;
 	pthread_mutex_t		mut;
 };
@@ -286,20 +287,38 @@ struct sock_eq{
 
 struct sock_ep {
 	struct fid_ep ep;
-	struct sock_domain *domain;	
-	int sock_fd;
+
+	uint8_t enabled;
+	uint8_t connected;
+
+	uint8_t send_cq_event;
+	uint8_t recv_cq_event;
+
+	uint8_t send_cntr_event;
+	uint8_t recv_cntr_event;
+	uint8_t read_cntr_event;
+	uint8_t write_cntr_event;
+	uint8_t rem_read_cntr_event;
+	uint8_t rem_write_cntr_event;
+
+	uint16_t sock_fd;
+	uint8_t reserved[4];
+
 	atomic_t ref;
 
-	struct sock_eq        *eq;
-	struct sock_av 	*av;
+	struct sock_eq *eq;
+	struct sock_av *av;
+	struct sock_domain *domain;	
 
-	struct sock_cq 	*send_cq;
-	struct sock_cq 	*recv_cq;
-	int send_cq_event_flag;
-	int recv_cq_event_flag;
+	struct sock_cq	*send_cq;
+	struct sock_cq	*recv_cq;
 
-	struct dlist_entry rx_ctx_entry;
-	struct dlist_entry tx_ctx_entry;
+	struct sock_cntr *send_cntr;
+	struct sock_cntr *recv_cntr;
+	struct sock_cntr *read_cntr;
+	struct sock_cntr *write_cntr;
+	struct sock_cntr *rem_read_cntr;
+	struct sock_cntr *rem_write_cntr;
 
 	struct sock_rx_ctx *rx_ctx;
 	struct sock_tx_ctx *tx_ctx;
@@ -309,12 +328,8 @@ struct sock_ep {
 	atomic_t num_rx_ctx;
 	atomic_t num_tx_ctx;
 
-	struct sock_cntr 	*send_cntr;
-	struct sock_cntr 	*recv_cntr;
-	struct sock_cntr 	*read_cntr;
-	struct sock_cntr 	*write_cntr;
-	struct sock_cntr 	*rem_read_cntr;
-	struct sock_cntr 	*rem_write_cntr;
+	struct dlist_entry rx_ctx_entry;
+	struct dlist_entry tx_ctx_entry;
 
 	struct fi_info info;
 	struct fi_ep_attr ep_attr;
@@ -322,12 +337,8 @@ struct sock_ep {
 	struct fi_rx_ctx_attr rx_ctx_attr;
 
 	enum fi_ep_type ep_type;
-
 	struct sockaddr_in *src_addr;
 	struct sockaddr_in *dest_addr;
-
-	int connected;
-	int enabled;
 
 	/* TODO: remove */
 	struct sock_ep *next;
@@ -338,7 +349,6 @@ struct sock_ep {
 	list_t *send_list;
 	list_t *recv_list;
 	int port_num;
-
 };
 
 struct sock_pep {
@@ -376,13 +386,21 @@ struct sock_rx_ctx {
 	uint16_t rx_id;
 	uint8_t enabled;
 	uint8_t progress;
-	uint8_t cq_event_flag;
-	uint8_t reserved[3];
+
+	uint8_t recv_cq_event;
+	uint8_t recv_cntr_event;
+	uint8_t rem_read_cntr_event;
+	uint8_t rem_write_cntr_event;
+
 	uint64_t addr;
 
 	struct sock_cq *cq;
 	struct sock_ep *ep;
  	struct sock_domain *domain;
+
+	struct sock_cntr *recv_cntr;
+	struct sock_cntr  *rem_read_cntr;
+	struct sock_cntr  *rem_write_cntr;
 
 	struct dlist_entry cq_entry;
 	struct dlist_entry pe_entry;
@@ -405,13 +423,21 @@ struct sock_tx_ctx {
 	uint16_t tx_id;
 	uint8_t enabled;
 	uint8_t progress;
-	uint8_t cq_event_flag;
-	uint8_t reserved[3];
+
+	uint8_t send_cq_event;
+	uint8_t send_cntr_event;
+	uint8_t read_cntr_event;
+	uint8_t write_cntr_event;
+
 	uint64_t addr;
 
 	struct sock_cq *cq;
 	struct sock_ep *ep;
  	struct sock_domain *domain;
+
+	struct sock_cntr *send_cntr;
+	struct sock_cntr *read_cntr;
+	struct sock_cntr *write_cntr;
 
 	struct dlist_entry cq_entry;
 	struct dlist_entry pe_entry;
@@ -576,6 +602,7 @@ ssize_t sock_eq_report_error(struct sock_eq *sock_eq, fid_t fid, void *context,
 
 int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 		struct fid_cntr **cntr, void *context);
+int _sock_cntr_add(struct sock_cntr *cntr, uint64_t value);
 
 
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
