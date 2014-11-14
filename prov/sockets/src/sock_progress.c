@@ -69,6 +69,9 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 	rx_entry = sock_ep_get_rx_entry(pe_entry->ep, pe_entry);
 
 	if (!rx_entry) {
+		if(rx_ctx->recv_cntr)
+			_sock_err_cntr_inc(rx_ctx->recv_cntr);
+
 		sock_debug(SOCK_ERROR, "PE: No matching recv!\n");
 		sock_cq_report_error(rx_ctx->cq, pe_entry, 0,
 				     -FI_ENOENT, -FI_ENOENT, NULL);
@@ -99,6 +102,8 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 
 	/* report error, if any */
 	if (remaining) {
+		if(rx_ctx->recv_cntr)
+			_sock_err_cntr_inc(rx_ctx->recv_cntr);
 		ret = sock_cq_report_error(rx_ctx->cq, pe_entry, remaining,
 					   -FI_ENOSPC, -FI_ENOSPC, NULL);
 		goto out;

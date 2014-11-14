@@ -60,6 +60,12 @@ int _sock_cntr_add(struct sock_cntr *cntr, uint64_t value)
 	return 0;
 }
 
+int _sock_err_cntr_inc(struct sock_cntr *cntr)
+{
+	atomic_inc(&cntr->err_cnt);
+	return 0;
+}
+
 static int sock_cntr_add(struct fid_cntr *cntr, uint64_t value)
 {
 	struct sock_cntr *_cntr;

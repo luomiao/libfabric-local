@@ -603,7 +603,7 @@ ssize_t sock_eq_report_error(struct sock_eq *sock_eq, fid_t fid, void *context,
 int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 		struct fid_cntr **cntr, void *context);
 int _sock_cntr_add(struct sock_cntr *cntr, uint64_t value);
-
+int _sock_err_cntr_inc(struct sock_cntr *cntr);
 
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context);
