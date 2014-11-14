@@ -298,19 +298,16 @@ struct sock_ep {
 	int send_cq_event_flag;
 	int recv_cq_event_flag;
 
-	atomic_t num_rx_ctx;
-	atomic_t num_tx_ctx;
-	int max_rx_ctx;
-	int max_tx_ctx;
+	struct dlist_entry rx_ctx_entry;
+	struct dlist_entry tx_ctx_entry;
 
 	struct sock_rx_ctx *rx_ctx;
 	struct sock_tx_ctx *tx_ctx;
 
-	struct dlist_entry rx_ctx_entry;
-	struct dlist_entry tx_ctx_entry;
-
-	struct dlist_entry rx_ctx_list;
-	struct dlist_entry tx_ctx_list;
+	struct sock_rx_ctx **rx_array;
+	struct sock_tx_ctx **tx_array;
+	atomic_t num_rx_ctx;
+	atomic_t num_tx_ctx;
 
 	struct sock_cntr 	*send_cntr;
 	struct sock_cntr 	*recv_cntr;
@@ -384,9 +381,9 @@ struct sock_rx_ctx {
 	uint64_t addr;
 
 	struct sock_cq *cq;
+	struct sock_ep *ep;
  	struct sock_domain *domain;
 
-	struct dlist_entry ep_entry;
 	struct dlist_entry cq_entry;
 	struct dlist_entry pe_entry;
 
@@ -416,7 +413,6 @@ struct sock_tx_ctx {
 	struct sock_ep *ep;
  	struct sock_domain *domain;
 
-	struct dlist_entry ep_entry;
 	struct dlist_entry cq_entry;
 	struct dlist_entry pe_entry;
 
@@ -607,7 +603,7 @@ struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr,
 void sock_tx_ctx_add_ep(struct sock_tx_ctx *tx_ctx, struct sock_ep *ep);
 void sock_tx_ctx_free(struct sock_tx_ctx *tx_ctx);
 void sock_tx_ctx_start(struct sock_tx_ctx *tx_ctx);
-int sock_tx_ctx_write(struct sock_tx_ctx *tx_ctx, const void *buf, size_t len);
+void sock_tx_ctx_write(struct sock_tx_ctx *tx_ctx, const void *buf, size_t len);
 void sock_tx_ctx_commit(struct sock_tx_ctx *tx_ctx);
 void sock_tx_ctx_abort(struct sock_tx_ctx *tx_ctx);
 int sock_tx_ctx_read(struct sock_tx_ctx *tx_ctx, void *buf, size_t len);
@@ -624,6 +620,7 @@ int sock_av_lookup_addr(struct sock_av *av, fi_addr_t addr,
 int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 			     uint16_t key, struct sock_conn **entry);
 
+/* FIXME: handle shared ctx */
 #define SOCK_GET_RX_ID(_addr, _bits) (((uint64_t)_addr) >> (64 - _bits))
 int sock_conn_check_conn_map(struct sock_conn_map *map, int count);
 int sock_dgram_connect_conn_map(struct sock_conn_map *map, void *addr, 

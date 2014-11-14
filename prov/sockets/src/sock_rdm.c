@@ -338,26 +338,33 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	if((ret = sock_av_lookup_addr(av, msg->addr, &conn)))
+	if ((ret = sock_av_lookup_addr(av, msg->addr, &conn)))
 		return ret;
 
-	total_len = sizeof(struct sock_op) + 
-		4 * sizeof(uint64_t) + /* flags, context, dest_addr, conn */
-		msg->iov_count * sizeof(union sock_iov);
+	total_len = 0;
+	if (flags & FI_INJECT) {
+		for (i=0; i< msg->iov_count; i++) {
+			total_len += msg->msg_iov[i].iov_len;
+		}
+		assert(total_len <= SOCK_EP_MAX_INJECT_SZ);
+	} else {
+		total_len = msg->iov_count * sizeof(union sock_iov);
+	}
 
+	total_len += sizeof(struct sock_op) + 
+		4 * sizeof(uint64_t); /* flags, context, dest_addr, conn */
+	
 	if (flags & FI_REMOTE_CQ_DATA)
 		total_len += sizeof(uint64_t);
-
 	
 	fastlock_acquire(&tx_ctx->wlock);
-
 	if (rbfdavail(&tx_ctx->rbfd) < total_len)
 		goto err;
 
 	sock_tx_ctx_start(tx_ctx);
 
 	memset(&tx_op, 0, sizeof(struct sock_op));
-	tx_op.op = SOCK_OP_SEND;
+	tx_op.op = (flags & FI_INJECT) ? SOCK_OP_SEND_INJECT : SOCK_OP_SEND;
 	tx_op.src_iov_len = msg->iov_count;
 
 	/* tx_op */
@@ -381,12 +388,18 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
 	}
 
-	/* tx iov */
-	for (i=0; i< msg->iov_count; i++) {
-		tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
-		tx_iov.iov.len = msg->msg_iov[i].iov_len;
-		sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
-
+	/* data / tx iov */
+	if (flags & FI_INJECT) {
+		for (i=0; i< msg->iov_count; i++) {
+			sock_tx_ctx_write(tx_ctx, msg->msg_iov[i].iov_base, 
+					  msg->msg_iov[i].iov_len);
+		}
+	}else {
+		for (i=0; i< msg->iov_count; i++) {
+			tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
+			tx_iov.iov.len = msg->msg_iov[i].iov_len;
+			sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
+		}
 	}
 
 	sock_tx_ctx_commit(tx_ctx);
@@ -472,56 +485,16 @@ ssize_t sock_rdm_ctx_senddata(struct fid_ep *ep, const void *buf, size_t len,
 static ssize_t sock_rdm_injectto(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 				 const void *buf, size_t len, fi_addr_t dest_addr)
 {
-	int ret;
-	struct sock_op tx_op;
-	struct sock_conn *conn;
-	uint64_t tmp=0, total_len;
-	
-	assert(tx_ctx->enabled && len <= SOCK_EP_MAX_INJECT_SZ);
+	struct fi_msg msg;
+	struct iovec msg_iov;
 
-	if((ret = sock_av_lookup_addr(av, dest_addr, &conn)))
-		return ret;
+	msg_iov.iov_base = (void*)buf;
+	msg_iov.iov_len = len;
+	msg.msg_iov = &msg_iov;
+	msg.iov_count = 1;
+	msg.addr = dest_addr;
 
-	total_len = sizeof(struct sock_op) + 
-		4 * sizeof(uint64_t) + /* flags, context, dest_addr, conn */
-		len;
-
-	fastlock_acquire(&tx_ctx->wlock);
-
-	if (rbfdavail(&tx_ctx->rbfd) < total_len)
-		goto err;
-
-	sock_tx_ctx_start(tx_ctx);
-
-	memset(&tx_op, 0, sizeof(struct sock_op));
-	tx_op.op = SOCK_OP_SEND_INJECT;
-	tx_op.src_iov_len = len;
-
-	/* tx_op */
-	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
-
-	/* flags */
-	sock_tx_ctx_write(tx_ctx, &tmp, sizeof(uint64_t));
-
-	/* context */
-	sock_tx_ctx_write(tx_ctx, &tmp, sizeof(uint64_t));
-
-	/* dest_addr */
-	sock_tx_ctx_write(tx_ctx, &dest_addr, sizeof(uint64_t));
-
-	/* conn */
-	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
-	
-	/* payload */
-	sock_tx_ctx_write(tx_ctx, buf, len);
-
-	sock_tx_ctx_commit(tx_ctx);
-	fastlock_release(&tx_ctx->wlock);
-	return 0;
-	
-err:
-	fastlock_release(&tx_ctx->wlock);
-	return -FI_EAGAIN;
+	return sock_rdm_sendmsg(tx_ctx, av, &msg, FI_INJECT);
 }
 
 ssize_t sock_rdm_ctx_injectto(struct fid_ep *ep, const void *buf, size_t len,
@@ -644,25 +617,33 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	if((ret = sock_av_lookup_addr(av, msg->addr, &conn)))
+	if ((ret = sock_av_lookup_addr(av, msg->addr, &conn)))
 		return ret;
 
-	total_len = sizeof(struct sock_op) + 
-		5 * sizeof(uint64_t) + /*flags, context, dest_addr, conn, tag*/
-		msg->iov_count * sizeof(union sock_iov);
+	total_len = 0;
+	if (flags & FI_INJECT) {
+		for (i=0; i< msg->iov_count; i++) {
+			total_len += msg->msg_iov[i].iov_len;
+		}
+		assert(total_len <= SOCK_EP_MAX_INJECT_SZ);
+	} else {
+		total_len = msg->iov_count * sizeof(union sock_iov);
+	}
 
+	total_len += sizeof(struct sock_op) + 
+		5 * sizeof(uint64_t); /*flags, context, dest_addr, conn, tag*/
+	
 	if (flags & FI_REMOTE_CQ_DATA)
 		total_len += sizeof(uint64_t);
-
+	
 	fastlock_acquire(&tx_ctx->wlock);
-
 	if (rbfdavail(&tx_ctx->rbfd) < total_len)
 		goto err;
 
 	sock_tx_ctx_start(tx_ctx);
 
 	memset(&tx_op, 0, sizeof(struct sock_op));
-	tx_op.op = SOCK_OP_TSEND;
+	tx_op.op = (flags & FI_INJECT) ? SOCK_OP_TSEND_INJECT : SOCK_OP_TSEND;
 	tx_op.src_iov_len = msg->iov_count;
 
 	/* tx_op */
@@ -689,13 +670,20 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	/* tag */
 	sock_tx_ctx_write(tx_ctx, &msg->tag, sizeof(uint64_t));
 
-	/* tx iov */
-	for (i=0; i< msg->iov_count; i++) {
-		tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
-		tx_iov.iov.len = msg->msg_iov[i].iov_len;
-		sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
+	/* data / tx iov */
+	if (flags & FI_INJECT) {
+		for (i=0; i< msg->iov_count; i++) {
+			sock_tx_ctx_write(tx_ctx, msg->msg_iov[i].iov_base,
+					  msg->msg_iov[i].iov_len);
+		}
+	} else {
+		for (i=0; i< msg->iov_count; i++) {
+			tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
+			tx_iov.iov.len = msg->msg_iov[i].iov_len;
+			sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
+		}
 	}
-
+	
 	sock_tx_ctx_commit(tx_ctx);
 	fastlock_release(&tx_ctx->wlock);
 	return 0;
@@ -782,59 +770,16 @@ static ssize_t sock_rdm_tinjectto(struct sock_tx_ctx *tx_ctx, struct sock_av *av
 				 const void *buf, size_t len, 
 				 fi_addr_t dest_addr, uint64_t tag)
 {
-	int ret;
-	struct sock_op tx_op;
-	struct sock_conn *conn;
-	uint64_t tmp=0, total_len;
+	struct fi_msg_tagged msg;
+	struct iovec msg_iov;
 
-	assert(tx_ctx->enabled && len <= SOCK_EP_MAX_INJECT_SZ);
-
-	if((ret = sock_av_lookup_addr(av, dest_addr, &conn)))
-		return ret;
-
-	total_len = sizeof(struct sock_op) + 
-		5 * sizeof(uint64_t) + /*flags, context, dest_addr, conn, tag*/
-		len;
-
-	fastlock_acquire(&tx_ctx->wlock);
-
-	if (rbfdavail(&tx_ctx->rbfd) < total_len)
-		goto err;
-
-	sock_tx_ctx_start(tx_ctx);
-
-	memset(&tx_op, 0, sizeof(struct sock_op));
-	tx_op.op = SOCK_OP_SEND_INJECT;
-	tx_op.src_iov_len = len;
-
-	/* tx_op */
-	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
-
-	/* flags */
-	sock_tx_ctx_write(tx_ctx, &tmp, sizeof(uint64_t));
-
-	/* context */
-	sock_tx_ctx_write(tx_ctx, &tmp, sizeof(uint64_t));
-
-	/* dest_addr */
-	sock_tx_ctx_write(tx_ctx, &dest_addr, sizeof(uint64_t));
-
-	/* conn */
-	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
-
-	/* tag */
-	sock_tx_ctx_write(tx_ctx, &tag, sizeof(uint64_t));
-	
-	/* payload */
-	sock_tx_ctx_write(tx_ctx, buf, len);
-
-	sock_tx_ctx_commit(tx_ctx);
-	fastlock_release(&tx_ctx->wlock);
-	return 0;
-	
-err:
-	fastlock_release(&tx_ctx->wlock);
-	return -FI_EAGAIN;
+	msg_iov.iov_base = (void*)buf;
+	msg_iov.iov_len = len;
+	msg.msg_iov = &msg_iov;
+	msg.iov_count = 1;
+	msg.addr = dest_addr;
+	msg.tag = tag;
+	return sock_rdm_tsendmsg(tx_ctx, av, &msg, FI_INJECT);
 }
 
 ssize_t	sock_rdm_ctx_tinjectto(struct fid_ep *ep, const void *buf, size_t len,
@@ -1027,8 +972,11 @@ int sock_rdm_ep_fi_close(struct fid *fid)
 	   atomic_get(&sock_ep->num_tx_ctx))
 		return -FI_EBUSY;
 
-	sock_tx_ctx_free(sock_ep->tx_ctx);
-	sock_rx_ctx_free(sock_ep->rx_ctx);
+	sock_tx_ctx_free(sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt]);
+	sock_rx_ctx_free(sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt]);
+
+	free(sock_ep->tx_array);
+	free(sock_ep->rx_array);
 
 	if (sock_ep->src_addr)
 		free(sock_ep->src_addr);
@@ -1041,8 +989,7 @@ int sock_rdm_ep_fi_close(struct fid *fid)
 
 int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 {
-	int ret;
-	struct dlist_entry *entry;
+	int ret, i;
 	struct sock_ep *sock_ep;
 	struct sock_cq *sock_cq;
 	struct sock_av *sock_av;
@@ -1071,18 +1018,22 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 				sock_ep->recv_cq_event_flag = 1;
 		}
 
-		for (entry = sock_ep->tx_ctx_list.next;
-		    entry != &sock_ep->tx_ctx_list; entry = entry->next) {
+		for (i=0; i<=sock_ep->ep_attr.tx_ctx_cnt; i++) {
+			tx_ctx = sock_ep->tx_array[i];
 
-			tx_ctx = container_of(entry, struct sock_tx_ctx, ep_entry);
+			if (!tx_ctx)
+				continue;
+
 			if ((ret = sock_rdm_ctx_bind(&tx_ctx->ctx.fid, bfid, flags)))
 				return ret;
 		}
 
-		for (entry = sock_ep->rx_ctx_list.next;
-		    entry != &sock_ep->rx_ctx_list; entry = entry->next) {
-			
-			rx_ctx = container_of(entry, struct sock_rx_ctx, ep_entry);
+		for (i=0; i<=sock_ep->ep_attr.rx_ctx_cnt; i++) {
+			rx_ctx = sock_ep->rx_array[i];
+
+			if (!rx_ctx)
+				continue;
+
 			if ((ret = sock_rdm_ctx_bind(&rx_ctx->ctx.fid, bfid, flags)))
 				return ret;
 		}
@@ -1195,16 +1146,18 @@ int sock_rdm_ep_tx_ctx(struct fid_ep *ep, int index, struct fi_tx_ctx_attr *attr
 	struct sock_tx_ctx *tx_ctx;
 
 	sock_ep = container_of(ep, struct sock_ep, ep.fid);
-	if (atomic_get(&sock_ep->num_tx_ctx) == sock_ep->max_tx_ctx)
+	if (index >= sock_ep->ep_attr.tx_ctx_cnt)
 		return -FI_EINVAL;
 
-	tx_ctx = sock_tx_ctx_alloc(attr, context);
+	tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_ctx_attr, context);
 	if (!tx_ctx)
-		return -FI_EINVAL;
+		return -FI_ENOMEM;
 
-	sock_tx_ctx_add_ep(tx_ctx, sock_ep);
+	tx_ctx->tx_id = index;
 	tx_ctx->ep = sock_ep;
 	tx_ctx->domain = sock_ep->domain;
+	sock_tx_ctx_add_ep(tx_ctx, sock_ep);
+
 	tx_ctx->ctx.ops = &sock_rdm_ctx_ep_ops;
 	tx_ctx->ctx.msg = &sock_rdm_ctx_msg_ops;
 
@@ -1214,7 +1167,8 @@ int sock_rdm_ep_tx_ctx(struct fid_ep *ep, int index, struct fi_tx_ctx_attr *attr
 	tx_ctx->ctx.atomic = NULL;
 
 	*tx_ep = &tx_ctx->ctx;
-	dlist_insert_tail(&tx_ctx->ep_entry, &sock_ep->tx_ctx_list);
+	sock_ep->tx_array[index] = tx_ctx;
+	atomic_inc(&sock_ep->num_tx_ctx);
 	return 0;
 }
 
@@ -1225,15 +1179,18 @@ int sock_rdm_ep_rx_ctx(struct fid_ep *ep, int index, struct fi_rx_ctx_attr *attr
 	struct sock_rx_ctx *rx_ctx;
 
 	sock_ep = container_of(ep, struct sock_ep, ep.fid);
-	if (atomic_get(&sock_ep->num_rx_ctx) == sock_ep->max_rx_ctx)
+	if (index >= sock_ep->ep_attr.rx_ctx_cnt)
 		return -FI_EINVAL;
 
 	rx_ctx = sock_rx_ctx_alloc(attr, context);
 	if (!rx_ctx)
-		return -FI_EINVAL;
-	
-	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
+		return -FI_ENOMEM;
+
+	rx_ctx->rx_id = index;
+	rx_ctx->ep = sock_ep;
 	rx_ctx->domain = sock_ep->domain;
+	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
+
 	rx_ctx->ctx.ops = &sock_rdm_ctx_ep_ops;
 	rx_ctx->ctx.msg = &sock_rdm_ctx_msg_ops;
 
@@ -1243,7 +1200,8 @@ int sock_rdm_ep_rx_ctx(struct fid_ep *ep, int index, struct fi_rx_ctx_attr *attr
 	rx_ctx->ctx.atomic = NULL;
 
 	*rx_ep = &rx_ctx->ctx;
-	dlist_insert_tail(&rx_ctx->ep_entry, &sock_ep->rx_ctx_list);
+	sock_ep->rx_array[index] = rx_ctx;
+	atomic_inc(&sock_ep->num_rx_ctx);
 	return 0;
 }
 
@@ -1461,6 +1419,8 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 {
 	int ret;
 	struct sock_ep *sock_ep;
+	struct sock_tx_ctx *tx_ctx;
+	struct sock_rx_ctx *rx_ctx;
 	struct sock_domain *sock_dom;
 
 	if (info) {
@@ -1496,7 +1456,7 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 
 	sock_ep->sock_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock_ep->sock_fd <0) {
-		goto err1;
+		goto err;
 	}
 
 	*ep = &sock_ep->ep;	
@@ -1517,37 +1477,38 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		}
 	}
 
-	dlist_init(&sock_ep->rx_ctx_list);
-	dlist_init(&sock_ep->tx_ctx_list);
-
 	atomic_init(&sock_ep->ref, 0);
-	atomic_init(&sock_ep->num_rx_ctx, -1);
-	atomic_init(&sock_ep->num_tx_ctx, -1);
+	atomic_init(&sock_ep->num_tx_ctx, 0);
+	atomic_init(&sock_ep->num_rx_ctx, 0);
 
-	sock_ep->rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_ctx_attr, context);
-	if (!sock_ep->rx_ctx)
-		goto err2;
-	sock_rx_ctx_add_ep(sock_ep->rx_ctx, sock_ep);
-	sock_ep->rx_ctx->domain = sock_dom;
-	sock_ep->rx_ctx->enabled = 1;
+	sock_ep->tx_array = calloc(sock_ep->ep_attr.tx_ctx_cnt + 1, 
+				 sizeof(struct sock_tx_ctx *));
+	sock_ep->rx_array = calloc(sock_ep->ep_attr.rx_ctx_cnt + 1,
+				 sizeof(struct sock_rx_ctx *));
+	
+	/* default tx ctx */
+	tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_ctx_attr, context);
+	tx_ctx->ep = sock_ep;
+	tx_ctx->domain = sock_dom;
+	tx_ctx->tx_id = sock_ep->ep_attr.tx_ctx_cnt;
+	sock_tx_ctx_add_ep(tx_ctx, sock_ep);
+	sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt] = tx_ctx;
+	sock_ep->tx_ctx = tx_ctx;
 
-	sock_ep->tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_ctx_attr, context);
-	if (!sock_ep->tx_ctx)
-		goto err3;
-	sock_tx_ctx_add_ep(sock_ep->tx_ctx, sock_ep);
-	sock_ep->tx_ctx->domain = sock_dom;
-	sock_ep->tx_ctx->ep = sock_ep;
-	sock_ep->tx_ctx->enabled = 1;
+	/* default rx_ctx */
+	rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_ctx_attr, context);
+	rx_ctx->ep = sock_ep;
+	rx_ctx->domain = sock_dom;
+	rx_ctx->rx_id = sock_ep->ep_attr.rx_ctx_cnt;
+	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
+	sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt] = rx_ctx;
+	sock_ep->rx_ctx = rx_ctx;
 
-	sock_ep->domain = sock_dom;
+  	sock_ep->domain = sock_dom;
 	atomic_inc(&sock_dom->ref);
 	return 0;
 
-err3:
-	sock_rx_ctx_free(sock_ep->rx_ctx);
-err2:
-	close(sock_ep->sock_fd);	
-err1:
+err:
 	free(sock_ep);
 	return -FI_EAVAIL;
 }

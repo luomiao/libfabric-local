@@ -45,10 +45,9 @@ struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, void *context
 {
 	struct sock_rx_ctx *rx_ctx;
 	rx_ctx = calloc(1, sizeof(*rx_ctx));
-	if(!rx_ctx)
+	if (!rx_ctx)
 		return NULL;
 
-	dlist_init(&rx_ctx->ep_entry);
 	dlist_init(&rx_ctx->cq_entry);
 	dlist_init(&rx_ctx->pe_entry);
 
@@ -89,7 +88,6 @@ struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr, void *context
 	if (rbfdinit(&tx_ctx->rbfd, attr->size))
 		goto err;
 
-	dlist_init(&tx_ctx->ep_entry);
 	dlist_init(&tx_ctx->cq_entry);
 	dlist_init(&tx_ctx->pe_entry);
 
@@ -130,10 +128,9 @@ void sock_tx_ctx_start(struct sock_tx_ctx *tx_ctx)
 	fastlock_acquire(&tx_ctx->wlock);
 }
 
-int sock_tx_ctx_write(struct sock_tx_ctx *tx_ctx, const void *buf, size_t len)
+void sock_tx_ctx_write(struct sock_tx_ctx *tx_ctx, const void *buf, size_t len)
 {
 	rbfdwrite(&tx_ctx->rbfd, buf, len);
-	return 0;
 }
 
 void sock_tx_ctx_commit(struct sock_tx_ctx *tx_ctx)
@@ -171,16 +168,10 @@ struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep,
 	struct sock_rx_ctx *rx_ctx;
 	struct sock_rx_entry *rx_entry;
 
-	for (entry = ep->rx_ctx_list.next;
-	    entry != &ep->rx_ctx_list; entry = entry->next) {
-		rx_ctx = container_of(entry, struct sock_rx_ctx, ep_entry);
-		if(rx_ctx->rx_id == pe_entry->msg_hdr.rx_id)
-			break;
-	}
-
-	if(entry == &ep->rx_ctx_list)
+	rx_ctx = ep->rx_array[pe_entry->msg_hdr.rx_id];
+	if (!rx_ctx)
 		return NULL;
-	
+
 	fastlock_acquire(&rx_ctx->lock);
 
 	for (entry = rx_ctx->rx_entry_list.next;
@@ -191,7 +182,7 @@ struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep,
 		case SOCK_OP_SEND:
 		case SOCK_OP_SEND_INJECT:
 
-			if(rx_entry->addr == FI_ADDR_UNSPEC ||
+			if (rx_entry->addr == FI_ADDR_UNSPEC ||
 			   rx_entry->addr == pe_entry->addr) {
 				dlist_remove(&rx_entry->entry);
 				goto out;
@@ -201,7 +192,7 @@ struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep,
 		case SOCK_OP_TSEND:
 		case SOCK_OP_TSEND_INJECT:
 
-			if(((rx_entry->tag & ~rx_entry->ignore) == 
+			if (((rx_entry->tag & ~rx_entry->ignore) == 
 			   (pe_entry->tag & ~rx_entry->ignore)) &&
 				(rx_entry->addr == FI_ADDR_UNSPEC ||
 				 rx_entry->addr == pe_entry->addr)) {
@@ -216,7 +207,7 @@ struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep,
 		}
 	}
 
-	if(entry == &rx_ctx->rx_entry_list)
+	if (entry == &rx_ctx->rx_entry_list)
 		rx_entry = NULL;
 	
 out:
