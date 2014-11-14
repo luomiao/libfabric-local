@@ -338,9 +338,8 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	ret = sock_av_lookup_addr(av, msg->addr, &conn);
-	if (ret) 
-		return -FI_EINVAL;
+	if((ret = sock_av_lookup_addr(av, msg->addr, &conn)))
+		return ret;
 
 	total_len = sizeof(struct sock_op) + 
 		4 * sizeof(uint64_t) + /* flags, context, dest_addr, conn */
@@ -352,7 +351,7 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	
 	fastlock_acquire(&tx_ctx->wlock);
 
-	if ((ret = rbfdavail(&tx_ctx->rbfd)) < total_len)
+	if (rbfdavail(&tx_ctx->rbfd) < total_len)
 		goto err;
 
 	sock_tx_ctx_start(tx_ctx);
@@ -396,7 +395,7 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 err:
 	fastlock_release(&tx_ctx->wlock);
-	return ret;
+	return -FI_EAGAIN;
 }
 
 ssize_t sock_rdm_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
@@ -480,9 +479,8 @@ static ssize_t sock_rdm_injectto(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	
 	assert(tx_ctx->enabled && len <= SOCK_EP_MAX_INJECT_SZ);
 
-	ret = sock_av_lookup_addr(av, dest_addr, &conn);
-	if (ret) 
-		return -FI_EINVAL;
+	if((ret = sock_av_lookup_addr(av, dest_addr, &conn)))
+		return ret;
 
 	total_len = sizeof(struct sock_op) + 
 		4 * sizeof(uint64_t) + /* flags, context, dest_addr, conn */
@@ -490,7 +488,7 @@ static ssize_t sock_rdm_injectto(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 	fastlock_acquire(&tx_ctx->wlock);
 
-	if ((ret = rbfdavail(&tx_ctx->rbfd)) < total_len)
+	if (rbfdavail(&tx_ctx->rbfd) < total_len)
 		goto err;
 
 	sock_tx_ctx_start(tx_ctx);
@@ -523,7 +521,7 @@ static ssize_t sock_rdm_injectto(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	
 err:
 	fastlock_release(&tx_ctx->wlock);
-	return ret;
+	return -FI_EAGAIN;
 }
 
 ssize_t sock_rdm_ctx_injectto(struct fid_ep *ep, const void *buf, size_t len,
@@ -646,9 +644,8 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	ret = sock_av_lookup_addr(av, msg->addr, &conn);
-	if (ret) 
-		return -FI_EINVAL;
+	if((ret = sock_av_lookup_addr(av, msg->addr, &conn)))
+		return ret;
 
 	total_len = sizeof(struct sock_op) + 
 		5 * sizeof(uint64_t) + /*flags, context, dest_addr, conn, tag*/
@@ -659,7 +656,7 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 	fastlock_acquire(&tx_ctx->wlock);
 
-	if ((ret = rbfdavail(&tx_ctx->rbfd)) < total_len)
+	if (rbfdavail(&tx_ctx->rbfd) < total_len)
 		goto err;
 
 	sock_tx_ctx_start(tx_ctx);
@@ -705,7 +702,7 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 err:
 	fastlock_release(&tx_ctx->wlock);
-	return ret;
+	return -FI_EAGAIN;
 }
 
 ssize_t sock_rdm_ctx_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
@@ -792,9 +789,8 @@ static ssize_t sock_rdm_tinjectto(struct sock_tx_ctx *tx_ctx, struct sock_av *av
 
 	assert(tx_ctx->enabled && len <= SOCK_EP_MAX_INJECT_SZ);
 
-	ret = sock_av_lookup_addr(av, dest_addr, &conn);
-	if (ret) 
-		return -FI_EINVAL;
+	if((ret = sock_av_lookup_addr(av, dest_addr, &conn)))
+		return ret;
 
 	total_len = sizeof(struct sock_op) + 
 		5 * sizeof(uint64_t) + /*flags, context, dest_addr, conn, tag*/
@@ -802,7 +798,7 @@ static ssize_t sock_rdm_tinjectto(struct sock_tx_ctx *tx_ctx, struct sock_av *av
 
 	fastlock_acquire(&tx_ctx->wlock);
 
-	if ((ret = rbfdavail(&tx_ctx->rbfd)) < total_len)
+	if (rbfdavail(&tx_ctx->rbfd) < total_len)
 		goto err;
 
 	sock_tx_ctx_start(tx_ctx);
@@ -838,7 +834,7 @@ static ssize_t sock_rdm_tinjectto(struct sock_tx_ctx *tx_ctx, struct sock_av *av
 	
 err:
 	fastlock_release(&tx_ctx->wlock);
-	return ret;
+	return -FI_EAGAIN;
 }
 
 ssize_t	sock_rdm_ctx_tinjectto(struct fid_ep *ep, const void *buf, size_t len,

@@ -132,9 +132,6 @@ void sock_tx_ctx_start(struct sock_tx_ctx *tx_ctx)
 
 int sock_tx_ctx_write(struct sock_tx_ctx *tx_ctx, const void *buf, size_t len)
 {
-	if (rbfdavail(&tx_ctx->rbfd) < len)
-		return -FI_EAGAIN;
-
 	rbfdwrite(&tx_ctx->rbfd, buf, len);
 	return 0;
 }
