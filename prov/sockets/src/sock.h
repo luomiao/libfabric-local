@@ -331,7 +331,6 @@ struct sock_ep {
 
 	int connected;
 	int enabled;
-	int port_num;
 
 	/* TODO: remove */
 	struct sock_ep *next;
@@ -341,6 +340,8 @@ struct sock_ep {
 
 	list_t *send_list;
 	list_t *recv_list;
+	int port_num;
+
 };
 
 struct sock_pep {
