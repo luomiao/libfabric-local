@@ -293,16 +293,13 @@ struct sock_ep {
 
 	uint8_t send_cq_event;
 	uint8_t recv_cq_event;
-
-	uint8_t send_cntr_event;
-	uint8_t recv_cntr_event;
-	uint8_t read_cntr_event;
-	uint8_t write_cntr_event;
-	uint8_t rem_read_cntr_event;
-	uint8_t rem_write_cntr_event;
+	uint8_t read_cq_event;
+	uint8_t write_cq_event;
+	uint8_t rem_read_cq_event;
+	uint8_t rem_write_cq_event;
 
 	uint16_t sock_fd;
-	uint8_t reserved[4];
+	uint8_t reserved[6];
 
 	atomic_t ref;
 
@@ -312,6 +309,10 @@ struct sock_ep {
 
 	struct sock_cq	*send_cq;
 	struct sock_cq	*recv_cq;
+	struct sock_cq	*read_cq;
+	struct sock_cq	*write_cq;
+	struct sock_cq *rem_read_cq;
+	struct sock_cq *rem_write_cq;
 
 	struct sock_cntr *send_cntr;
 	struct sock_cntr *recv_cntr;
@@ -388,13 +389,16 @@ struct sock_rx_ctx {
 	uint8_t progress;
 
 	uint8_t recv_cq_event;
-	uint8_t recv_cntr_event;
-	uint8_t rem_read_cntr_event;
-	uint8_t rem_write_cntr_event;
+	uint8_t rem_read_cq_event;
+	uint8_t rem_write_cq_event;
+	uint8_t reserved[1];
 
 	uint64_t addr;
 
-	struct sock_cq *cq;
+	struct sock_cq *recv_cq;
+	struct sock_cq *rem_read_cq;
+	struct sock_cq *rem_write_cq;
+
 	struct sock_ep *ep;
  	struct sock_domain *domain;
 
@@ -425,13 +429,16 @@ struct sock_tx_ctx {
 	uint8_t progress;
 
 	uint8_t send_cq_event;
-	uint8_t send_cntr_event;
-	uint8_t read_cntr_event;
-	uint8_t write_cntr_event;
+	uint8_t read_cq_event;
+	uint8_t write_cq_event;
+	uint8_t reserved[1];
 
 	uint64_t addr;
 
-	struct sock_cq *cq;
+	struct sock_cq *send_cq;
+	struct sock_cq *read_cq;
+	struct sock_cq *write_cq;
+
 	struct sock_ep *ep;
  	struct sock_domain *domain;
 
@@ -602,8 +609,8 @@ ssize_t sock_eq_report_error(struct sock_eq *sock_eq, fid_t fid, void *context,
 
 int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 		struct fid_cntr **cntr, void *context);
-int _sock_cntr_add(struct sock_cntr *cntr, uint64_t value);
-int _sock_err_cntr_inc(struct sock_cntr *cntr);
+int sock_cntr_inc(struct sock_cntr *cntr);
+int sock_cntr_err_inc(struct sock_cntr *cntr);
 
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context);

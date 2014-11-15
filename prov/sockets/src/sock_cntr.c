@@ -50,18 +50,22 @@ static uint64_t sock_cntr_read(struct fid_cntr *cntr)
 	return _cntr->value;
 }
 
-int _sock_cntr_add(struct sock_cntr *cntr, uint64_t value)
+int sock_cntr_inc(struct sock_cntr *cntr)
 {
+	if (!cntr)
+		return 0;
 	pthread_mutex_lock(&cntr->mut);
-	cntr->value += value;
+	cntr->value += 1;
 	if (cntr->value >= cntr->threshold)
 		pthread_cond_signal(&cntr->cond);
 	pthread_mutex_unlock(&cntr->mut);
 	return 0;
 }
 
-int _sock_err_cntr_inc(struct sock_cntr *cntr)
+int sock_err_cntr_inc(struct sock_cntr *cntr)
 {
+	if (!cntr)
+		return 0;
 	atomic_inc(&cntr->err_cnt);
 	return 0;
 }
@@ -70,7 +74,12 @@ static int sock_cntr_add(struct fid_cntr *cntr, uint64_t value)
 {
 	struct sock_cntr *_cntr;
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
-	return _sock_cntr_add(_cntr, value);
+	pthread_mutex_lock(&_cntr->mut);
+	_cntr->value += value;
+	if (_cntr->value >= _cntr->threshold)
+		pthread_cond_signal(&_cntr->cond);
+	pthread_mutex_unlock(&_cntr->mut);
+	return 0;
 }
 
 static int sock_cntr_set(struct fid_cntr *cntr, uint64_t value)

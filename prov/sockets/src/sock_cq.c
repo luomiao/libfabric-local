@@ -85,7 +85,6 @@ static ssize_t _sock_cq_write(struct sock_cq *cq, fi_addr_t addr,
 	ssize_t ret;
 
 	fastlock_acquire(&cq->lock);
-
 	if(rbfdavail(&cq->cq_rbfd) < len) {
 		ret = -FI_ENOSPC;
 		goto out;
@@ -128,6 +127,8 @@ static int sock_cq_report_context(struct sock_cq *cq, fi_addr_t addr,
 				  struct sock_pe_entry *pe_entry)
 {
 	struct fi_cq_entry cq_entry;
+	if (!cq)
+		return 0;
 	cq_entry.op_context = (void*)pe_entry->context;
 	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
 }
@@ -136,6 +137,8 @@ static int sock_cq_report_msg(struct sock_cq *cq, fi_addr_t addr,
 			      struct sock_pe_entry *pe_entry)
 {
 	struct fi_cq_msg_entry cq_entry;
+	if (!cq)
+		return 0;
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
 	cq_entry.len = pe_entry->done_len;
@@ -146,6 +149,8 @@ static int sock_cq_report_data(struct sock_cq *cq, fi_addr_t addr,
 			       struct sock_pe_entry *pe_entry)
 {
 	struct fi_cq_data_entry cq_entry;
+	if (!cq)
+		return 0;
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
 	cq_entry.len = pe_entry->done_len;
@@ -158,6 +163,8 @@ static int sock_cq_report_tagged(struct sock_cq *cq, fi_addr_t addr,
 				 struct sock_pe_entry *pe_entry)
 {
 	struct fi_cq_tagged_entry cq_entry;
+	if (!cq)
+		return 0;
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
 	cq_entry.len = pe_entry->done_len;
@@ -423,7 +430,8 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		goto err1;
 
 	if((ret = rbinit(&sock_cq->addr_rb, 
-			 (sock_cq->attr.size/sock_cq->cq_entry_size) * sizeof(fi_addr_t))))
+			 (sock_cq->attr.size/sock_cq->cq_entry_size) * 
+			 sizeof(fi_addr_t))))
 		goto err2;
 	
 	if((ret = rbinit(&sock_cq->cqerr_rb, sock_cq->attr.size)))
@@ -450,8 +458,10 @@ int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
 	int ret;
 	struct fi_cq_err_entry err_entry;
 
-	fastlock_acquire(&cq->lock);
+	if (!cq)
+		return 0;
 
+	fastlock_acquire(&cq->lock);
 	if(rbavail(&cq->cqerr_rb) < sizeof(struct fi_cq_err_entry)) {
 		ret = -FI_ENOSPC;
 		goto out;

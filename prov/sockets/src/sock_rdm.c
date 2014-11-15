@@ -867,11 +867,24 @@ int	sock_rdm_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 	switch (fid->fclass) {
 	case FI_CLASS_TX_CTX:
 		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx);
-		if (flags & (FI_SEND | FI_READ | FI_WRITE)) {
-			tx_ctx->cq = sock_cq;
+		if (flags & FI_SEND) {
+			tx_ctx->send_cq = sock_cq;
 			if (flags & FI_EVENT)
 				tx_ctx->send_cq_event = 1;
 		}
+
+		if (flags & FI_READ) {
+			tx_ctx->read_cq = sock_cq;
+			if (flags & FI_EVENT)
+				tx_ctx->read_cq_event = 1;
+		}
+
+		if (flags & FI_WRITE) {
+			tx_ctx->write_cq = sock_cq;
+			if (flags & FI_EVENT)
+				tx_ctx->write_cq_event = 1;
+		}
+
 		if (!tx_ctx->progress) {
 			tx_ctx->progress = 1;
 			sock_pe_add_tx_ctx(tx_ctx->domain->pe, tx_ctx);
@@ -881,10 +894,23 @@ int	sock_rdm_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 	case FI_CLASS_RX_CTX:
 		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx);
 		if (flags & FI_RECV) {
-			rx_ctx->cq = sock_cq;
+			rx_ctx->recv_cq = sock_cq;
 			if (flags & FI_EVENT)
 				rx_ctx->recv_cq_event = 1;
 		}
+
+		if (flags & FI_REMOTE_READ) {
+			rx_ctx->rem_read_cq = sock_cq;
+			if (flags & FI_EVENT)
+				rx_ctx->rem_read_cq_event = 1;
+		}
+
+		if (flags & FI_REMOTE_WRITE) {
+			rx_ctx->rem_write_cq = sock_cq;
+			if (flags & FI_EVENT)
+				rx_ctx->rem_write_cq_event = 1;
+		}
+
 		if (!rx_ctx->progress) {
 			rx_ctx->progress = 1;
 			sock_pe_add_rx_ctx(rx_ctx->domain->pe, rx_ctx);
@@ -908,23 +934,14 @@ int	sock_rdm_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 	switch (fid->fclass) {
 	case FI_CLASS_TX_CTX:
 		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx);
-		if (flags & FI_SEND) {
+		if (flags & FI_SEND)
 			tx_ctx->send_cntr = cntr;
-			if (flags & FI_EVENT)
-				tx_ctx->send_cntr_event =1;
-		}
 		
-		if (flags & FI_READ) {
+		if (flags & FI_READ)
 			tx_ctx->read_cntr = cntr;
-			if (flags & FI_EVENT)
-				tx_ctx->read_cntr_event =1;
-		}
 
-		if (flags & FI_WRITE) {
+		if (flags & FI_WRITE)
 			tx_ctx->write_cntr = cntr;
-			if (flags & FI_EVENT)
-				tx_ctx->write_cntr_event =1;
-		}
 
 		if (!tx_ctx->progress) {
 			tx_ctx->progress = 1;
@@ -934,23 +951,14 @@ int	sock_rdm_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 		
 	case FI_CLASS_RX_CTX:
 		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx);
-		if (flags & FI_RECV) {
+		if (flags & FI_RECV) 
 			rx_ctx->recv_cntr = cntr;
-			if (flags & FI_EVENT)
-				rx_ctx->recv_cntr_event =1;
-		}
 
-		if (flags & FI_REMOTE_READ) {
+		if (flags & FI_REMOTE_READ) 
 			rx_ctx->rem_read_cntr = cntr;
-			if (flags & FI_EVENT)
-				rx_ctx->rem_read_cntr_event =1;
-		}
 
-		if (flags & FI_REMOTE_WRITE) {
+		if (flags & FI_REMOTE_WRITE) 
 			rx_ctx->rem_write_cntr = cntr;
-			if (flags & FI_EVENT)
-				rx_ctx->rem_write_cntr_event =1;
-		}
 		
 		if (!rx_ctx->progress) {
 			rx_ctx->progress = 1;
@@ -1090,16 +1098,41 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		cq = container_of(bfid, struct sock_cq, cq_fid.fid);
 		if (ep->domain != cq->domain)
 			return -EINVAL;
-		
-		if (flags & (FI_SEND | FI_READ | FI_WRITE)) {
+
+		if (flags & FI_SEND) {
 			ep->send_cq = cq;
 			if (flags & FI_EVENT)
 				ep->send_cq_event = 1;
 		}
+
+		if (flags & FI_READ) {
+			ep->read_cq = cq;
+			if (flags & FI_EVENT)
+				ep->read_cq_event = 1;
+		}
+
+		if (flags & FI_WRITE) {
+			ep->write_cq = cq;
+			if (flags & FI_EVENT)
+				ep->write_cq_event = 1;
+		}
+
 		if (flags & FI_RECV) {
 			ep->recv_cq = cq;
 			if (flags & FI_EVENT)
 				ep->recv_cq_event = 1;
+		}
+
+		if (flags & FI_REMOTE_READ) {
+			ep->rem_read_cq = cq;
+			if (flags & FI_EVENT)
+				ep->rem_read_cq_event = 1;
+		}
+
+		if (flags & FI_REMOTE_WRITE) {
+			ep->rem_write_cq = cq;
+			if (flags & FI_EVENT)
+				ep->rem_write_cq_event = 1;
 		}
 
 		for (i=0; i<=ep->ep_attr.tx_ctx_cnt; i++) {
@@ -1128,41 +1161,23 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (ep->domain != cntr->dom)
 			return -EINVAL;
 
-		if (flags & FI_SEND) {
+		if (flags & FI_SEND)
 			ep->send_cntr = cntr;
-			if (flags & FI_EVENT)
-				ep->send_cntr_event = 1;
-		}
 
-		if (flags & FI_RECV) {
+		if (flags & FI_RECV)
 			ep->recv_cntr = cntr;
-			if (flags & FI_EVENT)
-				ep->recv_cntr_event = 1;
-		}
 
-		if (flags & FI_READ) {
+		if (flags & FI_READ)
 			ep->read_cntr = cntr;
-			if (flags & FI_EVENT)
-				ep->read_cntr_event = 1;
-		}
 
-		if (flags & FI_WRITE) {
+		if (flags & FI_WRITE)
 			ep->write_cntr = cntr;
-			if (flags & FI_EVENT)
-				ep->write_cntr_event = 1;
-		}
 
-		if (flags & FI_REMOTE_READ) {
+		if (flags & FI_REMOTE_READ)
 			ep->rem_read_cntr = cntr;
-			if (flags & FI_EVENT)
-				ep->rem_read_cntr_event = 1;
-		}
 		
-		if (flags & FI_REMOTE_WRITE) {
+		if (flags & FI_REMOTE_WRITE)
 			ep->rem_write_cntr = cntr;
-			if (flags & FI_EVENT)
-				ep->rem_write_cntr_event = 1;
-		}
 		
 		for (i=0; i<=ep->ep_attr.tx_ctx_cnt; i++) {
 			tx_ctx = ep->tx_array[i];
