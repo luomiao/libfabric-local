@@ -46,15 +46,72 @@ const struct fi_domain_attr sock_domain_attr = {
 	.control_progress = FI_PROGRESS_AUTO,
 	.data_progress = FI_PROGRESS_AUTO,
 	.mr_key_size = 0,
-	.cq_data_size = 0,
+	.cq_data_size = sizeof(uint64_t),
 	.ep_cnt = SOCK_EP_MAX_EP_CNT,
-	.tx_ctx_cnt = SOCK_EP_MAX_TX_CNT,
-	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
+	.tx_ctx_cnt = 0,
+	.rx_ctx_cnt = 0,
 	.max_ep_tx_ctx = SOCK_EP_MAX_TX_CNT,
 	.max_ep_rx_ctx = SOCK_EP_MAX_RX_CNT,
 	.op_size = -1, /* TODO */
 	.iov_size = -1, /* TODO */
 };
+
+int sock_verify_domain_attr(struct fi_domain_attr *attr)
+{
+	if(!attr)
+		return 0;
+
+	if(attr->name){
+		if (strcmp(attr->name, sock_dom_name))
+			return -FI_ENODATA;
+	}
+
+	switch(attr->threading){
+	case FI_THREAD_UNSPEC:
+	case FI_THREAD_SAFE:
+	case FI_THREAD_PROGRESS:
+		break;
+	default:
+		sock_debug(SOCK_INFO, "Invalid threading model!\n");
+		return -FI_ENODATA;
+	}
+
+	switch (attr->control_progress){
+	case FI_PROGRESS_UNSPEC:
+	case FI_PROGRESS_AUTO:
+		break;
+
+	case FI_PROGRESS_MANUAL:
+	default:
+		sock_debug(SOCK_INFO, "Control progress mode not supported!\n");
+		return -FI_ENODATA;
+	}
+
+	switch (attr->data_progress){
+	case FI_PROGRESS_UNSPEC:
+	case FI_PROGRESS_AUTO:
+		break;
+
+	case FI_PROGRESS_MANUAL:
+	default:
+		sock_debug(SOCK_INFO, "Data progress mode not supported!\n");
+		return -FI_ENODATA;
+	}
+	
+	if(attr->cq_data_size > sock_domain_attr.cq_data_size)
+		return -FI_ENODATA;
+
+	if(attr->ep_cnt > sock_domain_attr.ep_cnt)
+		return -FI_ENODATA;
+
+	if(attr->max_ep_tx_ctx > sock_domain_attr.max_ep_tx_ctx)
+		return -FI_ENODATA;
+
+	if(attr->max_ep_rx_ctx > sock_domain_attr.max_ep_rx_ctx)
+		return -FI_ENODATA;
+
+	return 0;
+}
 
 static int sock_dom_close(struct fid *fid)
 {
@@ -252,57 +309,6 @@ static struct fi_ops_mr sock_dom_mr_ops = {
 	.regv = sock_regv,
 	.regattr = sock_regattr,
 };
-
-int sock_verify_domain_attr(struct fi_domain_attr *attr)
-{
-	if(!attr)
-		return 0;
-
-	if(attr->name){
-		if (strcmp(attr->name, sock_dom_name))
-			return -FI_ENODATA;
-	}
-
-	switch(attr->threading){
-	case FI_THREAD_UNSPEC:
-	case FI_THREAD_SAFE:
-	case FI_THREAD_PROGRESS:
-		break;
-	default:
-		sock_debug(SOCK_INFO, "Invalid threading model!\n");
-		return -FI_ENODATA;
-	}
-
-	switch (attr->control_progress){
-	case FI_PROGRESS_UNSPEC:
-	case FI_PROGRESS_AUTO:
-		break;
-
-	case FI_PROGRESS_MANUAL:
-	default:
-		sock_debug(SOCK_INFO, "Control progress mode not supported!\n");
-		return -FI_ENODATA;
-	}
-
-	switch (attr->data_progress){
-	case FI_PROGRESS_UNSPEC:
-	case FI_PROGRESS_AUTO:
-		break;
-
-	case FI_PROGRESS_MANUAL:
-	default:
-		sock_debug(SOCK_INFO, "Data progress mode not supported!\n");
-		return -FI_ENODATA;
-	}
-
-	if(attr->max_ep_tx_ctx > SOCK_EP_MAX_TX_CNT)
-		return -FI_ENODATA;
-
-	if(attr->max_ep_rx_ctx > SOCK_EP_MAX_RX_CNT)
-		return -FI_ENODATA;
-
-	return 0;
-}
 
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context)
