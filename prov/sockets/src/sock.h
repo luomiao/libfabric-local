@@ -467,7 +467,7 @@ struct sock_msg_hdr{
 
 	uint64_t src_addr;
 	uint64_t flags;
-	uint64_t msg_len;
+	uint64_t msg_len; /* includes header len */
 };
 
 struct sock_msg_send{
