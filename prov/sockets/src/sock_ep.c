@@ -39,29 +39,14 @@
 
 #include "sock.h"
 
-int _sock_verify_ep_attr(struct fi_ep_attr *attr)
+int sock_verify_ep_attr(struct fi_ep_attr *ep_attr, 
+			struct fi_tx_ctx_attr *tx_attr,
+			struct fi_rx_ctx_attr *rx_attr)
 {
-	if(!attr)
+	if(!sock_rdm_verify_ep_attr(ep_attr, tx_attr, rx_attr))
 		return 0;
 
-	switch (attr->protocol) {
-	case FI_PROTO_UNSPEC:
-	case FI_PROTO_SOCK_RDS:
-		break;
-	default:
-		return -FI_ENODATA;
-	}
-
-	if(attr->max_msg_size > SOCK_EP_MAX_MSG_SZ)
-		return -FI_ENODATA;
-
-	if(attr->inject_size > SOCK_EP_MAX_INJECT_SZ)
-		return -FI_ENODATA;
-
-	if(attr->total_buffered_recv > SOCK_EP_MAX_BUFF_RECV)
-		return -FI_ENODATA;
-
-	return 0;
+	return -FI_ENODATA;
 }
 
 static ssize_t sock_ep_cancel(fid_t fid, void *context)

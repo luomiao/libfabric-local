@@ -54,7 +54,11 @@
 #include "sock.h"
 #include "sock_util.h"
 
-const struct fi_ep_attr _sock_rdm_ep_attr = {
+
+extern const struct fi_domain_attr sock_domain_attr;
+extern const struct fi_fabric_attr sock_fabric_attr;
+
+const struct fi_ep_attr sock_rdm_ep_attr = {
 	.protocol = FI_PROTO_SOCK_RDS,
 	.max_msg_size = SOCK_EP_MAX_MSG_SZ,
 	.inject_size = SOCK_EP_MAX_INJECT_SZ,
@@ -68,31 +72,7 @@ const struct fi_ep_attr _sock_rdm_ep_attr = {
 	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
 };
 
-const struct fi_domain_attr _sock_domain_attr = {
-	.name = NULL,
-	.threading = FI_THREAD_SAFE,
-	.control_progress = FI_PROGRESS_AUTO,
-	.data_progress = FI_PROGRESS_AUTO,
-	.mr_key_size = 0,
-	.cq_data_size = 0,
-	.ep_cnt = SOCK_EP_MAX_EP_CNT,
-	.tx_ctx_cnt = SOCK_EP_MAX_TX_CNT,
-	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
-	.max_ep_tx_ctx = SOCK_EP_MAX_TX_CNT,
-	.max_ep_rx_ctx = SOCK_EP_MAX_RX_CNT,
-	.op_size = -1, /* TODO */
-	.iov_size = -1, /* TODO */
-};
-
-const struct fi_fabric_attr _sock_fabric_attr = {
-	.fabric = NULL,
-	.name = NULL,
-	.prov_name = NULL,
-	.prov_version = FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION),
-};
-
-
-const struct fi_tx_ctx_attr _sock_rdm_tx_attr = {
+const struct fi_tx_ctx_attr sock_rdm_tx_attr = {
 	.caps = SOCK_EP_RDM_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
@@ -102,7 +82,7 @@ const struct fi_tx_ctx_attr _sock_rdm_tx_attr = {
 	.op_alignment = 0,
 };
 
-const struct fi_rx_ctx_attr _sock_rdm_rx_attr = {
+const struct fi_rx_ctx_attr sock_rdm_rx_attr = {
 	.caps = SOCK_EP_RDM_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
@@ -111,6 +91,119 @@ const struct fi_rx_ctx_attr _sock_rdm_rx_attr = {
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
 	.op_alignment = 0,
 };
+
+static int sock_rdm_verify_rx_attr(const struct fi_rx_ctx_attr *attr)
+{
+	if(!attr)
+		return 0;
+
+	if((attr->caps | sock_rdm_rx_attr.caps) != sock_rdm_rx_attr.caps)
+		return -FI_ENODATA;
+
+	if((attr->op_flags | sock_rdm_rx_attr.op_flags) != 
+	   sock_rdm_rx_attr.op_flags)
+		return -FI_ENODATA;
+
+	if(attr->msg_order != sock_rdm_rx_attr.msg_order)
+		return -FI_ENODATA;
+
+	if(attr->total_buffered_recv > sock_rdm_rx_attr.total_buffered_recv)
+		return -FI_ENODATA;
+
+	if(attr->size > sock_rdm_rx_attr.size)
+		return -FI_ENODATA;
+
+	if(attr->iov_limit > sock_rdm_rx_attr.iov_limit)
+		return -FI_ENODATA;
+
+	if(attr->op_alignment != sock_rdm_rx_attr.op_alignment)
+		return -FI_ENODATA;
+
+	return 0;
+}
+
+static int sock_rdm_verify_tx_attr(const struct fi_tx_ctx_attr *attr)
+{
+	if(!attr)
+		return 0;
+
+	if((attr->caps | sock_rdm_tx_attr.caps) != sock_rdm_tx_attr.caps)
+		return -FI_ENODATA;
+
+	if((attr->op_flags | sock_rdm_tx_attr.op_flags) != 
+	   sock_rdm_tx_attr.op_flags)
+		return -FI_ENODATA;
+
+	if(attr->msg_order != sock_rdm_tx_attr.msg_order)
+		return -FI_ENODATA;
+
+	if(attr->inject_size > sock_rdm_tx_attr.inject_size)
+		return -FI_ENODATA;
+
+	if(attr->size > sock_rdm_tx_attr.size)
+		return -FI_ENODATA;
+
+	if(attr->iov_limit > sock_rdm_tx_attr.iov_limit)
+		return -FI_ENODATA;
+
+	if(attr->op_alignment != sock_rdm_tx_attr.op_alignment)
+		return -FI_ENODATA;
+
+	return 0;
+}
+
+int sock_rdm_verify_ep_attr(struct fi_ep_attr *ep_attr,
+			    struct fi_tx_ctx_attr *tx_attr,
+			    struct fi_rx_ctx_attr *rx_attr)
+{
+	if(ep_attr){
+		switch (ep_attr->protocol) {
+		case FI_PROTO_UNSPEC:
+		case FI_PROTO_SOCK_RDS:
+			break;
+		default:
+			return -FI_ENODATA;
+		}
+
+		if(ep_attr->max_msg_size > sock_rdm_ep_attr.max_msg_size)
+			return -FI_ENODATA;
+
+		if(ep_attr->inject_size > sock_rdm_ep_attr.inject_size)
+			return -FI_ENODATA;
+
+		if(ep_attr->total_buffered_recv > 
+		   sock_rdm_ep_attr.total_buffered_recv)
+			return -FI_ENODATA;
+
+		if(ep_attr->max_order_raw_size >
+		   sock_rdm_ep_attr.max_order_raw_size)
+			return -FI_ENODATA;
+
+		if(ep_attr->max_order_war_size >
+		   sock_rdm_ep_attr.max_order_war_size)
+			return -FI_ENODATA;
+
+		if(ep_attr->max_order_waw_size > 
+		   sock_rdm_ep_attr.max_order_waw_size)
+			return -FI_ENODATA;
+
+		if(ep_attr->msg_order !=
+		   sock_rdm_ep_attr.msg_order)
+			return -FI_ENODATA;
+
+		if(ep_attr->tx_ctx_cnt > sock_rdm_ep_attr.tx_ctx_cnt)
+			return -FI_ENODATA;
+
+		if(ep_attr->rx_ctx_cnt > sock_rdm_ep_attr.rx_ctx_cnt)
+			return -FI_ENODATA;
+	}
+
+	if(sock_rdm_verify_tx_attr(tx_attr) || sock_rdm_verify_rx_attr(rx_attr))
+		return -FI_ENODATA;
+
+	return 0;
+}
+
 
 static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type, 
 					int addr_format, struct fi_info *hints,
@@ -139,14 +232,14 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 		_info->caps = SOCK_EP_RDM_CAP;
 	}
 
-	*(_info->tx_attr) = _sock_rdm_tx_attr;
-	*(_info->rx_attr) = _sock_rdm_rx_attr;
-	*(_info->ep_attr) = _sock_rdm_ep_attr;
+	*(_info->tx_attr) = sock_rdm_tx_attr;
+	*(_info->rx_attr) = sock_rdm_rx_attr;
+	*(_info->ep_attr) = sock_rdm_ep_attr;
 
-	*(_info->domain_attr) = _sock_domain_attr;
+	*(_info->domain_attr) = sock_domain_attr;
 	_info->domain_attr->name = strdup(sock_dom_name);
 
-	*(_info->fabric_attr) = _sock_fabric_attr;
+	*(_info->fabric_attr) = sock_fabric_attr;
 	_info->fabric_attr->name = strdup(sock_fab_name);
 	_info->fabric_attr->prov_name = strdup(sock_fab_name);
 
@@ -177,9 +270,20 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 				 SOCK_MINOR_VERSION))
 		return -FI_ENODATA;
 
-	if (hints && ((SOCK_EP_RDM_CAP | hints->caps) != SOCK_EP_RDM_CAP)) {
-		sock_debug(SOCK_INFO, "RDM: Cannot support requested options!\n");
-		return -FI_ENODATA;
+	if (hints) {
+		if((SOCK_EP_RDM_CAP | hints->caps) != SOCK_EP_RDM_CAP) {
+			sock_debug(SOCK_INFO, 
+				   "RDM: Cannot support requested options!\n");
+			return -FI_ENODATA;
+		}
+		
+		ret = sock_rdm_verify_rx_attr(hints->rx_attr);
+		if (ret)
+			return ret;
+
+		ret = sock_rdm_verify_tx_attr(hints->tx_attr);
+		if (ret)
+			return ret;
 	}
 
 	if (node || service) {
@@ -1280,7 +1384,7 @@ int sock_rdm_ep_tx_ctx(struct fid_ep *ep, int index, struct fi_tx_ctx_attr *attr
 	if (index >= sock_ep->ep_attr.tx_ctx_cnt)
 		return -FI_EINVAL;
 
-	tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_ctx_attr, context);
+	tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_attr, context);
 	if (!tx_ctx)
 		return -FI_ENOMEM;
 
@@ -1555,7 +1659,7 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	struct sock_domain *sock_dom;
 
 	if (info) {
-		ret = _sock_verify_info(info);
+		ret = sock_verify_info(info);
 		if (ret) {
 			sock_debug(SOCK_INFO, 
 				   "RDM: Cannot support requested options!\n");
@@ -1606,6 +1710,26 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 			memcpy(sock_ep->dest_addr, info->dest_addr, 
 			       sizeof(struct sockaddr_in));
 		}
+
+		if (info->tx_attr) {
+			ret = sock_rdm_verify_tx_attr(info->tx_attr);
+			if (ret)
+				goto err;
+			sock_ep->tx_attr = *info->tx_attr;
+		} else {
+			sock_ep->tx_attr = sock_rdm_tx_attr;
+		}
+
+		if (info->rx_attr) {
+			ret = sock_rdm_verify_rx_attr(info->rx_attr);
+			if (ret)
+				goto err;
+			sock_ep->rx_attr = *info->rx_attr;
+		} else {
+			sock_ep->rx_attr = sock_rdm_rx_attr;
+		}
+	} else {
+		sock_ep->tx_attr = sock_rdm_tx_attr;
 	}
 
 	atomic_init(&sock_ep->ref, 0);
@@ -1618,7 +1742,7 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 				 sizeof(struct sock_rx_ctx *));
 	
 	/* default tx ctx */
-	tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_ctx_attr, context);
+	tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_attr, context);
 	tx_ctx->ep = sock_ep;
 	tx_ctx->domain = sock_dom;
 	tx_ctx->tx_id = sock_ep->ep_attr.tx_ctx_cnt;
@@ -1627,7 +1751,7 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_ep->tx_ctx = tx_ctx;
 
 	/* default rx_ctx */
-	rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_ctx_attr, context);
+	rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_attr, context);
 	rx_ctx->ep = sock_ep;
 	rx_ctx->domain = sock_dom;
 	rx_ctx->rx_id = sock_ep->ep_attr.rx_ctx_cnt;

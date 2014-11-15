@@ -40,6 +40,21 @@
 #include "sock.h"
 #include "sock_util.h"
 
+const struct fi_domain_attr sock_domain_attr = {
+	.name = NULL,
+	.threading = FI_THREAD_SAFE,
+	.control_progress = FI_PROGRESS_AUTO,
+	.data_progress = FI_PROGRESS_AUTO,
+	.mr_key_size = 0,
+	.cq_data_size = 0,
+	.ep_cnt = SOCK_EP_MAX_EP_CNT,
+	.tx_ctx_cnt = SOCK_EP_MAX_TX_CNT,
+	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
+	.max_ep_tx_ctx = SOCK_EP_MAX_TX_CNT,
+	.max_ep_rx_ctx = SOCK_EP_MAX_RX_CNT,
+	.op_size = -1, /* TODO */
+	.iov_size = -1, /* TODO */
+};
 
 static int sock_dom_close(struct fid *fid)
 {
@@ -238,7 +253,7 @@ static struct fi_ops_mr sock_dom_mr_ops = {
 	.regattr = sock_regattr,
 };
 
-int _sock_verify_domain_attr(struct fi_domain_attr *attr)
+int sock_verify_domain_attr(struct fi_domain_attr *attr)
 {
 	if(!attr)
 		return 0;
@@ -296,7 +311,7 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 	struct sock_domain *sock_domain;
 
 	if(info && info->domain_attr){
-		ret = _sock_verify_domain_attr(info->domain_attr);
+		ret = sock_verify_domain_attr(info->domain_attr);
 		if(ret)
 			return ret;
 	}

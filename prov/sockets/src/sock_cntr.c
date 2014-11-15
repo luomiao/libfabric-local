@@ -62,7 +62,7 @@ int sock_cntr_inc(struct sock_cntr *cntr)
 	return 0;
 }
 
-int sock_err_cntr_inc(struct sock_cntr *cntr)
+int sock_cntr_err_inc(struct sock_cntr *cntr)
 {
 	if (!cntr)
 		return 0;

@@ -334,8 +334,8 @@ struct sock_ep {
 
 	struct fi_info info;
 	struct fi_ep_attr ep_attr;
-	struct fi_tx_ctx_attr tx_ctx_attr;
-	struct fi_rx_ctx_attr rx_ctx_attr;
+	struct fi_tx_ctx_attr tx_attr;
+	struct fi_rx_ctx_attr rx_attr;
 
 	enum fi_ep_type ep_type;
 	struct sockaddr_in *src_addr;
@@ -568,13 +568,20 @@ struct sock_cq {
 	sock_cq_report_fn report_completion;
 };
 
-int _sock_verify_info(struct fi_info *hints);
-int _sock_verify_ep_attr(struct fi_ep_attr *attr);
-int _sock_verify_fabric_attr(struct fi_fabric_attr *attr);
-int _sock_verify_domain_attr(struct fi_domain_attr *attr);
+int sock_verify_info(struct fi_info *hints);
+int sock_verify_fabric_attr(struct fi_fabric_attr *attr);
+int sock_verify_domain_attr(struct fi_domain_attr *attr);
+int sock_verify_ep_attr(struct fi_ep_attr *ep_attr, 
+			struct fi_tx_ctx_attr *tx_attr,
+			struct fi_rx_ctx_attr *rx_attr);
 
 int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		uint64_t flags, struct fi_info *hints, struct fi_info **info);
+int sock_rdm_verify_ep_attr(struct fi_ep_attr *ep_attr, 
+			struct fi_tx_ctx_attr *tx_attr,
+			struct fi_rx_ctx_attr *rx_attr);
+
+
 int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 		uint64_t flags, struct fi_info *hints, struct fi_info **info);
 

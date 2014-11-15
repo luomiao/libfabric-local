@@ -43,7 +43,32 @@
 const char const sock_fab_name[] = "IP";
 const char const sock_dom_name[] = "sockets";
 
-int _sock_verify_info(struct fi_info *hints)
+const struct fi_fabric_attr sock_fabric_attr = {
+	.fabric = NULL,
+	.name = NULL,
+	.prov_name = NULL,
+	.prov_version = FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION),
+};
+
+int sock_verify_fabric_attr(struct fi_fabric_attr *attr)
+{
+	if(!attr)
+		return 0;
+
+	if (attr->name &&
+	    strcmp(attr->name, sock_fab_name))
+		return -FI_ENODATA;
+
+	if(attr->prov_version){
+		if(attr->prov_version != 
+		   FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION))
+			return -FI_ENODATA;
+	}
+
+	return 0;
+}
+
+int sock_verify_info(struct fi_info *hints)
 {
 	int ret;
 	if(!hints)
@@ -68,32 +93,18 @@ int _sock_verify_info(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 
-	ret = _sock_verify_ep_attr(hints->ep_attr);
-	if(ret) return ret;
+	ret = sock_verify_ep_attr(hints->ep_attr, 
+				  hints->tx_attr, hints->rx_attr);
+	if(ret) 
+		return ret;
 
-	ret = _sock_verify_domain_attr(hints->domain_attr);
-	if(ret) return ret;
+	ret = sock_verify_domain_attr(hints->domain_attr);
+	if(ret) 
+		return ret;
 
-	ret = _sock_verify_fabric_attr(hints->fabric_attr);
-	if(ret) return ret;
-
-	return 0;
-}
-
-int _sock_verify_fabric_attr(struct fi_fabric_attr *attr)
-{
-	if(!attr)
-		return 0;
-
-	if (attr->name &&
-	    strcmp(attr->name, sock_fab_name))
-		return -FI_ENODATA;
-
-	if(attr->prov_version){
-		if(attr->prov_version != 
-		   FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION))
-			return -FI_ENODATA;
-	}
+	ret = sock_verify_fabric_attr(hints->fabric_attr);
+	if(ret) 
+		return ret;
 
 	return 0;
 }
@@ -177,7 +188,7 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 
 	//return -FI_ENODATA;
 
-	ret = _sock_verify_info(hints);
+	ret = sock_verify_info(hints);
 	if(ret) return ret;
 	
 	if (hints) {
