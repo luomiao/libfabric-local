@@ -39,16 +39,6 @@
 
 #include "sock.h"
 
-int sock_verify_ep_attr(struct fi_ep_attr *ep_attr, 
-			struct fi_tx_ctx_attr *tx_attr,
-			struct fi_rx_ctx_attr *rx_attr)
-{
-	if(!sock_rdm_verify_ep_attr(ep_attr, tx_attr, rx_attr))
-		return 0;
-
-	return -FI_ENODATA;
-}
-
 static ssize_t sock_ep_cancel(fid_t fid, void *context)
 {
 	return -FI_ENOSYS;

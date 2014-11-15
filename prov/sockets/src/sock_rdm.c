@@ -94,29 +94,29 @@ const struct fi_rx_ctx_attr sock_rdm_rx_attr = {
 
 static int sock_rdm_verify_rx_attr(const struct fi_rx_ctx_attr *attr)
 {
-	if(!attr)
+	if (!attr)
 		return 0;
 
-	if((attr->caps | sock_rdm_rx_attr.caps) != sock_rdm_rx_attr.caps)
+	if ((attr->caps | sock_rdm_rx_attr.caps) != sock_rdm_rx_attr.caps)
 		return -FI_ENODATA;
 
-	if((attr->op_flags | sock_rdm_rx_attr.op_flags) != 
+	if ((attr->op_flags | sock_rdm_rx_attr.op_flags) != 
 	   sock_rdm_rx_attr.op_flags)
 		return -FI_ENODATA;
 
-	if(attr->msg_order != sock_rdm_rx_attr.msg_order)
+	if (attr->msg_order != sock_rdm_rx_attr.msg_order)
 		return -FI_ENODATA;
 
-	if(attr->total_buffered_recv > sock_rdm_rx_attr.total_buffered_recv)
+	if (attr->total_buffered_recv > sock_rdm_rx_attr.total_buffered_recv)
 		return -FI_ENODATA;
 
-	if(attr->size > sock_rdm_rx_attr.size)
+	if (attr->size > sock_rdm_rx_attr.size)
 		return -FI_ENODATA;
 
-	if(attr->iov_limit > sock_rdm_rx_attr.iov_limit)
+	if (attr->iov_limit > sock_rdm_rx_attr.iov_limit)
 		return -FI_ENODATA;
 
-	if(attr->op_alignment != sock_rdm_rx_attr.op_alignment)
+	if (attr->op_alignment != sock_rdm_rx_attr.op_alignment)
 		return -FI_ENODATA;
 
 	return 0;
@@ -124,29 +124,29 @@ static int sock_rdm_verify_rx_attr(const struct fi_rx_ctx_attr *attr)
 
 static int sock_rdm_verify_tx_attr(const struct fi_tx_ctx_attr *attr)
 {
-	if(!attr)
+	if (!attr)
 		return 0;
 
-	if((attr->caps | sock_rdm_tx_attr.caps) != sock_rdm_tx_attr.caps)
+	if ((attr->caps | sock_rdm_tx_attr.caps) != sock_rdm_tx_attr.caps)
 		return -FI_ENODATA;
 
-	if((attr->op_flags | sock_rdm_tx_attr.op_flags) != 
+	if ((attr->op_flags | sock_rdm_tx_attr.op_flags) != 
 	   sock_rdm_tx_attr.op_flags)
 		return -FI_ENODATA;
 
-	if(attr->msg_order != sock_rdm_tx_attr.msg_order)
+	if (attr->msg_order != sock_rdm_tx_attr.msg_order)
 		return -FI_ENODATA;
 
-	if(attr->inject_size > sock_rdm_tx_attr.inject_size)
+	if (attr->inject_size > sock_rdm_tx_attr.inject_size)
 		return -FI_ENODATA;
 
-	if(attr->size > sock_rdm_tx_attr.size)
+	if (attr->size > sock_rdm_tx_attr.size)
 		return -FI_ENODATA;
 
-	if(attr->iov_limit > sock_rdm_tx_attr.iov_limit)
+	if (attr->iov_limit > sock_rdm_tx_attr.iov_limit)
 		return -FI_ENODATA;
 
-	if(attr->op_alignment != sock_rdm_tx_attr.op_alignment)
+	if (attr->op_alignment != sock_rdm_tx_attr.op_alignment)
 		return -FI_ENODATA;
 
 	return 0;
@@ -156,7 +156,7 @@ int sock_rdm_verify_ep_attr(struct fi_ep_attr *ep_attr,
 			    struct fi_tx_ctx_attr *tx_attr,
 			    struct fi_rx_ctx_attr *rx_attr)
 {
-	if(ep_attr){
+	if (ep_attr) {
 		switch (ep_attr->protocol) {
 		case FI_PROTO_UNSPEC:
 		case FI_PROTO_SOCK_RDS:
@@ -165,40 +165,40 @@ int sock_rdm_verify_ep_attr(struct fi_ep_attr *ep_attr,
 			return -FI_ENODATA;
 		}
 
-		if(ep_attr->max_msg_size > sock_rdm_ep_attr.max_msg_size)
+		if (ep_attr->max_msg_size > sock_rdm_ep_attr.max_msg_size)
 			return -FI_ENODATA;
 
-		if(ep_attr->inject_size > sock_rdm_ep_attr.inject_size)
+		if (ep_attr->inject_size > sock_rdm_ep_attr.inject_size)
 			return -FI_ENODATA;
 
-		if(ep_attr->total_buffered_recv > 
+		if (ep_attr->total_buffered_recv > 
 		   sock_rdm_ep_attr.total_buffered_recv)
 			return -FI_ENODATA;
 
-		if(ep_attr->max_order_raw_size >
+		if (ep_attr->max_order_raw_size >
 		   sock_rdm_ep_attr.max_order_raw_size)
 			return -FI_ENODATA;
 
-		if(ep_attr->max_order_war_size >
+		if (ep_attr->max_order_war_size >
 		   sock_rdm_ep_attr.max_order_war_size)
 			return -FI_ENODATA;
 
-		if(ep_attr->max_order_waw_size > 
+		if (ep_attr->max_order_waw_size > 
 		   sock_rdm_ep_attr.max_order_waw_size)
 			return -FI_ENODATA;
 
-		if(ep_attr->msg_order !=
+		if (ep_attr->msg_order !=
 		   sock_rdm_ep_attr.msg_order)
 			return -FI_ENODATA;
 
-		if(ep_attr->tx_ctx_cnt > sock_rdm_ep_attr.tx_ctx_cnt)
+		if (ep_attr->tx_ctx_cnt > sock_rdm_ep_attr.tx_ctx_cnt)
 			return -FI_ENODATA;
 
-		if(ep_attr->rx_ctx_cnt > sock_rdm_ep_attr.rx_ctx_cnt)
+		if (ep_attr->rx_ctx_cnt > sock_rdm_ep_attr.rx_ctx_cnt)
 			return -FI_ENODATA;
 	}
 
-	if(sock_rdm_verify_tx_attr(tx_attr) || sock_rdm_verify_rx_attr(rx_attr))
+	if (sock_rdm_verify_tx_attr(tx_attr) || sock_rdm_verify_rx_attr(rx_attr))
 		return -FI_ENODATA;
 
 	return 0;
@@ -271,7 +271,7 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		return -FI_ENODATA;
 
 	if (hints) {
-		if((SOCK_EP_RDM_CAP | hints->caps) != SOCK_EP_RDM_CAP) {
+		if ((SOCK_EP_RDM_CAP | hints->caps) != SOCK_EP_RDM_CAP) {
 			sock_debug(SOCK_INFO, 
 				   "RDM: Cannot support requested options!\n");
 			return -FI_ENODATA;
@@ -418,8 +418,8 @@ ssize_t sock_rdm_ctx_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
 				     context);
 }
 
-ssize_t sock_rdm_ctx_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
-		 size_t count, void *context)
+ssize_t sock_rdm_ctx_recvv(struct fid_ep *ep, const struct iovec *iov, 
+			   void **desc, size_t count, void *context)
 {
 	struct fi_msg msg;
 
@@ -523,8 +523,8 @@ ssize_t sock_rdm_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	return sock_rdm_sendmsg(tx_ctx, tx_ctx->ep->av, msg, flags);
 }
 
-ssize_t sock_rdm_ctx_sendto(struct fid_ep *ep, const void *buf, size_t len, void *desc,
-		  fi_addr_t dest_addr, void *context)
+ssize_t sock_rdm_ctx_sendto(struct fid_ep *ep, const void *buf, size_t len, 
+			    void *desc, fi_addr_t dest_addr, void *context)
 {
 	struct fi_msg msg;
 	struct iovec msg_iov;
@@ -668,8 +668,9 @@ ssize_t sock_rdm_ctx_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg
 	return 0;
 }
 
-ssize_t sock_rdm_ctx_trecvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
-		    fi_addr_t src_addr, uint64_t tag, uint64_t ignore, void *context)
+ssize_t sock_rdm_ctx_trecvfrom(struct fid_ep *ep, void *buf, size_t len, 
+			       void *desc, fi_addr_t src_addr, uint64_t tag, 
+			       uint64_t ignore, void *context)
 {
 	struct fi_msg_tagged msg;
 	struct iovec msg_iov;
@@ -690,13 +691,14 @@ ssize_t sock_rdm_ctx_trecvfrom(struct fid_ep *ep, void *buf, size_t len, void *d
 
 
 ssize_t sock_rdm_ctx_trecv(struct fid_ep *ep, void *buf, size_t len, void *desc,
-		uint64_t tag, uint64_t ignore, void *context)
+			   uint64_t tag, uint64_t ignore, void *context)
 {
 	return sock_rdm_ctx_trecvfrom(ep, buf, len, desc, FI_ADDR_UNSPEC,
 				      tag, ignore, context);
 }
-ssize_t sock_rdm_ctx_trecvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
-		 size_t count, uint64_t tag, uint64_t ignore, void *context)
+ssize_t sock_rdm_ctx_trecvv(struct fid_ep *ep, const struct iovec *iov, 
+			    void **desc, size_t count, uint64_t tag, 
+			    uint64_t ignore, void *context)
 {
 	struct fi_msg_tagged msg;
 
@@ -805,8 +807,9 @@ ssize_t sock_rdm_ctx_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg
 	return sock_rdm_tsendmsg(tx_ctx, tx_ctx->ep->av, msg, flags);
 }
 
-ssize_t sock_rdm_ctx_tsendto(struct fid_ep *ep, const void *buf, size_t len, void *desc,
-		  fi_addr_t dest_addr, uint64_t tag, void *context)
+ssize_t sock_rdm_ctx_tsendto(struct fid_ep *ep, const void *buf, size_t len, 
+			     void *desc, fi_addr_t dest_addr, uint64_t tag, 
+			     void *context)
 {
 	struct fi_msg_tagged msg;
 	struct iovec msg_iov;
@@ -823,15 +826,16 @@ ssize_t sock_rdm_ctx_tsendto(struct fid_ep *ep, const void *buf, size_t len, voi
 	return sock_rdm_ctx_tsendmsg(ep, &msg, 0);
 }
 
-ssize_t sock_rdm_ctx_tsend(struct fid_ep *ep, const void *buf, size_t len, void *desc,
-		uint64_t tag, void *context)
+ssize_t sock_rdm_ctx_tsend(struct fid_ep *ep, const void *buf, size_t len, 
+			   void *desc, uint64_t tag, void *context)
 {
 	return sock_rdm_ctx_tsendto(ep, buf, len, desc, FI_ADDR_UNSPEC, 
 				    tag, context);
 }
 
-ssize_t sock_rdm_ctx_tsendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
-		 size_t count, uint64_t tag, void *context)
+ssize_t sock_rdm_ctx_tsendv(struct fid_ep *ep, const struct iovec *iov, 
+			    void **desc, size_t count, uint64_t tag, 
+			    void *context)
 {
 	struct fi_msg_tagged msg;
 	msg.msg_iov = iov;
@@ -844,8 +848,8 @@ ssize_t sock_rdm_ctx_tsendv(struct fid_ep *ep, const struct iovec *iov, void **d
 }
 
 ssize_t sock_rdm_ctx_tsenddatato(struct fid_ep *ep, const void *buf, size_t len, 
-				  void *desc, uint64_t data, fi_addr_t dest_addr, uint64_t tag, 
-				  void *context)
+				 void *desc, uint64_t data, fi_addr_t dest_addr, 
+				 uint64_t tag, void *context)
 {
 	struct fi_msg_tagged msg;
 	struct iovec msg_iov;
@@ -863,16 +867,17 @@ ssize_t sock_rdm_ctx_tsenddatato(struct fid_ep *ep, const void *buf, size_t len,
 	return sock_rdm_ctx_tsendmsg(ep, &msg, FI_REMOTE_CQ_DATA);
 }
 
-ssize_t sock_rdm_ctx_tsenddata(struct fid_ep *ep, const void *buf, size_t len, 
-				void *desc, uint64_t data, uint64_t tag, void *context)
+ssize_t sock_rdm_ctx_tsenddata(struct fid_ep *ep, const void *buf, size_t len,
+				void *desc, uint64_t data, uint64_t tag, 
+			       void *context)
 {
 	return sock_rdm_ctx_tsenddatato(ep, buf, len, desc,
 					FI_ADDR_UNSPEC, data, tag, context);
 }
 
 static ssize_t sock_rdm_tinjectto(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
-				 const void *buf, size_t len, 
-				 fi_addr_t dest_addr, uint64_t tag)
+				  const void *buf, size_t len, 
+				  fi_addr_t dest_addr, uint64_t tag)
 {
 	struct fi_msg_tagged msg;
 	struct iovec msg_iov;
@@ -901,7 +906,8 @@ ssize_t sock_rdm_ctx_tinject(struct fid_ep *ep, const void *buf, size_t len,
 }
 
 ssize_t sock_rdm_ctx_tsearch(struct fid_ep *ep, uint64_t *tag, uint64_t ignore,
-		  uint64_t flags, fi_addr_t *src_addr, size_t *len, void *context)
+			     uint64_t flags, fi_addr_t *src_addr, size_t *len, 
+			     void *context)
 {
 	return -FI_ENOSYS;
 }
@@ -1245,7 +1251,8 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 			if (!tx_ctx)
 				continue;
 
-			if ((ret = sock_rdm_ctx_bind_cq(&tx_ctx->ctx.fid, bfid, flags)))
+			if ((ret = sock_rdm_ctx_bind_cq(&tx_ctx->ctx.fid, 
+							bfid, flags)))
 				return ret;
 		}
 
@@ -1255,7 +1262,8 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 			if (!rx_ctx)
 				continue;
 
-			if ((ret = sock_rdm_ctx_bind_cq(&rx_ctx->ctx.fid, bfid, flags)))
+			if ((ret = sock_rdm_ctx_bind_cq(&rx_ctx->ctx.fid, 
+							bfid, flags)))
 				return ret;
 		}
 		break;
@@ -1289,7 +1297,8 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 			if (!tx_ctx)
 				continue;
 
-			if ((ret = sock_rdm_ctx_bind_cntr(&tx_ctx->ctx.fid, bfid, flags)))
+			if ((ret = sock_rdm_ctx_bind_cntr(&tx_ctx->ctx.fid, 
+							  bfid, flags)))
 				return ret;
 		}
 
@@ -1299,7 +1308,8 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 			if (!rx_ctx)
 				continue;
 
-			if ((ret = sock_rdm_ctx_bind_cntr(&rx_ctx->ctx.fid, bfid, flags)))
+			if ((ret = sock_rdm_ctx_bind_cntr(&rx_ctx->ctx.fid, 
+							  bfid, flags)))
 				return ret;
 		}
 		break;
@@ -1582,16 +1592,16 @@ ssize_t sock_rdm_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len,
 				   dest_addr, context);
 }
 
-ssize_t sock_rdm_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, void *desc,
-			     void *context)
+ssize_t sock_rdm_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, 
+			     void *desc, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_rdm_ctx_send(&sock_ep->tx_ctx->ctx, buf, len, desc, context);
 }
 
-ssize_t sock_rdm_ep_msg_sendv(struct fid_ep *ep, const struct iovec *iov, void **desc,
-			      size_t count, void *context)
+ssize_t sock_rdm_ep_msg_sendv(struct fid_ep *ep, const struct iovec *iov, 
+			      void **desc, size_t count, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
@@ -1616,7 +1626,8 @@ ssize_t sock_rdm_ep_msg_injectto(struct fid_ep *ep, const void *buf, size_t len,
 }
 
 ssize_t sock_rdm_ep_msg_senddatato(struct fid_ep *ep, const void *buf, size_t len, 
-				   void *desc, uint64_t data, fi_addr_t dest_addr, void *context)
+				   void *desc, uint64_t data, fi_addr_t dest_addr, 
+				   void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
@@ -1711,25 +1722,28 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 			       sizeof(struct sockaddr_in));
 		}
 
-		if (info->tx_attr) {
-			ret = sock_rdm_verify_tx_attr(info->tx_attr);
+		if (info->ep_attr) {
+			ret = sock_rdm_verify_ep_attr(info->ep_attr, 
+						      info->tx_attr, 
+						      info->rx_attr);
 			if (ret)
 				goto err;
-			sock_ep->tx_attr = *info->tx_attr;
-		} else {
-			sock_ep->tx_attr = sock_rdm_tx_attr;
+			sock_ep->ep_attr = *info->ep_attr;
 		}
 
-		if (info->rx_attr) {
-			ret = sock_rdm_verify_rx_attr(info->rx_attr);
-			if (ret)
-				goto err;
+		if (info->tx_attr)
+			sock_ep->tx_attr = *info->tx_attr;
+		else
+			sock_ep->tx_attr = sock_rdm_tx_attr;
+
+		if (info->rx_attr)
 			sock_ep->rx_attr = *info->rx_attr;
-		} else {
+		else
 			sock_ep->rx_attr = sock_rdm_rx_attr;
-		}
 	} else {
+		sock_ep->ep_attr = sock_rdm_ep_attr;
 		sock_ep->tx_attr = sock_rdm_tx_attr;
+		sock_ep->rx_attr = sock_rdm_rx_attr;
 	}
 
 	atomic_init(&sock_ep->ref, 0);
@@ -1749,7 +1763,7 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_tx_ctx_add_ep(tx_ctx, sock_ep);
 	sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt] = tx_ctx;
 	sock_ep->tx_ctx = tx_ctx;
-
+	
 	/* default rx_ctx */
 	rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_attr, context);
 	rx_ctx->ep = sock_ep;
@@ -1758,11 +1772,11 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
 	sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt] = rx_ctx;
 	sock_ep->rx_ctx = rx_ctx;
-
+	
   	sock_ep->domain = sock_dom;
 	atomic_inc(&sock_dom->ref);
 	return 0;
-
+	
 err:
 	free(sock_ep);
 	return -FI_EAVAIL;
@@ -1773,5 +1787,3 @@ int sock_rdm_pep(struct fid_fabric *fabric, struct fi_info *info,
 {
 	return -FI_EINVAL;
 }
-
-

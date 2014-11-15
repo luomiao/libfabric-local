@@ -52,15 +52,15 @@ const struct fi_fabric_attr sock_fabric_attr = {
 
 int sock_verify_fabric_attr(struct fi_fabric_attr *attr)
 {
-	if(!attr)
+	if (!attr)
 		return 0;
 
 	if (attr->name &&
 	    strcmp(attr->name, sock_fab_name))
 		return -FI_ENODATA;
 
-	if(attr->prov_version){
-		if(attr->prov_version != 
+	if (attr->prov_version) {
+		if (attr->prov_version != 
 		   FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION))
 			return -FI_ENODATA;
 	}
@@ -71,7 +71,7 @@ int sock_verify_fabric_attr(struct fi_fabric_attr *attr)
 int sock_verify_info(struct fi_info *hints)
 {
 	int ret;
-	if(!hints)
+	if (!hints)
 		return 0;
 
 	switch (hints->ep_type) {
@@ -84,7 +84,7 @@ int sock_verify_info(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 	
-	switch (hints->addr_format){
+	switch (hints->addr_format) {
 	case FI_ADDR_UNSPEC:
 	case FI_SOCKADDR:
 	case FI_SOCKADDR_IN:
@@ -93,17 +93,16 @@ int sock_verify_info(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 
-	ret = sock_verify_ep_attr(hints->ep_attr, 
-				  hints->tx_attr, hints->rx_attr);
-	if(ret) 
-		return ret;
+	if (!sock_rdm_verify_ep_attr(hints->ep_attr, 
+				    hints->tx_attr, hints->rx_attr))
+		return 0;
 
 	ret = sock_verify_domain_attr(hints->domain_attr);
-	if(ret) 
+	if (ret) 
 		return ret;
 
 	ret = sock_verify_fabric_attr(hints->fabric_attr);
-	if(ret) 
+	if (ret) 
 		return ret;
 
 	return 0;
@@ -121,7 +120,7 @@ static int sock_fabric_close(fid_t fid)
 	struct sock_fabric *fab;
 	fab = container_of(fid, struct sock_fabric, fab_fid);
 
-	if(atomic_get(&fab->ref)) {
+	if (atomic_get(&fab->ref)) {
 		return -FI_EBUSY;
 	}
 
@@ -189,7 +188,7 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 	//return -FI_ENODATA;
 
 	ret = sock_verify_info(hints);
-	if(ret) return ret;
+	if (ret) return ret;
 	
 	if (hints) {
 		switch (hints->ep_type) {
@@ -207,11 +206,11 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 	ret = sock_rdm_getinfo(version, node, service, flags,
 			       hints, &_info);
 
-	if(ret == 0){
+	if (ret == 0) {
 		*info = tmp = _info;
 		while(tmp->next != NULL)
 			tmp=tmp->next;
-	}else if (-FI_ENODATA == ret){
+	}else if (-FI_ENODATA == ret) {
 		tmp = NULL;
 	}else
 		return ret;
@@ -219,7 +218,7 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 	ret = sock_dgram_getinfo(version, node, service, flags,
 			       hints, &_info);
 
-	if(NULL != tmp){
+	if (NULL != tmp) {
 		tmp->next = _info;
 		return ret;
 	}
@@ -230,7 +229,7 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 
 int sock_freeinfo(struct fi_info *info)
 {
-	if(info)
+	if (info)
 		free(info);
 
 	return 0;
@@ -253,7 +252,7 @@ struct fi_provider sock_prov = {
 static void __attribute__((constructor)) sock_ini(void)
 {
 	char *tmp = getenv("SFI_SOCK_DEBUG_LEVEL");
-	if (tmp){
+	if (tmp) {
 		sock_debug_level = atoi(tmp);
 	}else{
 		sock_debug_level = SOCK_ERROR;

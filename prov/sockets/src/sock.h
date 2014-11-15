@@ -472,8 +472,15 @@ struct sock_msg_hdr{
 
 struct sock_msg_send{
 	struct sock_msg_hdr msg_hdr;
-	/* data */
 	/* user data */
+	/* data */
+};
+
+struct sock_msg_tsend{
+	struct sock_msg_hdr msg_hdr;
+	uint64_t tag;
+	/* user data */
+	/* data */
 };
 
 struct sock_tx_iov {
@@ -571,9 +578,7 @@ struct sock_cq {
 int sock_verify_info(struct fi_info *hints);
 int sock_verify_fabric_attr(struct fi_fabric_attr *attr);
 int sock_verify_domain_attr(struct fi_domain_attr *attr);
-int sock_verify_ep_attr(struct fi_ep_attr *ep_attr, 
-			struct fi_tx_ctx_attr *tx_attr,
-			struct fi_rx_ctx_attr *rx_attr);
+
 
 int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		uint64_t flags, struct fi_info *hints, struct fi_info **info);

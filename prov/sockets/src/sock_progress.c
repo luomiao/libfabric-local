@@ -230,34 +230,97 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 	return 0;
 }
 
+
 static int sock_pe_progress_tx_send(struct sock_pe *pe, 
 				    struct sock_pe_entry *pe_entry, 
 				    struct sock_conn *conn)
 {
 	int ret;
-	ssize_t len, i, done_data, rem, offset, curr_offset;
-	struct sock_msg_hdr *msg_hdr = &pe_entry->msg_hdr;
+	ssize_t len, i, offset, done_data, data_len;
 
-	/* msg buf */
 	len = sizeof(struct sock_msg_hdr);
-	for (i=0; i < pe_entry->tx.tx_op.src_iov_len; i++) {
-		len += pe_entry->tx.tx_iov[i].src.iov.len;
-	}
-	if (pe_entry->done_len < len) {
-		done_data = pe_entry->done_len -
-			sizeof(struct sock_msg_hdr);
-		offset = 0;
+	if (pe_entry->tx.tx_op.op == SOCK_OP_TSEND ||
+		pe_entry->tx.tx_op.op == SOCK_OP_TSEND_INJECT) {
 
-		for (i = 0; i < pe_entry->tx.tx_op.src_iov_len; i++) {
-			if (done_data > pe_entry->tx.tx_iov[i].src.iov.len + offset) {
-				offset += pe_entry->tx.tx_iov[i].src.iov.len;
-				continue;
-			}
+		offset = pe_entry->done_len - len;
 
-			curr_offset = done_data - offset;
+		len += sizeof(uint64_t);
+		if (pe_entry->done_len < len) {
 			ret = send(conn->sock_fd, 
-				   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + curr_offset, 
-				   pe_entry->tx.tx_iov[i].src.iov.len - curr_offset, 0);
+				   (char*)pe_entry->tag + offset,
+				   sizeof(uint64_t) - offset, 0);
+			if (ret < 0) {
+				if (ret == EWOULDBLOCK || ret == EAGAIN)
+					return 0;
+			}else{
+				sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+				return ret;
+			}			
+			pe_entry->done_len += ret;
+			if (pe_entry->done_len != len)
+				return 0;
+		}
+	}
+
+	if (pe_entry->flags & FI_REMOTE_CQ_DATA) {
+
+		offset = pe_entry->done_len - len;
+		len += sizeof(uint64_t);
+		if (pe_entry->done_len < len) {
+			ret = send(conn->sock_fd, 
+				   (char*)pe_entry->data + offset,
+				   sizeof(uint64_t) - offset, 0);
+			if (ret < 0) {
+				if (ret == EWOULDBLOCK || ret == EAGAIN)
+					return 0;
+			}else{
+				sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+				return ret;
+			}			
+			pe_entry->done_len += ret;
+			if (pe_entry->done_len != len)
+				return 0;
+		}
+	}
+
+
+	offset = pe_entry->done_len - len;
+	if (pe_entry->tx.tx_op.op == SOCK_OP_SEND_INJECT ||
+	    pe_entry->tx.tx_op.op == SOCK_OP_TSEND_INJECT) {
+		len += pe_entry->tx.tx_op.src_iov_len;
+		
+		if (pe_entry->done_len < len) {
+			ret = send(conn->sock_fd, 
+				   (char*)pe_entry->tx.inject_data + offset,
+				   pe_entry->tx.tx_op.src_iov_len - offset, 0);
+			
+			if (ret < 0) {
+				if (ret == EWOULDBLOCK || ret == EAGAIN)
+					return 0;
+			}else{
+				sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+				return ret;
+			}
+			
+			pe_entry->done_len += ret;
+			if (pe_entry->done_len <= len)
+				return 0;
+		}
+	} else {
+		done_data = offset;
+		data_len = 0;
+		
+		for (i=0; i < pe_entry->tx.tx_op.src_iov_len; i++) {
+			data_len += pe_entry->tx.tx_iov[i].src.iov.len;
+			if (done_data >= pe_entry->tx.tx_iov[i].src.iov.len + 
+			    data_len) 
+				continue;
+			
+			offset = data_len - done_data;
+			ret = send(conn->sock_fd, 
+				   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
+				   offset, pe_entry->tx.tx_iov[i].src.iov.len -
+				   offset, 0);
 
 			if (ret < 0) {
 				if (ret == EWOULDBLOCK || ret == EAGAIN)
@@ -268,25 +331,12 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			}
 			
 			pe_entry->done_len += ret;
-			offset += ret;
-		}
-	}
+			done_data += ret;
 
-	/* user data */
-	len = len + sizeof(uint64_t);
-	if (msg_hdr->msg_len == len) {
-		rem = msg_hdr->msg_len - pe_entry->done_len;
-		ret = send(conn->sock_fd, 
-			   (char*)&pe_entry->data + sizeof(uint64_t) - rem, rem, 0);
-		if (ret < 0) {
-			if (ret == EWOULDBLOCK || ret == EAGAIN)
+			if ( ret != pe_entry->tx.tx_iov[i].src.iov.len - offset)
 				return 0;
-		}else{
-			sock_debug(SOCK_ERROR, "PE: Failed to send\n");
-			return ret;
+
 		}
-		
-		pe_entry->done_len += ret;
 	}
 	return 0;
 }
@@ -424,12 +474,14 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 		msg_hdr->msg_len += sizeof(uint64_t);
 	}
 
-	if (pe_entry->tx.tx_op.op == SOCK_OP_TSEND) {
+	if (pe_entry->tx.tx_op.op == SOCK_OP_TSEND ||
+		pe_entry->tx.tx_op.op == SOCK_OP_TSEND_INJECT) {
 		rbfdread(&tx_ctx->rbfd, &pe_entry->tag, sizeof(uint64_t));
 		msg_hdr->msg_len += sizeof(uint64_t);
 	}
 
-	if (pe_entry->tx.tx_op.op == SOCK_OP_SEND_INJECT) {
+	if (pe_entry->tx.tx_op.op == SOCK_OP_SEND_INJECT ||
+		pe_entry->tx.tx_op.op == SOCK_OP_TSEND_INJECT) {
 		rbfdread(&tx_ctx->rbfd, &pe_entry->tx.inject_data[0],
 			 pe_entry->tx.tx_op.src_iov_len);
 		msg_hdr->msg_len += pe_entry->tx.tx_op.src_iov_len;
@@ -451,7 +503,19 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 
 	/* prepare message header */
 	msg_hdr->version = htons(SOCK_WIRE_PROTO_VERSION);
-	msg_hdr->op_type = htons(pe_entry->tx.tx_op.op);
+
+	switch (pe_entry->tx.tx_op.op) {
+	case SOCK_OP_SEND:
+	case SOCK_OP_TSEND:
+	case SOCK_OP_SEND_INJECT:
+	case SOCK_OP_TSEND_INJECT:
+		msg_hdr->op_type = htons(SOCK_OP_SEND);
+		break;
+
+	default:
+		sock_debug(SOCK_ERROR, "PE: Invalid op type\n");
+		return -FI_EINVAL;
+	}
 
 	/* FIXME: double check */
 	msg_hdr->rx_id = htons(SOCK_GET_RX_ID(pe_entry->addr, 
