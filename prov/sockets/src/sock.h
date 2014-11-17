@@ -128,10 +128,10 @@ struct sock_cntr {
 	uint64_t		value;
 	uint64_t		threshold;
 	atomic_t		ref;
+	atomic_t err_cnt;
 	pthread_cond_t		cond;
 	pthread_mutex_t		mut;
 };
-
 
 struct sock_mr {
 	struct fid_mr		mr_fid;
@@ -230,13 +230,15 @@ enum {
 	SOCK_OP_WRITE,
 	SOCK_OP_READ,
 	SOCK_OP_TSEND,
+	SOCK_OP_TRECV,
 	SOCK_OP_ATOMIC,
 	SOCK_OP_SEND_INJECT,
+	SOCK_OP_TSEND_INJECT,
 };
 
 /*
  * Transmit context - ring buffer data:
- *    tx_op + flags + context + dest_addr + [data] + [tag] + tx_iov
+ *    tx_op + flags + context + dest_addr + conn + [data] + [tag] + tx_iov
  *     8B       8B      8B         8B         8B       8B      24B+
  * data - only present if flags indicate
  * tag - only present for TSEND op
@@ -285,52 +287,59 @@ struct sock_eq{
 
 struct sock_ep {
 	struct fid_ep ep;
-	struct sock_domain *domain;	
-	int sock_fd;
+
+	uint8_t enabled;
+	uint8_t connected;
+
+	uint8_t send_cq_event;
+	uint8_t recv_cq_event;
+	uint8_t read_cq_event;
+	uint8_t write_cq_event;
+	uint8_t rem_read_cq_event;
+	uint8_t rem_write_cq_event;
+
+	uint16_t sock_fd;
+	uint8_t reserved[6];
+
 	atomic_t ref;
 
-	struct sock_eq        *eq;
-	struct sock_av 	*av;
+	struct sock_eq *eq;
+	struct sock_av *av;
+	struct sock_domain *domain;	
 
-	struct sock_cq 	*send_cq;
-	struct sock_cq 	*recv_cq;
-	int send_cq_event_flag;
-	int recv_cq_event_flag;
+	struct sock_cq	*send_cq;
+	struct sock_cq	*recv_cq;
+	struct sock_cq	*read_cq;
+	struct sock_cq	*write_cq;
+	struct sock_cq *rem_read_cq;
+	struct sock_cq *rem_write_cq;
 
-	atomic_t num_rx_ctx;
-	atomic_t num_tx_ctx;
-	int max_rx_ctx;
-	int max_tx_ctx;
+	struct sock_cntr *send_cntr;
+	struct sock_cntr *recv_cntr;
+	struct sock_cntr *read_cntr;
+	struct sock_cntr *write_cntr;
+	struct sock_cntr *rem_read_cntr;
+	struct sock_cntr *rem_write_cntr;
 
 	struct sock_rx_ctx *rx_ctx;
 	struct sock_tx_ctx *tx_ctx;
 
+	struct sock_rx_ctx **rx_array;
+	struct sock_tx_ctx **tx_array;
+	atomic_t num_rx_ctx;
+	atomic_t num_tx_ctx;
+
 	struct dlist_entry rx_ctx_entry;
 	struct dlist_entry tx_ctx_entry;
 
-	struct dlist_entry rx_ctx_list;
-	struct dlist_entry tx_ctx_list;
-
-	struct sock_cntr 	*send_cntr;
-	struct sock_cntr 	*recv_cntr;
-	struct sock_cntr 	*read_cntr;
-	struct sock_cntr 	*write_cntr;
-	struct sock_cntr 	*rem_read_cntr;
-	struct sock_cntr 	*rem_write_cntr;
-
 	struct fi_info info;
 	struct fi_ep_attr ep_attr;
-	struct fi_tx_ctx_attr tx_ctx_attr;
-	struct fi_rx_ctx_attr rx_ctx_attr;
+	struct fi_tx_ctx_attr tx_attr;
+	struct fi_rx_ctx_attr rx_attr;
 
 	enum fi_ep_type ep_type;
-
 	struct sockaddr_in *src_addr;
 	struct sockaddr_in *dest_addr;
-
-	int connected;
-	int enabled;
-	int port_num;
 
 	/* TODO: remove */
 	struct sock_ep *next;
@@ -340,6 +349,7 @@ struct sock_ep {
 
 	list_t *send_list;
 	list_t *recv_list;
+	int port_num;
 };
 
 struct sock_pep {
@@ -365,7 +375,7 @@ struct sock_rx_entry {
 	uint64_t addr;
 	uint64_t data;
 	uint64_t tag;
-	uint64_t mask;
+	uint64_t ignore;
 	
 	union sock_iov iov[SOCK_EP_MAX_IOV_LIMIT];
 	struct dlist_entry entry;
@@ -377,14 +387,25 @@ struct sock_rx_ctx {
 	uint16_t rx_id;
 	uint8_t enabled;
 	uint8_t progress;
-	uint8_t cq_event_flag;
-	uint8_t reserved[3];
+
+	uint8_t recv_cq_event;
+	uint8_t rem_read_cq_event;
+	uint8_t rem_write_cq_event;
+	uint8_t reserved[1];
+
 	uint64_t addr;
 
-	struct sock_cq *cq;
+	struct sock_cq *recv_cq;
+	struct sock_cq *rem_read_cq;
+	struct sock_cq *rem_write_cq;
+
+	struct sock_ep *ep;
  	struct sock_domain *domain;
 
-	struct dlist_entry ep_entry;
+	struct sock_cntr *recv_cntr;
+	struct sock_cntr  *rem_read_cntr;
+	struct sock_cntr  *rem_write_cntr;
+
 	struct dlist_entry cq_entry;
 	struct dlist_entry pe_entry;
 
@@ -406,15 +427,33 @@ struct sock_tx_ctx {
 	uint16_t tx_id;
 	uint8_t enabled;
 	uint8_t progress;
+<<<<<<< HEAD
 	uint8_t cq_event_flag;
 	uint8_t reserved[3];
+=======
+
+	uint8_t send_cq_event;
+	uint8_t read_cq_event;
+	uint8_t write_cq_event;
+	uint8_t reserved[1];
+
+>>>>>>> 2707378d893e3d43599ce41406ac80febaa49e50
 	uint64_t addr;
 
-	struct sock_cq *cq;
+	struct sock_cq *send_cq;
+	struct sock_cq *read_cq;
+	struct sock_cq *write_cq;
+
 	struct sock_ep *ep;
  	struct sock_domain *domain;
+<<<<<<< HEAD
+=======
 
-	struct dlist_entry ep_entry;
+	struct sock_cntr *send_cntr;
+	struct sock_cntr *read_cntr;
+	struct sock_cntr *write_cntr;
+>>>>>>> 2707378d893e3d43599ce41406ac80febaa49e50
+
 	struct dlist_entry cq_entry;
 	struct dlist_entry pe_entry;
 
@@ -431,20 +470,25 @@ struct sock_tx_ctx {
 struct sock_msg_hdr{
 	uint8_t version;
 	uint8_t op_type;
-	uint8_t src_iov_len;
 	uint16_t rx_id;
-	uint8_t reserved[3];
+	uint8_t reserved[4];
 
 	uint64_t src_addr;
 	uint64_t flags;
-	uint64_t msg_len;
+	uint64_t msg_len; /* includes header len */
 };
 
 struct sock_msg_send{
 	struct sock_msg_hdr msg_hdr;
-	/* src iov(s) */
-	/* data */
 	/* user data */
+	/* data */
+};
+
+struct sock_msg_tsend{
+	struct sock_msg_hdr msg_hdr;
+	uint64_t tag;
+	/* user data */
+	/* data */
 };
 
 struct sock_tx_iov {
@@ -539,13 +583,18 @@ struct sock_cq {
 	sock_cq_report_fn report_completion;
 };
 
-int _sock_verify_info(struct fi_info *hints);
-int _sock_verify_ep_attr(struct fi_ep_attr *attr);
-int _sock_verify_fabric_attr(struct fi_fabric_attr *attr);
-int _sock_verify_domain_attr(struct fi_domain_attr *attr);
+int sock_verify_info(struct fi_info *hints);
+int sock_verify_fabric_attr(struct fi_fabric_attr *attr);
+int sock_verify_domain_attr(struct fi_domain_attr *attr);
+
 
 int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		uint64_t flags, struct fi_info *hints, struct fi_info **info);
+int sock_rdm_verify_ep_attr(struct fi_ep_attr *ep_attr, 
+			struct fi_tx_ctx_attr *tx_attr,
+			struct fi_rx_ctx_attr *rx_attr);
+
+
 int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
 		uint64_t flags, struct fi_info *hints, struct fi_info **info);
 
@@ -554,9 +603,14 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		struct fid_domain **dom, void *context);
 
 
+#define SOCK_GET_RX_ID(_addr, _bits) (((uint64_t)_addr) >> (64 - _bits))
 int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		struct fid_av **av, void *context);
 fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr);
+int sock_av_lookup_addr(struct sock_av *av, fi_addr_t addr, 
+			struct sock_conn **entry);
+int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
+			     uint16_t key, struct sock_conn **entry);
 
 
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
@@ -575,7 +629,8 @@ ssize_t sock_eq_report_error(struct sock_eq *sock_eq, fid_t fid, void *context,
 
 int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 		struct fid_cntr **cntr, void *context);
-
+int sock_cntr_inc(struct sock_cntr *cntr);
+int sock_cntr_err_inc(struct sock_cntr *cntr);
 
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context);
@@ -587,18 +642,22 @@ int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
 
 int sock_ep_connect(struct fid_ep *ep, const void *addr,
 		    const void *param, size_t paramlen);
-struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep, fi_addr_t addr,
-					   uint16_t rx_id, uint64_t tag, uint64_t mask);
+struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep, 
+					   struct sock_pe_entry *pe_entry);
 
-struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, void *context);
+
+struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, 
+				      void *context);
 void sock_rx_ctx_add_ep(struct sock_rx_ctx *rx_ctx, struct sock_ep *ep);
 void sock_rx_ctx_free(struct sock_rx_ctx *rx_ctx);
 
-struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr, void *context);
+
+struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr, 
+				      void *context);
 void sock_tx_ctx_add_ep(struct sock_tx_ctx *tx_ctx, struct sock_ep *ep);
 void sock_tx_ctx_free(struct sock_tx_ctx *tx_ctx);
 void sock_tx_ctx_start(struct sock_tx_ctx *tx_ctx);
-int sock_tx_ctx_write(struct sock_tx_ctx *tx_ctx, const void *buf, size_t len);
+void sock_tx_ctx_write(struct sock_tx_ctx *tx_ctx, const void *buf, size_t len);
 void sock_tx_ctx_commit(struct sock_tx_ctx *tx_ctx);
 void sock_tx_ctx_abort(struct sock_tx_ctx *tx_ctx);
 int sock_tx_ctx_read(struct sock_tx_ctx *tx_ctx, void *buf, size_t len);
@@ -615,6 +674,7 @@ int sock_av_lookup_addr(struct sock_av *av, fi_addr_t addr,
 int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 			     uint16_t key, struct sock_conn **entry);
 
+/* FIXME: handle shared ctx */
 #define SOCK_GET_RX_ID(_addr, _bits) (((uint64_t)_addr) >> (64 - _bits))
 int sock_conn_check_conn_map(struct sock_conn_map *map, int count);
 int sock_dgram_connect_conn_map(struct sock_conn_map *map, void *addr, 
