@@ -93,6 +93,9 @@ int sock_verify_info(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 
+	if ((hints->mode | SOCK_MODE) != SOCK_MODE)
+		return -FI_ENODATA;
+	
 	if (!sock_rdm_verify_ep_attr(hints->ep_attr, 
 				    hints->tx_attr, hints->rx_attr))
 		return 0;

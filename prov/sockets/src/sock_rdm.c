@@ -231,7 +231,7 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 
 	if (hints->caps) {
 		_info->caps = hints->caps;
-	}else{
+	} else {
 		_info->caps = SOCK_EP_RDM_CAP;
 	}
 
@@ -458,8 +458,7 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 		total_len = msg->iov_count * sizeof(union sock_iov);
 	}
 
-	total_len += sizeof(struct sock_op) + 
-		4 * sizeof(uint64_t); /* flags, context, dest_addr, conn */
+	total_len += sizeof(struct sock_op_send);
 	
 	if (flags & FI_REMOTE_CQ_DATA)
 		total_len += sizeof(uint64_t);
@@ -472,34 +471,22 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	tx_op.op = (flags & FI_INJECT) ? SOCK_OP_SEND_INJECT : SOCK_OP_SEND;
 	tx_op.src_iov_len = msg->iov_count;
 
-	/* tx_op */
 	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
-
-	/* flags */
 	sock_tx_ctx_write(tx_ctx, &flags, sizeof(uint64_t));
-
-	/* context */
 	sock_tx_ctx_write(tx_ctx, msg->context ? msg->context: &tmp, 
 			  sizeof(uint64_t));
-
-	/* dest_addr */
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
-
-	/* conn */
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
-
-	/* data */
 	if (flags & FI_REMOTE_CQ_DATA) {
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
 	}
 
-	/* data / tx iov */
 	if (flags & FI_INJECT) {
 		for (i=0; i< msg->iov_count; i++) {
 			sock_tx_ctx_write(tx_ctx, msg->msg_iov[i].iov_base, 
 					  msg->msg_iov[i].iov_len);
 		}
-	}else {
+	} else {
 		for (i=0; i< msg->iov_count; i++) {
 			tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
 			tx_iov.iov.len = msg->msg_iov[i].iov_len;
@@ -736,9 +723,7 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 		total_len = msg->iov_count * sizeof(union sock_iov);
 	}
 
-	total_len += sizeof(struct sock_op) + 
-		5 * sizeof(uint64_t); /*flags, context, dest_addr, conn, tag*/
-	
+	total_len += sizeof(struct sock_op_tsend);
 	if (flags & FI_REMOTE_CQ_DATA)
 		total_len += sizeof(uint64_t);
 	
@@ -750,31 +735,17 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	tx_op.op = (flags & FI_INJECT) ? SOCK_OP_TSEND_INJECT : SOCK_OP_TSEND;
 	tx_op.src_iov_len = msg->iov_count;
 
-	/* tx_op */
 	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
-
-	/* flags */
 	sock_tx_ctx_write(tx_ctx, &flags, sizeof(uint64_t));
-
-	/* context */
 	sock_tx_ctx_write(tx_ctx, msg->context ? msg->context: &tmp, 
 			  sizeof(uint64_t));
-
-	/* dest_addr */
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
-
-	/* conn */
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
-
-	/* data */
 	if (flags & FI_REMOTE_CQ_DATA) {
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
 	}
-
-	/* tag */
 	sock_tx_ctx_write(tx_ctx, &msg->tag, sizeof(uint64_t));
 
-	/* data / tx iov */
 	if (flags & FI_INJECT) {
 		for (i=0; i< msg->iov_count; i++) {
 			sock_tx_ctx_write(tx_ctx, msg->msg_iov[i].iov_base,
@@ -1497,7 +1468,7 @@ int sock_rdm_ep_cm_connect(struct fid_ep *ep, const void *addr,
 			  addr, sizeof(struct sockaddr_in)) != 0) {
 			memcpy(sock_ep->dest_addr, addr, sizeof(struct sockaddr));
 		}
-	}else{
+	} else {
 		return -FI_EINVAL;
 	}
 	

@@ -79,6 +79,7 @@
 #define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV)
 #define SOCK_EP_DGRAM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV)
 #define SOCK_OPS_CAP (FI_INJECT | FI_SEND | FI_RECV )
+#define SOCK_MODE (FI_PROV_MR_KEY|FI_LOCAL_MR)
 
 #define SOCK_MAJOR_VERSION 1
 #define SOCK_MINOR_VERSION 0
@@ -111,10 +112,13 @@ struct sock_conn_map {
 struct sock_domain {
 	struct fi_info info;
 	struct fid_domain dom_fid;
-	uint64_t		mode;
 	struct sock_fabric *fab;
 	fastlock_t lock;
 	atomic_t ref;
+	
+	struct sock_eq *eq;
+	struct sock_eq *mr_eq;
+
 	enum fi_progress progress_mode;
 	struct index_map mr_idm;
 	struct sock_pe *pe;
@@ -254,6 +258,23 @@ struct sock_op {
 		} atomic;
 		uint8_t		reserved[5];
 	};
+};
+
+struct sock_op_send {
+	struct sock_op op;
+	uint64_t flags;
+	uint64_t context;
+	uint64_t dest_addr;
+	struct sock_conn *conn;
+};
+
+struct sock_op_tsend {
+	struct sock_op op;
+	uint64_t flags;
+	uint64_t context;
+	uint64_t dest_addr;
+	struct sock_conn *conn;
+	uint64_t tag;
 };
 
 union sock_iov {
