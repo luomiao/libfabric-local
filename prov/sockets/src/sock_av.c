@@ -123,8 +123,6 @@ static inline int check_table_in(struct sock_av *_av, struct sockaddr_in *addr,
 static int sock_at_insert(struct fid_av *av, const void *addr, size_t count,
 			  fi_addr_t *fi_addr, uint64_t flagsi, void *context)
 {
-	int i;
-	int ret;
 	struct sock_av *_av;
 
 	_av = container_of(av, struct sock_av, av_fid);

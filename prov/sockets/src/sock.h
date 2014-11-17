@@ -697,6 +697,9 @@ int sock_dgram_connect_conn_map(struct sock_conn_map *map, void *addr,
 		int count, socklen_t addrlen, uint16_t *key_table, int port);
 int sock_rdm_connect_conn_map(struct sock_conn_map *map, void *addr, 
 		int count, socklen_t addrlen, uint16_t *key_table, int port);
+int sock_conn_map_set_key(struct sock_conn_map *conn_map, uint16_t *key_p,
+			  struct sockaddr_storage *addr);
+int sock_conn_listen(struct sock_domain *domain);
 int sock_conn_map_clear_pe_entry(struct sock_conn *conn_entry, 
 		uint16_t key);
 void sock_conn_map_destroy(struct sock_conn_map *cmap);
