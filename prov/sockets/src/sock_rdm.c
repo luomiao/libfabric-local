@@ -212,6 +212,9 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 	struct fi_info *_info = fi_allocinfo_internal();
 	if (!_info)
 		return NULL;
+
+	_info->src_addr = calloc(1, sizeof(struct sockaddr_in));
+	_info->dest_addr = calloc(1, sizeof(struct sockaddr_in));
 	
 	_info->next = NULL;	
 	_info->ep_type = ep_type;
