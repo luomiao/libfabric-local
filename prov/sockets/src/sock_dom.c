@@ -182,7 +182,8 @@ static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr
 	uint16_t key;
 
 	dom = container_of(domain, struct sock_domain, dom_fid);
-	if (!(dom->mode & FI_PROV_MR_KEY) && ((attr->requested_key > IDX_MAX_INDEX) ||
+	if (!(dom->mode & FI_PROV_MR_KEY) && 
+	    ((attr->requested_key > IDX_MAX_INDEX) ||
 	    idm_lookup(&dom->mr_idm, (int) attr->requested_key)))
 		return -FI_ENOKEY;
 

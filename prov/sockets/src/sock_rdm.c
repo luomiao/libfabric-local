@@ -460,12 +460,10 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	
 	if (flags & FI_REMOTE_CQ_DATA)
 		total_len += sizeof(uint64_t);
-	
-	fastlock_acquire(&tx_ctx->wlock);
-	if (rbfdavail(&tx_ctx->rbfd) < total_len)
-		goto err;
 
 	sock_tx_ctx_start(tx_ctx);
+	if (rbfdavail(&tx_ctx->rbfd) < total_len)
+		goto err;
 
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = (flags & FI_INJECT) ? SOCK_OP_SEND_INJECT : SOCK_OP_SEND;
@@ -507,11 +505,10 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	}
 
 	sock_tx_ctx_commit(tx_ctx);
-	fastlock_release(&tx_ctx->wlock);
 	return 0;
 
 err:
-	fastlock_release(&tx_ctx->wlock);
+	sock_tx_ctx_abort(tx_ctx);
 	return -FI_EAGAIN;
 }
 
@@ -742,11 +739,9 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	if (flags & FI_REMOTE_CQ_DATA)
 		total_len += sizeof(uint64_t);
 	
-	fastlock_acquire(&tx_ctx->wlock);
+	sock_tx_ctx_start(tx_ctx);
 	if (rbfdavail(&tx_ctx->rbfd) < total_len)
 		goto err;
-
-	sock_tx_ctx_start(tx_ctx);
 
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = (flags & FI_INJECT) ? SOCK_OP_TSEND_INJECT : SOCK_OP_TSEND;
@@ -791,11 +786,10 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	}
 	
 	sock_tx_ctx_commit(tx_ctx);
-	fastlock_release(&tx_ctx->wlock);
 	return 0;
 
 err:
-	fastlock_release(&tx_ctx->wlock);
+	sock_tx_ctx_abort(tx_ctx);
 	return -FI_EAGAIN;
 }
 
