@@ -120,6 +120,8 @@ struct sock_domain {
 	struct sock_pe *pe;
 	struct sock_conn_map u_cmap;
 	struct sock_conn_map r_cmap;
+	pthread_t listen_thread;
+	int	listening;
 };
 
 struct sock_cntr {
@@ -155,7 +157,9 @@ struct sock_av {
 	int			rx_ctx_bits;
 	int			port_num;
 	size_t			count;
+	size_t			stored;
 	uint16_t		*key_table;
+	struct sockaddr_storage *addr_table;
 	socklen_t		addrlen;
 	sock_connect_fn		connect_fn;
 	struct sock_conn_map	*cmap;
@@ -427,17 +431,12 @@ struct sock_tx_ctx {
 	uint16_t tx_id;
 	uint8_t enabled;
 	uint8_t progress;
-<<<<<<< HEAD
-	uint8_t cq_event_flag;
-	uint8_t reserved[3];
-=======
 
 	uint8_t send_cq_event;
 	uint8_t read_cq_event;
 	uint8_t write_cq_event;
 	uint8_t reserved[1];
 
->>>>>>> 2707378d893e3d43599ce41406ac80febaa49e50
 	uint64_t addr;
 
 	struct sock_cq *send_cq;
@@ -446,13 +445,10 @@ struct sock_tx_ctx {
 
 	struct sock_ep *ep;
  	struct sock_domain *domain;
-<<<<<<< HEAD
-=======
 
 	struct sock_cntr *send_cntr;
 	struct sock_cntr *read_cntr;
 	struct sock_cntr *write_cntr;
->>>>>>> 2707378d893e3d43599ce41406ac80febaa49e50
 
 	struct dlist_entry cq_entry;
 	struct dlist_entry pe_entry;
@@ -676,7 +672,6 @@ int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 
 /* FIXME: handle shared ctx */
 #define SOCK_GET_RX_ID(_addr, _bits) (((uint64_t)_addr) >> (64 - _bits))
-int sock_conn_check_conn_map(struct sock_conn_map *map, int count);
 int sock_dgram_connect_conn_map(struct sock_conn_map *map, void *addr, 
 		int count, socklen_t addrlen, uint16_t *key_table, int port);
 int sock_rdm_connect_conn_map(struct sock_conn_map *map, void *addr, 

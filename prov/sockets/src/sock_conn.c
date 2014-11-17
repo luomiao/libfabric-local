@@ -85,6 +85,7 @@ static inline void _free_map(struct sock_conn_map *map)
 	map->used = map->size = 0;
 }
 
+#if 0
 int sock_conn_check_conn_map(struct sock_conn_map *map, int count)
 {
 	if (map->size == 0)
@@ -95,6 +96,7 @@ int sock_conn_check_conn_map(struct sock_conn_map *map, int count)
 	else
 		return _increase_map(map, count);
 }
+#endif
 
 int sock_dgram_connect_conn_map(struct sock_conn_map *map, void *addr, int
 		count, socklen_t addrlen, uint16_t *key_table, int port)
@@ -110,6 +112,7 @@ int sock_dgram_connect_conn_map(struct sock_conn_map *map, void *addr, int
 	return 0;
 }
 
+#if 0
 static int _sock_accept_in(struct sock_conn_map *map, struct sockaddr_in *addr, 
 		uint16_t *key_table, int listen_fd, int to_accept, int count)
 {
@@ -358,6 +361,7 @@ int sock_rdm_connect_conn_map(struct sock_conn_map *map, void *addr, int count,
 
 	}
 }
+#endif
 
 void sock_conn_map_destroy(struct sock_conn_map *cmap)
 {
@@ -373,5 +377,134 @@ int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 	}
 
 	*entry = &(conn_map->table[key-1]);
+	return 0;
+}
+
+static inline uint16_t _set_key(struct sock_conn_map *map, struct
+		sockaddr_in *addr)
+{
+	int i, conn_fd;
+	char entry_ip[INET_ADDRSTRLEN];
+	char sa_ip[INET_ADDRSTRLEN];
+	struct sockaddr_in *entry;
+	struct addrinfo *c_res = NULL;
+	struct addrinfo hints;
+
+	memcpy(sa_ip, inet_ntoa(addr->sin_addr), INET_ADDRSTRLEN);
+	for (i=0; i < map->used; i++) {
+		entry = (struct sockaddr_in *)&map->table[i].addr;
+		memcpy(entry_ip, inet_ntoa(entry->sin_addr), INET_ADDRSTRLEN);
+		if(!strcmp(entry_ip, sa_ip)) {
+			return i+1;
+		}
+	}
+
+	/* connect */
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	getaddrinfo(sa_ip, PORT, &hints, &c_res);
+	conn_fd = socket(c_res->ai_family, c_res->ai_socktype, 0);
+	if (conn_fd < 0) {
+		sock_debug(SOCK_ERROR, "failed to create conn_fd, errno: %d\n", errno);
+		return 0;
+	}
+
+	while (connect(conn_fd, c_res->ai_addr, c_res->ai_addrlen));
+
+	memcpy(&map->table[map->used].addr, c_res->ai_addr, c_res->ai_addrlen);
+	map->table[map->used].sock_fd = conn_fd;
+	map->used++;
+	return map->used;
+
+}
+
+int sock_conn_map_set_key(struct sock_conn_map *conn_map, uint16_t *key_p,
+		struct sockaddr_storage *addr)
+{
+	switch(((struct sockaddr *)addr)->sa_family) {
+		case AF_INET:
+			*key_p = _set_key(conn_map, (struct sockaddr_in *)addr);
+			if (!*key_p) return -errno;
+			break;
+		default:
+			sock_debug(SOCK_ERROR, "inserted address not supported\n");
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
+static void * _sock_conn_listen(void *arg)
+{
+	struct sock_domain *domain = (struct sock_domain*) arg;
+	struct sock_conn_map *map = &domain->r_cmap;
+	struct addrinfo *s_res = NULL;
+	struct addrinfo hints;
+	int optval;
+	int listen_fd, conn_fd;
+	struct sockaddr_in remote;
+	socklen_t addr_size;
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
+
+	if(getaddrinfo(NULL, PORT, &hints, &s_res)) {
+		sock_debug(SOCK_ERROR, "no available AF_INET address\n");
+		perror("no available AF_INET address");
+		return NULL;
+	}
+
+	listen_fd = socket(s_res->ai_family, s_res->ai_socktype, 0);
+	if (listen_fd < 0) {
+		sock_debug(SOCK_ERROR, "failed to open socket: %d\n", errno);
+		goto err;
+	}
+	optval = 1;
+	setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+	if (bind(listen_fd, s_res->ai_addr, s_res->ai_addrlen)) {
+		sock_debug(SOCK_ERROR, "failed to bind socket: %d\n", errno);
+		goto err;
+	}
+
+	if (listen(listen_fd, 128)) {
+		sock_debug(SOCK_ERROR, "failed to listen socket: %d\n", errno);
+		goto err;
+	}
+ 
+	_init_map(&domain->r_cmap, 128); /* TODO: init cmap size */
+	while(domain->listening) {
+		addr_size = sizeof(struct sockaddr_in);
+		conn_fd = accept(listen_fd, (struct sockaddr *)&remote, &addr_size);
+		if (conn_fd < 0) {
+			sock_debug(SOCK_ERROR, "failed to accept: %d\n", errno);
+			goto err;
+		}
+
+		/* TODO: lock for multi-threads */
+		if ((map->size - map->used) == 0) {
+			_increase_map(map, map->size*2);
+		}
+		memcpy(&map->table[map->used].addr, &remote, addr_size);
+		map->table[map->used].sock_fd = conn_fd;
+		map->used++;
+	}
+
+	return NULL;
+
+err:
+	close(listen_fd);
+	perror("listening thread failed");
+	return NULL;
+}
+
+int sock_conn_listen(struct sock_domain *domain)
+{
+	if (domain->listening)
+		return 0;
+	pthread_create(&domain->listen_thread, 0, _sock_conn_listen, domain);
+	domain->listening = 1;
 	return 0;
 }

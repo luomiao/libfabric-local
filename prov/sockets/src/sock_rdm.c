@@ -54,7 +54,6 @@
 #include "sock.h"
 #include "sock_util.h"
 
-
 extern const struct fi_domain_attr sock_domain_attr;
 extern const struct fi_fabric_attr sock_fabric_attr;
 
@@ -996,10 +995,6 @@ int	sock_rdm_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 			tx_ctx->progress = 1;
 			sock_pe_add_tx_ctx(tx_ctx->domain->pe, tx_ctx);
 		}
-		if(!tx_ctx->progress) {
-			tx_ctx->progress = 1;
-			sock_pe_add_tx_ctx(tx_ctx->domain->pe, tx_ctx);
-		}
 		break;
 		
 	case FI_CLASS_RX_CTX:
@@ -1023,10 +1018,6 @@ int	sock_rdm_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 		}
 
 		if (!rx_ctx->progress) {
-			rx_ctx->progress = 1;
-			sock_pe_add_rx_ctx(rx_ctx->domain->pe, rx_ctx);
-		}
-		if(!rx_ctx->progress) {
 			rx_ctx->progress = 1;
 			sock_pe_add_rx_ctx(rx_ctx->domain->pe, rx_ctx);
 		}
@@ -1325,9 +1316,9 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (ep->domain != av->dom)
 			return -EINVAL;
 		ep->av = av;
-		av->connect_fn = sock_rdm_connect_conn_map;
 		av->cmap = &av->dom->r_cmap;
 		av->port_num = ep->port_num;
+		return sock_conn_listen(ep->domain);
 		break;
 
 	case FI_CLASS_MR:
@@ -1440,11 +1431,7 @@ int sock_rdm_ep_rx_ctx(struct fid_ep *ep, int index, struct fi_rx_ctx_attr *attr
 	rx_ctx->ep = sock_ep;
 	rx_ctx->domain = sock_ep->domain;
 	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
-<<<<<<< HEAD
-	rx_ctx->domain = sock_ep->domain;
-=======
 
->>>>>>> 2707378d893e3d43599ce41406ac80febaa49e50
 	rx_ctx->ctx.ops = &sock_rdm_ctx_ep_ops;
 	rx_ctx->ctx.msg = &sock_rdm_ctx_msg_ops;
 
@@ -1731,27 +1718,6 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 			       sizeof(struct sockaddr_in));
 		}
 
-<<<<<<< HEAD
-	atomic_init(&sock_ep->ref, 0);
-	atomic_init(&sock_ep->num_rx_ctx, -1);
-	atomic_init(&sock_ep->num_tx_ctx, -1);
-
-	/* FIXME: will change after defining shared RX/TX ctxts */
-	sock_ep->rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_ctx_attr, context);
-	if(!sock_ep->rx_ctx)
-		goto err2;
-	sock_rx_ctx_add_ep(sock_ep->rx_ctx, sock_ep);
-	sock_ep->rx_ctx->domain = sock_dom;
-	sock_ep->rx_ctx->enabled = 1;
-
-	sock_ep->tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_ctx_attr, context);
-	if(!sock_ep->tx_ctx)
-		goto err3;
-	sock_tx_ctx_add_ep(sock_ep->tx_ctx, sock_ep);
-	sock_ep->tx_ctx->domain = sock_dom;
-	sock_ep->tx_ctx->ep = sock_ep;
-	sock_ep->tx_ctx->enabled = 1;
-=======
 		if (info->ep_attr) {
 			ret = sock_rdm_verify_ep_attr(info->ep_attr, 
 						      info->tx_attr, 
@@ -1775,7 +1741,6 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		sock_ep->tx_attr = sock_rdm_tx_attr;
 		sock_ep->rx_attr = sock_rdm_rx_attr;
 	}
->>>>>>> 2707378d893e3d43599ce41406ac80febaa49e50
 
 	atomic_init(&sock_ep->ref, 0);
 	atomic_init(&sock_ep->num_tx_ctx, 0);
