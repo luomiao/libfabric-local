@@ -124,6 +124,8 @@ struct sock_domain {
 	struct sock_pe *pe;
 	struct sock_conn_map u_cmap;
 	struct sock_conn_map r_cmap;
+	pthread_t listen_thread;
+	int	listening;
 };
 
 struct sock_cntr {
@@ -159,7 +161,9 @@ struct sock_av {
 	int			rx_ctx_bits;
 	int			port_num;
 	size_t			count;
+	size_t			stored;
 	uint16_t		*key_table;
+	struct sockaddr_storage *addr_table;
 	socklen_t		addrlen;
 	sock_connect_fn		connect_fn;
 	struct sock_conn_map	*cmap;
@@ -689,7 +693,6 @@ int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 
 /* FIXME: handle shared ctx */
 #define SOCK_GET_RX_ID(_addr, _bits) (((uint64_t)_addr) >> (64 - _bits))
-int sock_conn_check_conn_map(struct sock_conn_map *map, int count);
 int sock_dgram_connect_conn_map(struct sock_conn_map *map, void *addr, 
 		int count, socklen_t addrlen, uint16_t *key_table, int port);
 int sock_rdm_connect_conn_map(struct sock_conn_map *map, void *addr, 

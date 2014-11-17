@@ -121,6 +121,9 @@ static int sock_dom_close(struct fid *fid)
 	if (atomic_get(&dom->ref))
 		return -FI_EBUSY;
 
+	dom->listening = 0;
+	pthread_cancel(dom->listen_thread);
+
 	if (dom->u_cmap.size)
 		sock_conn_map_destroy(&dom->u_cmap);
 	if (dom->r_cmap.size)

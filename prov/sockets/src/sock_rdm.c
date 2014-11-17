@@ -54,7 +54,6 @@
 #include "sock.h"
 #include "sock_util.h"
 
-
 extern const struct fi_domain_attr sock_domain_attr;
 extern const struct fi_fabric_attr sock_fabric_attr;
 
@@ -1288,9 +1287,9 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (ep->domain != av->dom)
 			return -EINVAL;
 		ep->av = av;
-		av->connect_fn = sock_rdm_connect_conn_map;
 		av->cmap = &av->dom->r_cmap;
 		av->port_num = ep->port_num;
+		return sock_conn_listen(ep->domain);
 		break;
 
 	case FI_CLASS_MR:

@@ -39,6 +39,7 @@
 
 #include "sock.h"
 #include "sock_util.h"
+#include <stdio.h>
 
 const char const sock_fab_name[] = "IP";
 const char const sock_dom_name[] = "sockets";
@@ -196,6 +197,7 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 	if (hints) {
 		switch (hints->ep_type) {
 		case FI_EP_RDM:
+			fprintf(stderr, "[sock_getinfo] before rdm_getinfo\n");
 			return sock_rdm_getinfo(version, node, service, flags,
 						hints, info);
 		case FI_EP_DGRAM:

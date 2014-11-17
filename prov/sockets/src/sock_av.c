@@ -49,11 +49,74 @@ int sock_av_lookup_addr(struct sock_av *av,
 		fi_addr_t addr, struct sock_conn **entry)
 {
 	int index = ((uint64_t)addr & av->mask);
-	if (index >= av->count || index < 0) {
+	uint16_t key;
+
+	if (index >= av->stored || index < 0) {
 		sock_debug(SOCK_ERROR, "requested rank is larger than av table\n");
 		return -EINVAL;
 	}
-	sock_conn_map_lookup_key(av->cmap, av->key_table[index], entry);
+
+	if (!av->cmap) {
+		sock_debug(SOCK_ERROR, "EP with no AV bound\n");
+		return -EINVAL;
+	}
+
+	key = av->key_table[index];
+
+	if (!key) {
+		if(sock_conn_map_set_key(av->cmap, &key, &av->addr_table[index])) {
+			sock_debug(SOCK_ERROR, "failed to set key\n");
+			return -EINVAL;
+		}
+		av->key_table[index] = key;
+	}
+	sock_conn_map_lookup_key(av->cmap, key, entry);
+
+	return 0;
+}
+
+static inline int check_table_in(struct sock_av *_av, struct sockaddr_in *addr,
+		int count)
+{
+	int i;
+
+	if (!_av->count) {
+		_av->key_table = (uint16_t*)calloc(count, sizeof(uint16_t));
+		_av->addr_table = (struct sockaddr_storage*)calloc(count, sizeof(struct
+					sockaddr_storage));
+		if (!_av->key_table || !_av->addr_table) {
+			return -ENOMEM;
+		}
+
+		for (i=0; i<count; i++) {
+			memcpy(&_av->addr_table[i], &addr[i], sizeof(struct sockaddr_in));
+		}
+		_av->count = _av->stored = count;
+	} else {
+		if (_av->stored + count > _av->count) {
+			int new_size;
+			new_size = MAX(_av->count, count) * 2;
+			_av->key_table = (uint16_t*)realloc(_av->key_table, 
+					new_size * sizeof(uint16_t));
+			_av->addr_table = (struct sockaddr_storage*)realloc(_av->addr_table,
+					new_size * sizeof(struct sockaddr_storage));
+			if (!_av->key_table || !_av->addr_table) {
+				return -ENOMEM;
+			}
+
+			/* init new allocated key_table */
+			memset(&_av->key_table[_av->count], 0, (new_size -
+						_av->count)*sizeof(uint16_t));
+
+			_av->count = new_size;
+		}
+
+		for (i=0; i<count; i++) {
+			memcpy(&_av->addr_table[_av->stored+i], &addr[i], sizeof(struct
+						sockaddr_in));
+		}
+	}
+
 	return 0;
 }
 
@@ -65,23 +128,18 @@ static int sock_at_insert(struct fid_av *av, const void *addr, size_t count,
 	struct sock_av *_av;
 
 	_av = container_of(av, struct sock_av, av_fid);
-	_av->key_table = calloc(count, sizeof(uint16_t));
-	if (!_av->key_table)
-		return -ENOMEM;
-	for (i=0; i<count; i++) {
-		_av->key_table[i] = 0;
+
+	switch(((struct sockaddr *)addr)->sa_family) {
+		case AF_INET:
+			if (_av->addrlen != sizeof(struct sockaddr_in)) {
+				sock_debug(SOCK_ERROR, "Invalid address type\n");
+				return -EINVAL;
+			}
+			return check_table_in(_av, (struct sockaddr_in *)addr, count);
+		default:
+			sock_debug(SOCK_ERROR, "inserted address not supported\n");
+			return -EINVAL;
 	}
-
-	if (sock_conn_check_conn_map(_av->cmap, count))
-		return -errno;
-
-	_av->count = count;
-	ret = _av->connect_fn(_av->cmap, (void *)addr, count, _av->addrlen, 
-			_av->key_table, _av->port_num);
-	if (ret)
-		return ret; 
-
-	return 0;
 }
 
 static int sock_at_remove(struct fid_av *av, fi_addr_t *fi_addr, size_t count,
@@ -271,10 +329,6 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		return -FI_ENOSYS;
 	}
 
-	if (attr->count && _av->cmap) {
-		if (sock_conn_check_conn_map(_av->cmap, attr->count))
-			return -errno;
-	}
 	atomic_init(&_av->ref, 0);
 	atomic_inc(&dom->ref);
 	_av->dom = dom;
