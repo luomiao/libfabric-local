@@ -151,6 +151,8 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	msg_hdr->flags = ntohs(msg_hdr->flags);
 	msg_hdr->msg_len = ntohl(msg_hdr->msg_len);
 
+	sock_debug(SOCK_INFO, "PE RX: MsgLen: %lu\n", msg_hdr->msg_len);
+
 	/* process rx entry */
 	switch (pe_entry->msg_hdr.op_type) {
 
@@ -178,6 +180,10 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 {
 	int ret, rem, read_data; 
 	struct sock_conn *conn = pe_entry->conn;
+
+	sock_debug(SOCK_INFO, "PE: [%d] Progressing RX pe_entry\n", 
+		   PE_INDEX(pe, pe_entry));
+
 	if (conn->pe_entry != NULL && conn->pe_entry != pe_entry)
 		return 0;
 
@@ -185,9 +191,6 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 		conn->pe_entry = pe_entry;
 	}
 
-	sock_debug(SOCK_INFO, "PE: [%d] Progressing RX pe_entry\n", 
-		   PE_INDEX(pe, pe_entry));
-	
 	if (pe_entry->done_len < sizeof(struct sock_msg_hdr)) {
 		ret = recv(conn->sock_fd, 
 			   (char*)&pe_entry->msg_hdr + pe_entry->done_len, 
@@ -260,10 +263,11 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			if (ret < 0) {
 				if (ret == EWOULDBLOCK || ret == EAGAIN)
 					return 0;
-			}else{
-				sock_debug(SOCK_ERROR, "PE: Failed to send\n");
-				return ret;
-			}			
+				else{
+					sock_debug(SOCK_ERROR, "PE: Failed to send: %d\n", ret);
+					return ret;
+				}		
+			}	
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len != len)
 				return 0;
@@ -281,10 +285,11 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			if (ret < 0) {
 				if (ret == EWOULDBLOCK || ret == EAGAIN)
 					return 0;
-			}else{
-				sock_debug(SOCK_ERROR, "PE: Failed to send\n");
-				return ret;
-			}			
+				else{
+					sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+					return ret;
+				}		
+			}	
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len != len)
 				return 0;
@@ -292,9 +297,9 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 	}
 
 
-	offset = pe_entry->done_len - len;
 	if (pe_entry->tx.tx_op.op == SOCK_OP_SEND_INJECT ||
 	    pe_entry->tx.tx_op.op == SOCK_OP_TSEND_INJECT) {
+		offset = pe_entry->done_len - len;
 		len += pe_entry->tx.tx_op.src_iov_len;
 		
 		if (pe_entry->done_len < len) {
@@ -305,9 +310,10 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			if (ret < 0) {
 				if (ret == EWOULDBLOCK || ret == EAGAIN)
 					return 0;
-			}else{
-				sock_debug(SOCK_ERROR, "PE: Failed to send\n");
-				return ret;
+				else{
+					sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+					return ret;
+				}
 			}
 			
 			pe_entry->done_len += ret;
@@ -315,16 +321,17 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 				return 0;
 		}
 	} else {
-		done_data = offset;
 		data_len = 0;
-		
+		done_data = pe_entry->done_len - len;
+
 		for (i=0; i < pe_entry->tx.tx_op.src_iov_len; i++) {
 			data_len += pe_entry->tx.tx_iov[i].src.iov.len;
-			if (done_data >= pe_entry->tx.tx_iov[i].src.iov.len + 
-			    data_len) 
+			if (done_data >= pe_entry->tx.tx_iov[i].src.iov.len + data_len) {
+				done_data -= data_len;
 				continue;
-			
-			offset = data_len - done_data;
+			}
+
+			offset = done_data;
 			ret = send(conn->sock_fd, 
 				   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
 				   offset, pe_entry->tx.tx_iov[i].src.iov.len -
@@ -333,22 +340,23 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			if (ret < 0) {
 				if (ret == EWOULDBLOCK || ret == EAGAIN)
 					return 0;
-			}else{
-				sock_debug(SOCK_ERROR, "PE: Failed to send\n");
-				return ret;
+				else{
+					sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+					return ret;
+				}
 			}
 			
 			pe_entry->done_len += ret;
-			done_data += ret;
-
 			if ( ret != pe_entry->tx.tx_iov[i].src.iov.len - offset)
 				return 0;
 
 		}
 	}
 
-	if (pe_entry->done_len == pe_entry->msg_hdr.msg_len)
+	if (pe_entry->done_len == pe_entry->total_len) {
 		pe_entry->is_complete = 1;
+		sock_debug(SOCK_INFO, "PE: Send complete\n");
+	}
 
 	return 0;
 }
@@ -375,9 +383,10 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 		if (ret < 0) {
 			if (ret == EWOULDBLOCK || ret == EAGAIN)
 				return 0;
-		}else {
-			sock_debug(SOCK_ERROR, "PE: Failed to send\n");
-			return ret;
+			else {
+				sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+				return ret;
+			}
 		}
 
 		pe_entry->done_len += ret;
@@ -391,7 +400,7 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 	}
 
 	switch (pe_entry->msg_hdr.op_type) {
-
+		
 	case SOCK_OP_SEND:
 		ret = sock_pe_progress_tx_send(pe, pe_entry, conn);
 		break;
@@ -406,16 +415,20 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 		sock_debug(SOCK_ERROR, "PE: Operation not supported\n");
 		break;
 	}
-
+	
 	return ret;
 }
 
 static void sock_pe_release_entry(struct sock_pe *pe, 
 			struct sock_pe_entry *pe_entry)
 {
+	dlist_remove(&pe_entry->ctx_entry);
+	pe_entry->conn->pe_entry = NULL;
 	pe_entry->conn = NULL;
+
 	dlist_remove(&pe_entry->entry);
 	dlist_insert_tail(&pe_entry->entry, &pe->free_list);
+	sock_debug(SOCK_INFO, "PE: progress entry %p released\n", pe_entry);
 }
 
 static struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
@@ -427,6 +440,7 @@ static struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
 	pe_entry = container_of(entry, struct sock_pe_entry, entry);
 	dlist_remove(&pe_entry->entry);
 	dlist_insert_tail(&pe_entry->entry, &pe->busy_list);
+	sock_debug(SOCK_INFO, "PE: progress entry %p acquired \n", pe_entry);
 	return pe_entry;
 }
 
@@ -445,6 +459,9 @@ static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	pe_entry->ep = ep;
 	pe_entry->is_complete = 0;
 	pe_entry->done_len = 0;
+
+	sock_debug(SOCK_INFO, "PE: Inserting rx_entry to PE table at %d, conn: %x\n",
+		   PE_INDEX(pe, pe_entry), pe_entry->conn);
 
 	/* link to tracking list in rx_ctx */
 	dlist_init(&pe_entry->ctx_entry);
@@ -467,6 +484,8 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	pe_entry->type = SOCK_PE_TX;
 	pe_entry->is_complete = 0;
 	pe_entry->done_len = 0;
+	pe_entry->conn = NULL;
+	pe_entry->ep = tx_ctx->ep;
 
 	dlist_insert_tail(&pe_entry->ctx_entry, &tx_ctx->pe_entry_list);
 
@@ -513,6 +532,9 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 		}
 	}
 
+	sock_debug(SOCK_INFO, "PE: Inserting TX-entry to PE table at %d, conn: %x\n",
+		   PE_INDEX(pe, pe_entry), pe_entry->conn);
+
 	/* prepare message header */
 	msg_hdr->version = htons(SOCK_WIRE_PROTO_VERSION);
 
@@ -533,9 +555,10 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	}
 
 	/* FIXME: double check */
-	msg_hdr->rx_id = htons(SOCK_GET_RX_ID(pe_entry->addr, 
-				pe_entry->ep->av->rx_ctx_bits));
+	msg_hdr->rx_id = htonl(SOCK_GET_RX_ID(pe_entry->addr, 
+					      tx_ctx->av->rx_ctx_bits));
 	msg_hdr->flags = htonl(pe_entry->flags);
+	pe_entry->total_len = msg_hdr->msg_len;
 	msg_hdr->msg_len = htonl(msg_hdr->msg_len);
 	return 0;
 }
@@ -578,18 +601,24 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 		if (!ep->av)
 			continue;
 
-		for (i=0; i < ep->av->count && 
+		for (i=0; i < ep->av->stored && 
 			     !dlist_empty(&pe->free_list); i++) {
+
+			if (!ep->av->key_table[i]) continue;
 			sock_conn_map_lookup_key(ep->av->cmap, 
 						 ep->av->key_table[i], &conn);
+
 			poll_fd.fd = conn->sock_fd;
 			ret = poll(&poll_fd, 1, 0);
-			if (ret<0) 
+			if (ret < 0) {
+				sock_debug(SOCK_INFO, "PE: Error polling fd: %d\n", conn->sock_fd);
 				goto out;
+			}
+
 			if (ret == 1) {
 				/* new RX PE entry */
 				ret = sock_pe_new_rx_entry(pe, rx_ctx, ep, conn);
-				if (ret) 
+				if (ret < 0) 
 					goto out;
 			}
 		}
@@ -615,7 +644,7 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 	}
 		
 out:	
-	if (ret) 
+	if (ret < 0) 
 		sock_debug(SOCK_ERROR, "PE: failed to progress RX ctx\n");
 	fastlock_release(&pe->lock);
 	return ret;
@@ -635,7 +664,7 @@ int sock_pe_progress_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	      !dlist_empty(&pe->free_list)) {
 		/* new TX PE entry */
 		ret = sock_pe_new_tx_entry(pe, tx_ctx);
-		if (ret) {
+		if (ret < 0) {
 			fastlock_release(&tx_ctx->rlock);
 			goto out;
 		}
@@ -658,7 +687,7 @@ int sock_pe_progress_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 			if (pe_entry->msg_hdr.flags & FI_EVENT) {
 				ret = tx_ctx->send_cq->report_completion(
 					tx_ctx->send_cq, pe_entry->addr, pe_entry);
-				if (ret) 
+				if (ret < 0) 
 					goto out;
 			}
 		}else {
@@ -673,7 +702,7 @@ int sock_pe_progress_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	}
 		
 out:	
-	if (ret) 
+	if (ret < 0) 
 		sock_debug(SOCK_ERROR, "PE: failed to progress TX ctx\n");
 	fastlock_release(&pe->lock);
 	return ret;
@@ -712,7 +741,7 @@ static void *sock_pe_progress_thread(void *data)
 				tx_ctx = container_of(entry, struct sock_tx_ctx,
 						      pe_entry);
 				ret = sock_pe_progress_tx_ctx(pe, tx_ctx);
-				if (ret) {
+				if (ret < 0) {
 					sock_debug(SOCK_ERROR, 
 						   "PE: failed to progress TX\n");
 					return NULL;
@@ -727,7 +756,7 @@ static void *sock_pe_progress_thread(void *data)
 				rx_ctx = container_of(entry, struct sock_rx_ctx,
 						      pe_entry);
 				ret = sock_pe_progress_rx_ctx(pe, rx_ctx);
-				if (ret) {
+				if (ret < 0) {
 					sock_debug(SOCK_ERROR, 
 						   "PE: failed to progress RX\n");
 					return NULL;

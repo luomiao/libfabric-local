@@ -425,6 +425,7 @@ struct sock_rx_ctx {
 	struct sock_cq *rem_write_cq;
 
 	struct sock_ep *ep;
+	struct sock_av *av;
  	struct sock_domain *domain;
 
 	struct sock_cntr *recv_cntr;
@@ -465,6 +466,7 @@ struct sock_tx_ctx {
 	struct sock_cq *write_cq;
 
 	struct sock_ep *ep;
+	struct sock_av *av;
  	struct sock_domain *domain;
 
 	struct sock_cntr *send_cntr;
@@ -555,6 +557,7 @@ struct sock_pe_entry{
 	uint8_t reserved[6];
 
 	uint64_t done_len;
+	uint64_t total_len;
 	struct sock_ep *ep;
 	struct sock_conn *conn;
 

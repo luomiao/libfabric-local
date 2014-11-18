@@ -136,7 +136,7 @@ void sock_tx_ctx_write(struct sock_tx_ctx *tx_ctx, const void *buf, size_t len)
 void sock_tx_ctx_commit(struct sock_tx_ctx *tx_ctx)
 {
 	rbfdcommit(&tx_ctx->rbfd);
-	fastlock_release(&tx_ctx->rlock);
+	fastlock_release(&tx_ctx->wlock);
 }
 
 void sock_tx_ctx_abort(struct sock_tx_ctx *tx_ctx)

@@ -93,9 +93,6 @@ int sock_verify_info(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 
-	if ((hints->mode | SOCK_MODE) != SOCK_MODE)
-		return -FI_ENODATA;
-	
 	if (!sock_rdm_verify_ep_attr(hints->ep_attr, 
 				    hints->tx_attr, hints->rx_attr))
 		return 0;
@@ -191,7 +188,8 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 	//return -FI_ENODATA;
 
 	ret = sock_verify_info(hints);
-	if (ret) return ret;
+	if (ret) 
+		return ret;
 	
 	if (hints) {
 		switch (hints->ep_type) {

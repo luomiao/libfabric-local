@@ -45,6 +45,8 @@
 #include <fi.h>
 
 
+#include <stdio.h>
+
 /*
  * Simple ring buffer
  */
@@ -156,19 +158,23 @@ struct ringbuffd {
 
 static inline int rbfdinit(struct ringbuffd *rbfd, size_t size)
 {
-	int ret;
+	int ret, flags;
 
 	rbfd->fdrcnt = 0;
 	rbfd->fdwcnt = 0;
 	ret = rbinit(&rbfd->rb, size);
-	if (!ret)
+	if (ret)
 		return ret;
 
 	ret = socketpair(AF_UNIX, SOCK_STREAM, 0, rbfd->fd);
 	if (ret < 0)
 		goto err1;
 
-	ret = fcntl(rbfd->fd[RB_READ_FD], F_SETFL, O_NONBLOCK);
+	fprintf(stderr, "PAIR: %d,%d\n", rbfd->fd[RB_READ_FD],
+		rbfd->fd[RB_WRITE_FD]);
+
+	flags = fcntl(rbfd->fd[RB_READ_FD], F_GETFL, 0);
+	ret = fcntl(rbfd->fd[RB_READ_FD], F_SETFL, flags | O_NONBLOCK);
 	if (ret < 0)
 		goto err2;
 
@@ -211,8 +217,10 @@ static inline size_t rbfdavail(struct ringbuffd *rbfd)
 
 static inline void rbfdsignal(struct ringbuffd *rbfd)
 {
+	int ret;
 	if (rbfd->fdwcnt == rbfd->fdrcnt) {
-		write(rbfd->fd[RB_WRITE_FD], rbfd, sizeof rbfd);
+		ret = write(rbfd->fd[RB_WRITE_FD], rbfd, sizeof rbfd);
+		fprintf(stderr, "SIGNAL: %p, %d\n", rbfd, ret);
 		rbfd->fdwcnt++;
 	}
 }
@@ -222,6 +230,7 @@ static inline void rbfdreset(struct ringbuffd *rbfd)
 	void *buf;
 
 	if (rbfdempty(rbfd) && (rbfd->fdrcnt < rbfd->fdwcnt)) {
+		fprintf(stderr, "RESET: %p\n", rbfd);
 		read(rbfd->fd[RB_READ_FD], &buf, sizeof buf);
 		rbfd->fdrcnt++;
 	}
@@ -260,17 +269,19 @@ static inline size_t rbfdsread(struct ringbuffd *rbfd, void *buf, size_t len,
 	size_t avail;
 	int ret;
 
-	do {
-		avail = rbfdused(rbfd);
-		if (avail) {
-			len = MIN(len, avail);
-			rbfdread(rbfd, buf, len);
-			return len;
-		}
-
-		ret = fi_poll_fd(rbfd->fd[RB_READ_FD], timeout);
-	} while (!ret);
-
+	avail = rbfdused(rbfd);
+	if (avail) {
+		len = MIN(len, avail);
+		rbfdread(rbfd, buf, len);
+		return len;
+	}
+	
+	ret = fi_poll_fd(rbfd->fd[RB_READ_FD], timeout);
+	if (ret == 1) {
+		len = MIN(len, rbfdused(rbfd));
+		rbfdread(rbfd, buf, len);
+		return len;
+	}
 	return ret;
 }
 

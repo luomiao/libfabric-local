@@ -237,6 +237,8 @@ ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count,
 
 out:
 	fastlock_release(&sock_cq->lock);
+	sched_yield();
+	pthread_yield();
 	return ret;
 }
 
