@@ -681,6 +681,12 @@ int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
 		   struct fid_pep **pep, void *context);
 
 
+int sock_mr_verify_key(struct sock_domain *domain, uint16_t key, 
+		       void *buf, size_t len, uint64_t access);
+int sock_mr_verify_desc(struct sock_domain *domain, void *desc, 
+			void *buf, size_t len, uint64_t access);
+
+
 int sock_ep_connect(struct fid_ep *ep, const void *addr,
 		    const void *param, size_t paramlen);
 struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep, 
