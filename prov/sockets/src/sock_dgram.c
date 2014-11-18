@@ -99,23 +99,31 @@ int sockd_check_hints(struct fi_info *hints)
 		case FI_PROTO_UNSPEC:
 			break;
 		default:
+			/*
 			SOCK_LOG_ERROR("[sockd] %s: hints->ep_attr->protocol=%lu, supported=%d\n",
 					__func__, hints->ep_attr->protocol, FI_PROTO_UNSPEC);
+			*/
 			return -FI_ENODATA;
 		}
 		if (hints->ep_attr->max_msg_size > SOCKD_MTU) {
+			/*
 			SOCK_LOG_ERROR("[sockd] %s: hints->ep_attr->max_msg_size=%d, supported=%d\n",
 					__func__, hints->ep_attr->max_msg_size, SOCKD_MTU);
+			*/
 			return -FI_ENODATA;
 		}
 		if (hints->ep_attr->inject_size > SOCKD_MTU) {
+			/*
 			SOCK_LOG_ERROR("[sockd] %s: hints->ep_attr->inject_size=%d, supported=%d\n",
-					__func__, hints->ep_attr->inject_size, SOCKD_MTU);
+			__func__, hints->ep_attr->inject_size, SOCKD_MTU);
+			*/
 			return -FI_ENODATA;
 		}
 		if (hints->ep_attr->total_buffered_recv > so_rcvbuf) {
+			/*
 			SOCK_LOG_ERROR("[sockd] %s: hints->ep_attr->total_buffered_recv=%d, supported=%d\n",
 					__func__, hints->ep_attr->total_buffered_recv, so_rcvbuf);
+			*/
 			return -FI_ENODATA;
 		}
 		/* FIXME: check 
@@ -127,14 +135,18 @@ int sockd_check_hints(struct fi_info *hints)
 	}
 
 	if ((hints->caps & SOCK_EP_DGRAM_CAP) != hints->caps) {
+		/*
 		SOCK_LOG_ERROR("[sockd] %s: hints->ep_cap=0x%llx, supported=0x%llx\n",
 				__func__, hints->caps, SOCK_EP_DGRAM_CAP);
+		*/
 		return -FI_ENODATA;
 	}
 
 	if (hints->tx_attr && ((hints->tx_attr->op_flags & SOCKD_OP_FLAGS) != hints->tx_attr->op_flags)) {
+		/*
 		SOCK_LOG_ERROR("[sockd] %s: hints->tx_attr->op_flags=0x%llx, supported=0x%llx\n",
 				__func__, hints->tx_attr->op_flags, SOCKD_OP_FLAGS);
+		*/
 		return -FI_ENODATA;
 	}
 

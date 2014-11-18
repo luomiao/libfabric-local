@@ -466,7 +466,7 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	struct sock_op tx_op;
 	union sock_iov tx_iov;
 	struct sock_conn *conn;
-	uint64_t tmp=0, total_len;
+	uint64_t total_len;
 
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
@@ -503,8 +503,7 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
 	sock_tx_ctx_write(tx_ctx, &flags, sizeof(uint64_t));
-	sock_tx_ctx_write(tx_ctx, msg->context ? msg->context: &tmp, 
-			  sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->context, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
 	if (flags & FI_REMOTE_CQ_DATA) {
@@ -736,7 +735,7 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	struct sock_op tx_op;
 	union sock_iov tx_iov;
 	struct sock_conn *conn;
-	uint64_t tmp=0, total_len;
+	uint64_t total_len;
 
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
@@ -767,8 +766,7 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
 	sock_tx_ctx_write(tx_ctx, &flags, sizeof(uint64_t));
-	sock_tx_ctx_write(tx_ctx, msg->context ? msg->context: &tmp, 
-			  sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->context, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
 	if (flags & FI_REMOTE_CQ_DATA) {
@@ -927,6 +925,67 @@ struct fi_ops_tagged sock_rdm_ctx_tagged = {
 	.senddatato = sock_rdm_ctx_tsenddatato,
 	.search = sock_rdm_ctx_tsearch,
 };
+
+static ssize_t sock_rdm_rma_readmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av, 
+				    const struct fi_msg_rma *msg, uint64_t flags)
+{
+/*
+	int ret, i;
+	struct sock_op tx_op;
+	union sock_iov tx_iov;
+	struct sock_conn *conn;
+	uint64_t tmp=0, total_len;
+
+	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
+
+	if ((ret = sock_av_lookup_addr(av, msg->addr, &conn)))
+		return ret;
+
+	total_len = sizeof(struct sock_op_tsend);
+	total_len += (msg->iov_count * sizeof(union sock_iov));
+	total_len += (msg->rma_iov_count * sizeof(union sock_iov));
+
+	sock_tx_ctx_start(tx_ctx);
+	if (rbfdavail(&tx_ctx->rbfd) < total_len)
+		goto err;
+	
+	memset(&tx_op, 0, sizeof(struct sock_op));
+	tx_op.op = SOCK_OP_READ;
+	tx_op.src_iov_len = msg->iov_count;
+
+	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
+	sock_tx_ctx_write(tx_ctx, &flags, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->context, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
+	if (flags & FI_REMOTE_CQ_DATA) {
+		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
+	}
+	sock_tx_ctx_write(tx_ctx, &msg->tag, sizeof(uint64_t));
+
+	if (flags & FI_INJECT) {
+		for (i=0; i< msg->iov_count; i++) {
+			sock_tx_ctx_write(tx_ctx, msg->msg_iov[i].iov_base,
+					  msg->msg_iov[i].iov_len);
+		}
+	} else {
+		for (i=0; i< msg->iov_count; i++) {
+			tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
+			tx_iov.iov.len = msg->msg_iov[i].iov_len;
+			sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
+		}
+	}
+	
+	sock_tx_ctx_commit(tx_ctx);
+	return 0;
+
+err:
+	sock_tx_ctx_abort(tx_ctx);
+	return -FI_EAGAIN;
+*/
+	return -FI_ENOSYS;
+}
+
 
 ssize_t sock_rdm_ctx_rma_read(struct fid_ep *ep, void *buf, size_t len, void *desc,
 		uint64_t addr, uint64_t key, void *context)

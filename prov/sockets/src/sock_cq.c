@@ -127,8 +127,6 @@ static int sock_cq_report_context(struct sock_cq *cq, fi_addr_t addr,
 				  struct sock_pe_entry *pe_entry)
 {
 	struct fi_cq_entry cq_entry;
-	if (!cq)
-		return 0;
 	cq_entry.op_context = (void*)pe_entry->context;
 	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
 }
@@ -137,8 +135,6 @@ static int sock_cq_report_msg(struct sock_cq *cq, fi_addr_t addr,
 			      struct sock_pe_entry *pe_entry)
 {
 	struct fi_cq_msg_entry cq_entry;
-	if (!cq)
-		return 0;
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
 	cq_entry.len = pe_entry->done_len;
@@ -149,8 +145,6 @@ static int sock_cq_report_data(struct sock_cq *cq, fi_addr_t addr,
 			       struct sock_pe_entry *pe_entry)
 {
 	struct fi_cq_data_entry cq_entry;
-	if (!cq)
-		return 0;
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
 	cq_entry.len = pe_entry->done_len;
@@ -163,8 +157,6 @@ static int sock_cq_report_tagged(struct sock_cq *cq, fi_addr_t addr,
 				 struct sock_pe_entry *pe_entry)
 {
 	struct fi_cq_tagged_entry cq_entry;
-	if (!cq)
-		return 0;
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
 	cq_entry.len = pe_entry->done_len;
