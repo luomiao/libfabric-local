@@ -52,12 +52,12 @@ int sock_av_lookup_addr(struct sock_av *av,
 	uint16_t key;
 
 	if (index >= av->stored || index < 0) {
-		sock_debug(SOCK_ERROR, "requested rank is larger than av table\n");
+		SOCK_LOG_ERROR("requested rank is larger than av table\n");
 		return -EINVAL;
 	}
 
 	if (!av->cmap) {
-		sock_debug(SOCK_ERROR, "EP with no AV bound\n");
+		SOCK_LOG_ERROR("EP with no AV bound\n");
 		return -EINVAL;
 	}
 
@@ -65,7 +65,7 @@ int sock_av_lookup_addr(struct sock_av *av,
 
 	if (!key) {
 		if(sock_conn_map_set_key(av->cmap, &key, &av->addr_table[index])) {
-			sock_debug(SOCK_ERROR, "failed to set key\n");
+			SOCK_LOG_ERROR("failed to set key\n");
 			return -EINVAL;
 		}
 		av->key_table[index] = key;
@@ -130,12 +130,12 @@ static int sock_at_insert(struct fid_av *av, const void *addr, size_t count,
 	switch(((struct sockaddr *)addr)->sa_family) {
 		case AF_INET:
 			if (_av->addrlen != sizeof(struct sockaddr_in)) {
-				sock_debug(SOCK_ERROR, "Invalid address type\n");
+				SOCK_LOG_ERROR("Invalid address type\n");
 				return -EINVAL;
 			}
 			return check_table_in(_av, (struct sockaddr_in *)addr, count);
 		default:
-			sock_debug(SOCK_ERROR, "inserted address not supported\n");
+			SOCK_LOG_ERROR("inserted address not supported\n");
 			return -EINVAL;
 	}
 }
@@ -156,7 +156,7 @@ static int sock_at_lookup(struct fid_av *av, fi_addr_t fi_addr, void *addr,
 	_av = container_of(av, struct sock_av, av_fid);
 	index = ((uint64_t)fi_addr & _av->mask);
 	if (index >= _av->count || index < 0) {
-		sock_debug(SOCK_ERROR, "requested rank is larger than av table\n");
+		SOCK_LOG_ERROR("requested rank is larger than av table\n");
 		return -EINVAL;
 	}
 
@@ -341,11 +341,11 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		_av->addrlen = sizeof(struct sockaddr_in6);
 		break;
 	default:
-		sock_debug(SOCK_ERROR, "Invalid address format\n");
+		SOCK_LOG_ERROR("Invalid address format\n");
 		return -EINVAL;
 	}
 	if (attr->rx_ctx_bits > 63) {
-		sock_debug(SOCK_ERROR, "Invalid rx_ctx_bits\n");
+		SOCK_LOG_ERROR("Invalid rx_ctx_bits\n");
 		return -EINVAL;
 	}
 	_av->rx_ctx_bits = attr->rx_ctx_bits;

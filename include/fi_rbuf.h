@@ -45,8 +45,6 @@
 #include <fi.h>
 
 
-#include <stdio.h>
-
 /*
  * Simple ring buffer
  */
@@ -170,9 +168,6 @@ static inline int rbfdinit(struct ringbuffd *rbfd, size_t size)
 	if (ret < 0)
 		goto err1;
 
-	fprintf(stderr, "PAIR: %d,%d\n", rbfd->fd[RB_READ_FD],
-		rbfd->fd[RB_WRITE_FD]);
-
 	flags = fcntl(rbfd->fd[RB_READ_FD], F_GETFL, 0);
 	ret = fcntl(rbfd->fd[RB_READ_FD], F_SETFL, flags | O_NONBLOCK);
 	if (ret < 0)
@@ -217,10 +212,8 @@ static inline size_t rbfdavail(struct ringbuffd *rbfd)
 
 static inline void rbfdsignal(struct ringbuffd *rbfd)
 {
-	int ret;
 	if (rbfd->fdwcnt == rbfd->fdrcnt) {
-		ret = write(rbfd->fd[RB_WRITE_FD], rbfd, sizeof rbfd);
-		fprintf(stderr, "SIGNAL: %p, %d\n", rbfd, ret);
+		write(rbfd->fd[RB_WRITE_FD], rbfd, sizeof rbfd);
 		rbfd->fdwcnt++;
 	}
 }
@@ -230,7 +223,6 @@ static inline void rbfdreset(struct ringbuffd *rbfd)
 	void *buf;
 
 	if (rbfdempty(rbfd) && (rbfd->fdrcnt < rbfd->fdwcnt)) {
-		fprintf(stderr, "RESET: %p\n", rbfd);
 		read(rbfd->fd[RB_READ_FD], &buf, sizeof buf);
 		rbfd->fdrcnt++;
 	}

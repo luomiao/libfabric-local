@@ -69,16 +69,18 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 	rx_entry = sock_ep_get_rx_entry(pe_entry->ep, pe_entry);
 
 	if (!rx_entry) {
-		sock_debug(SOCK_ERROR, "PE: No matching recv!\n");
-		sock_cntr_err_inc(rx_ctx->recv_cntr);
-		sock_cq_report_error(rx_ctx->recv_cq, pe_entry, 0,
-				     -FI_ENOENT, -FI_ENOENT, NULL);
+		SOCK_LOG_ERROR("No matching recv!\n");
+		if (rx_ctx->recv_cntr)
+			sock_cntr_err_inc(rx_ctx->recv_cntr);
+		if (rx_ctx->recv_cq)
+			sock_cq_report_error(rx_ctx->recv_cq, pe_entry, 0,
+					     -FI_ENOENT, -FI_ENOENT, NULL);
 		ret = -FI_ENOENT;
 		goto out;
 	}
 	
 	if (pe_entry->msg_hdr.flags & FI_REMOTE_COMPLETE) {
-		sock_debug(SOCK_ERROR, "PE: FI_REMOTE_COMPLETE not implemented\n");
+		SOCK_LOG_ERROR("FI_REMOTE_COMPLETE not implemented\n");
 		/* TODO */
 	}
 
@@ -106,26 +108,31 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 
 	/* report error, if any */
 	if (rem) {
-		sock_cntr_err_inc(rx_ctx->recv_cntr);
-		ret = sock_cq_report_error(rx_ctx->recv_cq, pe_entry, rem,
-					   -FI_ENOSPC, -FI_ENOSPC, NULL);
+		if (rx_ctx->recv_cntr)
+			sock_cntr_err_inc(rx_ctx->recv_cntr);
+		if (rx_ctx->recv_cq)
+			ret = sock_cq_report_error(rx_ctx->recv_cq, pe_entry, rem,
+						   -FI_ENOSPC, -FI_ENOSPC, NULL);
 		goto out;
 	}
 	
 	/* post completion */
 	if (rx_ctx->recv_cq_event) {
 		if (pe_entry->msg_hdr.flags & FI_EVENT) {
-			ret = rx_ctx->recv_cq->report_completion(
-				rx_ctx->recv_cq, pe_entry->msg_hdr.src_addr,
-				pe_entry);
+			if (rx_ctx->recv_cq)
+				ret = rx_ctx->recv_cq->report_completion(
+					rx_ctx->recv_cq, pe_entry->msg_hdr.src_addr,
+					pe_entry);
 		}
 	}else{
-		ret = rx_ctx->recv_cq->report_completion(
-			rx_ctx->recv_cq, pe_entry->msg_hdr.src_addr, 
-			pe_entry);
+		if (rx_ctx->recv_cq)
+			ret = rx_ctx->recv_cq->report_completion(
+				rx_ctx->recv_cq, pe_entry->msg_hdr.src_addr, 
+				pe_entry);
 	}
-	
-	sock_cntr_inc(rx_ctx->recv_cntr);
+
+	if (rx_ctx->recv_cntr)
+		sock_cntr_inc(rx_ctx->recv_cntr);
 
 out:
 	free(rx_entry);
@@ -141,7 +148,7 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	msg_hdr = &pe_entry->msg_hdr;
 	msg_hdr->version = ntohs(msg_hdr->version);
 	if (msg_hdr->version != SOCK_WIRE_PROTO_VERSION) {
-		sock_debug(SOCK_ERROR, "PE: Invalid wire protocol\n");
+		SOCK_LOG_ERROR("Invalid wire protocol\n");
 		ret = -FI_EINVAL;
 		goto out;
 	}
@@ -151,7 +158,7 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	msg_hdr->flags = ntohs(msg_hdr->flags);
 	msg_hdr->msg_len = ntohl(msg_hdr->msg_len);
 
-	sock_debug(SOCK_INFO, "PE RX: MsgLen: %lu\n", msg_hdr->msg_len);
+	SOCK_LOG_INFO("PE RX: MsgLen: %lu\n", msg_hdr->msg_len);
 
 	/* process rx entry */
 	switch (pe_entry->msg_hdr.op_type) {
@@ -166,7 +173,7 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	case SOCK_OP_ATOMIC:
 	default:
 		ret = -FI_ENOSYS;
-		sock_debug(SOCK_ERROR, "PE: Operation not supported\n");
+		SOCK_LOG_ERROR("Operation not supported\n");
 		break;
 	}
 
@@ -181,9 +188,7 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 	int ret, rem, read_data; 
 	struct sock_conn *conn = pe_entry->conn;
 
-	sock_debug(SOCK_INFO, "PE: [%d] Progressing RX pe_entry\n", 
-		   PE_INDEX(pe, pe_entry));
-
+	SOCK_LOG_INFO("[%p] Progressing RX pe_entry\n", pe_entry);
 	if (conn->pe_entry != NULL && conn->pe_entry != pe_entry)
 		return 0;
 
@@ -199,7 +204,7 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 			if (ret == EWOULDBLOCK || ret == EAGAIN)
 				return 0;
 		}else{
-			sock_debug(SOCK_ERROR, "PE: Failed to progress recv\n");
+			SOCK_LOG_ERROR("Failed to progress recv\n");
 			return ret;
 		}
 		
@@ -212,7 +217,7 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 				calloc(1, pe_entry->msg_hdr.msg_len - 
 				       sizeof(struct sock_msg_hdr));
 			if (!pe_entry->rx.raw_data) {
-				sock_debug(SOCK_ERROR, "PE: Not enough memory\n");
+				SOCK_LOG_ERROR("Not enough memory\n");
 				return -FI_ENOMEM;
 			}
 		}else {
@@ -231,7 +236,7 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 		if (ret == EWOULDBLOCK || ret == EAGAIN)
 			return 0;
 	}else{
-		sock_debug(SOCK_ERROR, "PE: Failed to progress recv\n");
+		SOCK_LOG_ERROR("Failed to progress recv\n");
 		return ret;
 	}
 
@@ -264,7 +269,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 				if (ret == EWOULDBLOCK || ret == EAGAIN)
 					return 0;
 				else{
-					sock_debug(SOCK_ERROR, "PE: Failed to send: %d\n", ret);
+					SOCK_LOG_ERROR("Failed to send: %d\n", ret);
 					return ret;
 				}		
 			}	
@@ -286,7 +291,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 				if (ret == EWOULDBLOCK || ret == EAGAIN)
 					return 0;
 				else{
-					sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+					SOCK_LOG_ERROR("Failed to send\n");
 					return ret;
 				}		
 			}	
@@ -311,7 +316,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 				if (ret == EWOULDBLOCK || ret == EAGAIN)
 					return 0;
 				else{
-					sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+					SOCK_LOG_ERROR("Failed to send\n");
 					return ret;
 				}
 			}
@@ -341,7 +346,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 				if (ret == EWOULDBLOCK || ret == EAGAIN)
 					return 0;
 				else{
-					sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+					SOCK_LOG_ERROR("Failed to send\n");
 					return ret;
 				}
 			}
@@ -355,7 +360,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 
 	if (pe_entry->done_len == pe_entry->total_len) {
 		pe_entry->is_complete = 1;
-		sock_debug(SOCK_INFO, "PE: Send complete\n");
+		SOCK_LOG_INFO("Send complete\n");
 	}
 
 	return 0;
@@ -373,9 +378,7 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 		conn->pe_entry = pe_entry;
 	}
 
-	sock_debug(SOCK_INFO, "PE: [%d] Progressing TX entry\n", 
-		   PE_INDEX(pe, pe_entry));
-
+	SOCK_LOG_INFO("[%p] Progressing TX entry\n", pe_entry);
 	if (!pe_entry->tx.header_sent) {
 		ret = send(conn->sock_fd, 
 			   (char*)&pe_entry->msg_hdr + pe_entry->done_len,
@@ -384,7 +387,7 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 			if (ret == EWOULDBLOCK || ret == EAGAIN)
 				return 0;
 			else {
-				sock_debug(SOCK_ERROR, "PE: Failed to send\n");
+				SOCK_LOG_ERROR("Failed to send\n");
 				return ret;
 			}
 		}
@@ -392,8 +395,7 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 		pe_entry->done_len += ret;
 		if (pe_entry->done_len == sizeof(struct sock_msg_hdr)) {
 			pe_entry->tx.header_sent = 1;
-			sock_debug(SOCK_INFO, "PE: [%d] Header sent\n", 
-				   PE_INDEX(pe, pe_entry));
+			SOCK_LOG_INFO("[%p] Header sent\n", pe_entry);
 		}else {
 			return 0;
 		}
@@ -412,7 +414,7 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 	case SOCK_OP_SEND_INJECT:
 	default:
 		ret = -FI_ENOSYS;
-		sock_debug(SOCK_ERROR, "PE: Operation not supported\n");
+		SOCK_LOG_ERROR("Operation not supported\n");
 		break;
 	}
 	
@@ -428,7 +430,7 @@ static void sock_pe_release_entry(struct sock_pe *pe,
 
 	dlist_remove(&pe_entry->entry);
 	dlist_insert_tail(&pe_entry->entry, &pe->free_list);
-	sock_debug(SOCK_INFO, "PE: progress entry %p released\n", pe_entry);
+	SOCK_LOG_INFO("progress entry %p released\n", pe_entry);
 }
 
 static struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
@@ -440,7 +442,7 @@ static struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
 	pe_entry = container_of(entry, struct sock_pe_entry, entry);
 	dlist_remove(&pe_entry->entry);
 	dlist_insert_tail(&pe_entry->entry, &pe->busy_list);
-	sock_debug(SOCK_INFO, "PE: progress entry %p acquired \n", pe_entry);
+	SOCK_LOG_INFO("progress entry %p acquired \n", pe_entry);
 	return pe_entry;
 }
 
@@ -450,7 +452,7 @@ static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	struct sock_pe_entry *pe_entry;	
 	pe_entry = sock_pe_acquire_entry(pe);
 	if (!pe_entry) {
-		sock_debug(SOCK_ERROR, "PE: Error in getting PE entry\n");
+		SOCK_LOG_ERROR("Error in getting PE entry\n");
 		return -FI_EINVAL;
 	}
 
@@ -460,8 +462,8 @@ static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	pe_entry->is_complete = 0;
 	pe_entry->done_len = 0;
 
-	sock_debug(SOCK_INFO, "PE: Inserting rx_entry to PE table at %d, conn: %x\n",
-		   PE_INDEX(pe, pe_entry), pe_entry->conn);
+	SOCK_LOG_INFO("Inserting rx_entry to PE entry %p, conn: %p\n",
+		      pe_entry, pe_entry->conn);
 
 	/* link to tracking list in rx_ctx */
 	dlist_init(&pe_entry->ctx_entry);
@@ -477,7 +479,7 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 
 	pe_entry = sock_pe_acquire_entry(pe);
 	if (!pe_entry) {
-		sock_debug(SOCK_ERROR, "PE: Failed to get free PE entry \n");
+		SOCK_LOG_ERROR("Failed to get free PE entry \n");
 		return -FI_EINVAL;
 	}
 
@@ -532,8 +534,8 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 		}
 	}
 
-	sock_debug(SOCK_INFO, "PE: Inserting TX-entry to PE table at %d, conn: %x\n",
-		   PE_INDEX(pe, pe_entry), pe_entry->conn);
+	SOCK_LOG_INFO("Inserting TX-entry to PE entry %p, conn: %p\n",
+		      pe_entry, pe_entry->conn);
 
 	/* prepare message header */
 	msg_hdr->version = htons(SOCK_WIRE_PROTO_VERSION);
@@ -550,7 +552,7 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 		break;
 
 	default:
-		sock_debug(SOCK_ERROR, "PE: Invalid op type\n");
+		SOCK_LOG_ERROR("Invalid op type\n");
 		return -FI_EINVAL;
 	}
 
@@ -568,7 +570,7 @@ int sock_pe_add_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *ctx)
 	fastlock_acquire(&pe->lock);
 	dlistfd_insert_tail(&ctx->pe_entry, &pe->tx_list);
 	fastlock_release(&pe->lock);
-	sock_debug(SOCK_INFO, "PE: TX ctx added to PE\n");
+	SOCK_LOG_INFO("TX ctx added to PE\n");
 	return 0;
 }
 
@@ -577,7 +579,7 @@ int sock_pe_add_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *ctx)
 	fastlock_acquire(&pe->lock);
 	dlistfd_insert_tail(&ctx->pe_entry, &pe->rx_list);
 	fastlock_release(&pe->lock);
-	sock_debug(SOCK_INFO, "PE: RX ctx added to PE\n");
+	SOCK_LOG_INFO("RX ctx added to PE\n");
 	return 0;
 }
 
@@ -611,7 +613,7 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 			poll_fd.fd = conn->sock_fd;
 			ret = poll(&poll_fd, 1, 0);
 			if (ret < 0) {
-				sock_debug(SOCK_INFO, "PE: Error polling fd: %d\n", conn->sock_fd);
+				SOCK_LOG_INFO("Error polling fd: %d\n", conn->sock_fd);
 				goto out;
 			}
 
@@ -638,14 +640,13 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 			if (ret < 0) 
 				goto out;
 			sock_pe_release_entry(pe, pe_entry);
-			sock_debug(SOCK_INFO, "PE: [%d] RX done\n", 
-				   PE_INDEX(pe, pe_entry));
+			SOCK_LOG_INFO("[%p] RX done\n", pe_entry);
 		}
 	}
 		
 out:	
 	if (ret < 0) 
-		sock_debug(SOCK_ERROR, "PE: failed to progress RX ctx\n");
+		SOCK_LOG_ERROR("failed to progress RX ctx\n");
 	fastlock_release(&pe->lock);
 	return ret;
 }
@@ -685,25 +686,28 @@ int sock_pe_progress_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 
 		if (tx_ctx->send_cq_event) {
 			if (pe_entry->msg_hdr.flags & FI_EVENT) {
-				ret = tx_ctx->send_cq->report_completion(
-					tx_ctx->send_cq, pe_entry->addr, pe_entry);
-				if (ret < 0) 
-					goto out;
+				if (tx_ctx->send_cq) {
+					ret = tx_ctx->send_cq->report_completion(
+						tx_ctx->send_cq, pe_entry->addr, pe_entry);
+					if (ret < 0) 
+						goto out;
+				}
 			}
 		}else {
-			ret = tx_ctx->send_cq->report_completion(
-				tx_ctx->send_cq, pe_entry->addr, pe_entry);
+			if (tx_ctx->send_cq)
+				ret = tx_ctx->send_cq->report_completion(
+					tx_ctx->send_cq, pe_entry->addr, pe_entry);
 		}
 
-		sock_cntr_inc(tx_ctx->send_cntr);
+		if (tx_ctx->send_cntr)
+			sock_cntr_inc(tx_ctx->send_cntr);
 		sock_pe_release_entry(pe, pe_entry);
-		sock_debug(SOCK_INFO, "PE: [%d] TX done\n", 
-			   PE_INDEX(pe, pe_entry));
+		SOCK_LOG_INFO("[%p] TX done\n", pe_entry);
 	}
 		
 out:	
 	if (ret < 0) 
-		sock_debug(SOCK_ERROR, "PE: failed to progress TX ctx\n");
+		SOCK_LOG_ERROR("failed to progress TX ctx\n");
 	fastlock_release(&pe->lock);
 	return ret;
 }
@@ -717,7 +721,7 @@ static void *sock_pe_progress_thread(void *data)
 	struct sock_rx_ctx *rx_ctx;
 	struct sock_pe *pe = (struct sock_pe *)data;
 
-	sock_debug(SOCK_INFO, "PE: Progress thread started\n");
+	SOCK_LOG_INFO("Progress thread started\n");
 
 	fds[0].events = POLLIN;
 	fds[0].fd = pe->tx_list.fd[LIST_READ_FD];
@@ -742,8 +746,8 @@ static void *sock_pe_progress_thread(void *data)
 						      pe_entry);
 				ret = sock_pe_progress_tx_ctx(pe, tx_ctx);
 				if (ret < 0) {
-					sock_debug(SOCK_ERROR, 
-						   "PE: failed to progress TX\n");
+					SOCK_LOG_ERROR(
+						   "failed to progress TX\n");
 					return NULL;
 				}
 			}
@@ -757,15 +761,15 @@ static void *sock_pe_progress_thread(void *data)
 						      pe_entry);
 				ret = sock_pe_progress_rx_ctx(pe, rx_ctx);
 				if (ret < 0) {
-					sock_debug(SOCK_ERROR, 
-						   "PE: failed to progress RX\n");
+					SOCK_LOG_ERROR(
+						   "failed to progress RX\n");
 					return NULL;
 				}
 			}
 		}
 	}
 	
-	sock_debug(SOCK_INFO, "PE: Progress thread terminated\n");
+	SOCK_LOG_INFO("Progress thread terminated\n");
 	return NULL;
 }
 
@@ -784,7 +788,7 @@ static void sock_pe_init_table(
 		dlist_insert_tail(&pe->pe_table[i].entry, &pe->free_list);
 	}
 
-	sock_debug(SOCK_INFO, "PE table init: OK\n");
+	SOCK_LOG_INFO("PE table init: OK\n");
 }
 
 struct sock_pe *sock_pe_init(struct sock_domain *domain)
@@ -802,10 +806,10 @@ struct sock_pe *sock_pe_init(struct sock_domain *domain)
 	pe->do_progress = 1;
 	if (pthread_create(&pe->progress_thread, NULL, sock_pe_progress_thread,
 			  (void *)pe)) {
-		sock_debug(SOCK_ERROR, "PE: Couldn't create progress thread\n");
+		SOCK_LOG_ERROR("Couldn't create progress thread\n");
 		goto err;
 	}
-	sock_debug(SOCK_INFO, "PE init: OK\n");
+	SOCK_LOG_INFO("PE init: OK\n");
 	return pe;
 
 err:
@@ -828,6 +832,6 @@ void sock_pe_finalize(struct sock_pe *pe)
 	dlistfd_head_free(&pe->rx_list);
 
 	free(pe);
-	sock_debug(SOCK_INFO, "PE: Progress engine finalize: OK\n");
+	SOCK_LOG_INFO("Progress engine finalize: OK\n");
 }
 

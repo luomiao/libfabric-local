@@ -277,8 +277,8 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 
 	if (hints) {
 		if ((SOCK_EP_RDM_CAP | hints->caps) != SOCK_EP_RDM_CAP) {
-			sock_debug(SOCK_INFO, 
-				   "RDM: Cannot support requested options!\n");
+			SOCK_LOG_INFO(
+				   "Cannot support requested options!\n");
 			return -FI_ENODATA;
 		}
 		
@@ -314,7 +314,7 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		ret = getaddrinfo(node, service, &sock_hints, &result);
 		if (ret != 0) {
 			ret = FI_ENODATA;
-			sock_debug(SOCK_INFO, "RDM: getaddrinfo failed!\n");
+			SOCK_LOG_INFO("getaddrinfo failed!\n");
 			goto err;
 		}
 		memcpy(src_addr, result->ai_addr, result->ai_addrlen);
@@ -336,14 +336,14 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			ret = getaddrinfo(node, service, &sock_hints, &result_udp);
 			if (ret != 0) {
 				ret = FI_ENODATA;
-				sock_debug(SOCK_INFO, "RDM: getaddrinfo failed!\n");
+				SOCK_LOG_INFO("getaddrinfo failed!\n");
 				goto err;
 			}
 			
 			ret = connect(udp_sock, result_udp->ai_addr, result_udp->ai_addrlen);
 			if ( ret != 0) {
-				sock_debug(SOCK_ERROR, 
-					   "RDM: Failed to get dest_addr\n");
+				SOCK_LOG_ERROR(
+					   "Failed to get dest_addr\n");
 				ret = FI_ENODATA;
 				goto err;
 			}
@@ -351,8 +351,8 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			ret = getsockname(udp_sock, (struct sockaddr*)dest_addr, 
 					  &len);
 			if (ret != 0) {
-				sock_debug(SOCK_ERROR, 
-					   "RDM: Failed to get dest_addr\n");
+				SOCK_LOG_ERROR(
+					   "Failed to get dest_addr\n");
 				close(udp_sock);
 				ret = FI_ENODATA;
 				goto err;
@@ -381,7 +381,7 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 err:
 	free(src_addr);
 	free(dest_addr);
-	sock_debug(SOCK_ERROR, "RDM: fi_getinfo failed\n");
+	SOCK_LOG_ERROR("fi_getinfo failed\n");
 	return ret;	
 }
 
@@ -471,11 +471,11 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
 	if ((ret = sock_av_lookup_addr(av, msg->addr, &conn))) {
-		sock_debug(SOCK_INFO, "RDM: failed to sendmsg, no connection\n");
+		SOCK_LOG_INFO("failed to sendmsg, no connection\n");
 		return ret;
 	}
 
-	sock_debug(SOCK_INFO, "RDM: New sendmsg on TX: %p using conn: %p\n", 
+	SOCK_LOG_INFO("New sendmsg on TX: %p using conn: %p\n", 
 		   tx_ctx, conn);
 
 	total_len = 0;
@@ -928,6 +928,96 @@ struct fi_ops_tagged sock_rdm_ctx_tagged = {
 	.search = sock_rdm_ctx_tsearch,
 };
 
+ssize_t sock_rdm_ctx_rma_read(struct fid_ep *ep, void *buf, size_t len, void *desc,
+		uint64_t addr, uint64_t key, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_readv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+		 size_t count, uint64_t addr, uint64_t key, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_readfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
+		    fi_addr_t src_addr, uint64_t addr, uint64_t key, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_readmsg(struct fid_ep *ep, const struct fi_msg_rma *msg,
+		   uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_write(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+		 uint64_t addr, uint64_t key, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_writev(struct fid_ep *ep, const struct iovec *iov, void **desc,
+				size_t count, uint64_t addr, uint64_t key, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_writeto(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+		   fi_addr_t dest_addr, uint64_t addr, uint64_t key,
+		   void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_writemsg(struct fid_ep *ep, const struct fi_msg_rma *msg,
+		    uint64_t flags)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_inject(struct fid_ep *ep, const void *buf, size_t len,
+		  uint64_t addr, uint64_t key)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_injectto(struct fid_ep *ep, const void *buf, size_t len,
+				  fi_addr_t dest_addr, uint64_t addr, uint64_t key)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_writedata(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+		     uint64_t data, uint64_t addr, uint64_t key, void *context)
+{
+	return -FI_ENOSYS;
+}
+
+ssize_t sock_rdm_ctx_rma_writedatato(struct fid_ep *ep, const void *buf, size_t len, void *desc,
+				     uint64_t data, fi_addr_t dest_addr, uint64_t addr, uint64_t key,
+				     void *context)
+{
+	return -FI_ENOSYS;
+}
+
+struct fi_ops_rma sock_rdm_ctx_rma = {
+	.size  = sizeof(struct fi_ops_rma),
+	.read = sock_rdm_ctx_rma_read,
+	.readv = sock_rdm_ctx_rma_readv,
+	.readfrom = sock_rdm_ctx_rma_readfrom,
+	.readmsg = sock_rdm_ctx_rma_readmsg,
+	.write = sock_rdm_ctx_rma_write,
+	.writev = sock_rdm_ctx_rma_writev,
+	.writeto = sock_rdm_ctx_rma_writeto,
+	.writemsg = sock_rdm_ctx_rma_writemsg,
+	.inject = sock_rdm_ctx_rma_inject,
+	.injectto = sock_rdm_ctx_rma_injectto,
+	.writedata = sock_rdm_ctx_rma_writedata,
+	.writedatato = sock_rdm_ctx_rma_writedatato,
+};
+
 int	sock_rdm_ctx_close(struct fid *fid)
 {
 	struct sock_ep *ep;
@@ -959,7 +1049,7 @@ int	sock_rdm_ctx_close(struct fid *fid)
 		break;
 
 	default:
-		sock_debug(SOCK_ERROR, "RDM: Invalid fid\n");
+		SOCK_LOG_ERROR("Invalid fid\n");
 		return -FI_EINVAL;
 	}
 	return 0;
@@ -1026,7 +1116,7 @@ int	sock_rdm_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 		break;
 			
 	default:
-		sock_debug(SOCK_ERROR, "RDM: Invalid fid\n");
+		SOCK_LOG_ERROR("Invalid fid\n");
 		return -FI_EINVAL;
 	}
 	return 0;
@@ -1075,7 +1165,7 @@ int	sock_rdm_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 		break;
 			
 	default:
-		sock_debug(SOCK_ERROR, "RDM: Invalid fid\n");
+		SOCK_LOG_ERROR("Invalid fid\n");
 		return -FI_EINVAL;
 	}
 	return 0;
@@ -1091,7 +1181,7 @@ int	sock_rdm_ctx_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		return sock_rdm_ctx_bind_cntr(fid, bfid, flags);
 
 	default:
-		sock_debug(SOCK_ERROR, "RDM: Invalid bind()\n");
+		SOCK_LOG_ERROR("Invalid bind()\n");
 		return -FI_EINVAL;
 	}
 
@@ -1122,7 +1212,7 @@ int sock_rdm_ctx_enable(struct fid_ep *ep)
 		return 0;
 
 	default:
-		sock_debug(SOCK_ERROR, "RDM: Invalid CTX\n");
+		SOCK_LOG_ERROR("Invalid CTX\n");
 		break;
 	}
 	return -FI_EINVAL;
@@ -1444,10 +1534,10 @@ int sock_rdm_ep_tx_ctx(struct fid_ep *ep, int index, struct fi_tx_ctx_attr *attr
 
 	tx_ctx->ctx.ops = &sock_rdm_ctx_ep_ops;
 	tx_ctx->ctx.msg = &sock_rdm_ctx_msg_ops;
+	tx_ctx->ctx.tagged = &sock_rdm_ctx_tagged;
+	tx_ctx->ctx.rma = &sock_rdm_ctx_rma;
 
 	/* TODO */
-	tx_ctx->ctx.rma = NULL;
-	tx_ctx->ctx.tagged = NULL;
 	tx_ctx->ctx.atomic = NULL;
 
 	*tx_ep = &tx_ctx->ctx;
@@ -1711,8 +1801,7 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	if (info) {
 		ret = sock_verify_info(info);
 		if (ret) {
-			sock_debug(SOCK_INFO, 
-				   "RDM: Cannot support requested options!\n");
+			SOCK_LOG_INFO("Cannot support requested options!\n");
 			return -FI_EINVAL;
 		}
 	}

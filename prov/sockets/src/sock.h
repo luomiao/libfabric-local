@@ -236,7 +236,11 @@ enum {
 	SOCK_OP_SEND,
 	SOCK_OP_RECV,
 	SOCK_OP_WRITE,
+	SOCK_OP_WRITE_OK,
+	SOCK_OP_WRITE_ERR,
 	SOCK_OP_READ,
+	SOCK_OP_READ_OK,
+	SOCK_OP_READ_ERR,
 	SOCK_OP_TSEND,
 	SOCK_OP_TRECV,
 	SOCK_OP_ATOMIC,
@@ -508,6 +512,23 @@ struct sock_msg_tsend{
 	uint64_t tag;
 	/* user data */
 	/* data */
+};
+
+struct sock_rma_write_req {
+	struct sock_msg_hdr msg_hdr;
+	uint16_t pe_index;
+	/* dest iov(s)*/
+	/* user data */
+};
+
+struct sock_rma_ok {
+	struct sock_msg_hdr msg_hdr;
+	uint16_t pe_index;
+};
+
+struct sock_rma_err {
+	struct sock_msg_hdr msg_hdr;
+	uint16_t pe_index;
 };
 
 struct sock_tx_iov {

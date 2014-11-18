@@ -202,7 +202,7 @@ struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep,
 			break;
 
 		default:
-			sock_debug(SOCK_ERROR, "CTX: Invalid op type\n");
+			SOCK_LOG_ERROR("Invalid op type\n");
 			break;
 		}
 	}

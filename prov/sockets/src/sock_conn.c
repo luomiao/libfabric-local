@@ -128,7 +128,7 @@ static int _sock_accept_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 		conn_fd = accept(listen_fd, (struct sockaddr *)&remote, 
 				&addr_size);
 		if (conn_fd < 0) {
-			sock_debug(SOCK_ERROR, "failed to accept: %d\n", errno);
+			sock_log(SOCK_ERROR, "failed to accept: %d\n", errno);
 			return -errno;
 		}
 		memcpy(remote_ip, inet_ntoa(remote.sin_addr), INET_ADDRSTRLEN);
@@ -145,7 +145,7 @@ static int _sock_accept_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 			}
 		}
 		if (k==count) {
-			sock_debug(SOCK_ERROR, 
+			sock_log(SOCK_ERROR, 
 					"Invalid accepted connection: %s\n", 
 					remote_ip);
 			return -EINVAL;
@@ -172,7 +172,7 @@ int _connect_conn_map_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 	int optval;
 
 	if (getifaddrs(&myaddrs)) {
-		sock_debug(SOCK_ERROR, "getifaddrs failed\n");
+		sock_log(SOCK_ERROR, "getifaddrs failed\n");
 		return -errno;
 	}
 
@@ -193,7 +193,7 @@ int _connect_conn_map_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 	}
 
 	if (!ifa) {
-		sock_debug(SOCK_ERROR, "no available IPv4 address\n");
+		sock_log(SOCK_ERROR, "no available IPv4 address\n");
 		return -EINVAL;
 	}
 	freeifaddrs(myaddrs);
@@ -203,7 +203,7 @@ int _connect_conn_map_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
 	if(getaddrinfo(NULL, PORT, &hints, &s_res)) {
-		sock_debug(SOCK_ERROR, "no available AF_INET address\n");
+		sock_log(SOCK_ERROR, "no available AF_INET address\n");
 		return -EINVAL;
 	}
 
@@ -217,7 +217,7 @@ int _connect_conn_map_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 	}
 
 	if (!addr_p) {
-		sock_debug(SOCK_ERROR, "no available IPv4 address\n");
+		sock_log(SOCK_ERROR, "no available IPv4 address\n");
 		return -EINVAL;
 	}
 #endif
@@ -250,7 +250,7 @@ int _connect_conn_map_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 			listen_fd = socket(s_res->ai_family, 
 					s_res->ai_socktype, 0);
 			if (listen_fd < 0) {
-				sock_debug(SOCK_ERROR, 
+				sock_log(SOCK_ERROR, 
 						"failed to open socket: %d\n", 
 						errno);
 				goto err;
@@ -259,13 +259,13 @@ int _connect_conn_map_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 			setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, 
 					&optval, sizeof optval);
 			if (bind(listen_fd, s_res->ai_addr, s_res->ai_addrlen)) {
-				sock_debug(SOCK_ERROR, 
+				sock_log(SOCK_ERROR, 
 						"failed to bind socket: %d\n", 
 						errno);
 				goto err;
 			}
 			if (listen(listen_fd, count-i-1)) {
-				sock_debug(SOCK_ERROR, 
+				sock_log(SOCK_ERROR, 
 						"failed to listen socket: %d\n", 
 						errno);
 				goto err;
@@ -277,7 +277,7 @@ int _connect_conn_map_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 						(struct sockaddr *)&remote, 
 						&addr_size);
 				if (conn_fd < 0) {
-					sock_debug(SOCK_ERROR, 
+					sock_log(SOCK_ERROR, 
 							"failed to accept: %d\n", 
 							errno);
 					goto err;
@@ -295,7 +295,7 @@ int _connect_conn_map_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 					}
 				}
 				if (k==count) {
-					sock_debug(SOCK_ERROR, "accepted connection is not found in the address table: %s\n", remote_ip);
+					sock_log(SOCK_ERROR, "accepted connection is not found in the address table: %s\n", remote_ip);
 					errno = EINVAL;
 					goto err;
 				}
@@ -314,7 +314,7 @@ int _connect_conn_map_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 				getaddrinfo(entry_ip, PORT, &hints, &c_res);
 				conn_fd = socket(c_res->ai_family, c_res->ai_socktype, 0);
 				if (conn_fd < 0) {
-					sock_debug(SOCK_ERROR, "failed to create conn_fd, errno: %d\n", errno);
+					sock_log(SOCK_ERROR, "failed to create conn_fd, errno: %d\n", errno);
 					return -errno;
 				}
 				/* TODO: handle connect error return; timeout? */
@@ -351,12 +351,12 @@ int sock_rdm_connect_conn_map(struct sock_conn_map *map, void *addr, int count,
 	switch(((struct sockaddr *)addr)->sa_family) {
 	case AF_INET:
 		if (addrlen != sizeof(struct sockaddr_in)) {
-			sock_debug(SOCK_ERROR, "Invalid address type\n");
+			sock_log(SOCK_ERROR, "Invalid address type\n");
 			return -EINVAL;
 		}
 		return _connect_conn_map_in(map, addr, count, key_table, port);
 	default:
-		sock_debug(SOCK_ERROR, "inserted address not supported\n");
+		sock_log(SOCK_ERROR, "inserted address not supported\n");
 		return -EINVAL;
 
 	}
@@ -372,7 +372,7 @@ int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 		uint16_t key, struct sock_conn **entry) 
 {
 	if (key > conn_map->used) {
-		sock_debug(SOCK_ERROR, "requested key is larger than conn_map size\n");
+		SOCK_LOG_ERROR("requested key is larger than conn_map size\n");
 		return -EINVAL;
 	}
 
@@ -406,7 +406,7 @@ static inline uint16_t _set_key(struct sock_conn_map *map, struct
 	getaddrinfo(sa_ip, PORT, &hints, &c_res);
 	conn_fd = socket(c_res->ai_family, c_res->ai_socktype, 0);
 	if (conn_fd < 0) {
-		sock_debug(SOCK_ERROR, "failed to create conn_fd, errno: %d\n", errno);
+		SOCK_LOG_ERROR("failed to create conn_fd, errno: %d\n", errno);
 		return 0;
 	}
 
@@ -428,7 +428,7 @@ int sock_conn_map_set_key(struct sock_conn_map *conn_map, uint16_t *key_p,
 			if (!*key_p) return -errno;
 			break;
 		default:
-			sock_debug(SOCK_ERROR, "inserted address not supported\n");
+			SOCK_LOG_ERROR("inserted address not supported\n");
 			return -EINVAL;
 	}
 
@@ -452,25 +452,25 @@ static void * _sock_conn_listen(void *arg)
 	hints.ai_flags = AI_PASSIVE;
 
 	if(getaddrinfo(NULL, PORT, &hints, &s_res)) {
-		sock_debug(SOCK_ERROR, "no available AF_INET address\n");
+		SOCK_LOG_ERROR("no available AF_INET address\n");
 		perror("no available AF_INET address");
 		return NULL;
 	}
 
 	listen_fd = socket(s_res->ai_family, s_res->ai_socktype, 0);
 	if (listen_fd < 0) {
-		sock_debug(SOCK_ERROR, "failed to open socket: %d\n", errno);
+		SOCK_LOG_ERROR("failed to open socket: %d\n", errno);
 		goto err;
 	}
 	optval = 1;
 	setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
 	if (bind(listen_fd, s_res->ai_addr, s_res->ai_addrlen)) {
-		sock_debug(SOCK_ERROR, "failed to bind socket: %d\n", errno);
+		SOCK_LOG_ERROR("failed to bind socket: %d\n", errno);
 		goto err;
 	}
 
 	if (listen(listen_fd, 128)) {
-		sock_debug(SOCK_ERROR, "failed to listen socket: %d\n", errno);
+		SOCK_LOG_ERROR("failed to listen socket: %d\n", errno);
 		goto err;
 	}
  
@@ -478,8 +478,9 @@ static void * _sock_conn_listen(void *arg)
 	while(domain->listening) {
 		addr_size = sizeof(struct sockaddr_in);
 		conn_fd = accept(listen_fd, (struct sockaddr *)&remote, &addr_size);
+		SOCK_LOG_INFO("CONN: accepted conn-req: %d\n", conn_fd);
 		if (conn_fd < 0) {
-			sock_debug(SOCK_ERROR, "failed to accept: %d\n", errno);
+			SOCK_LOG_ERROR("failed to accept: %d\n", errno);
 			goto err;
 		}
 

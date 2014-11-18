@@ -72,7 +72,7 @@ int sock_verify_domain_attr(struct fi_domain_attr *attr)
 	case FI_THREAD_PROGRESS:
 		break;
 	default:
-		sock_debug(SOCK_INFO, "Invalid threading model!\n");
+		SOCK_LOG_INFO("Invalid threading model!\n");
 		return -FI_ENODATA;
 	}
 
@@ -83,7 +83,7 @@ int sock_verify_domain_attr(struct fi_domain_attr *attr)
 
 	case FI_PROGRESS_MANUAL:
 	default:
-		sock_debug(SOCK_INFO, "Control progress mode not supported!\n");
+		SOCK_LOG_INFO("Control progress mode not supported!\n");
 		return -FI_ENODATA;
 	}
 
@@ -94,7 +94,7 @@ int sock_verify_domain_attr(struct fi_domain_attr *attr)
 
 	case FI_PROGRESS_MANUAL:
 	default:
-		sock_debug(SOCK_INFO, "Data progress mode not supported!\n");
+		SOCK_LOG_INFO("Data progress mode not supported!\n");
 		return -FI_ENODATA;
 	}
 	
@@ -180,14 +180,15 @@ int sock_mr_verify_key(struct sock_domain *domain, uint16_t key,
 	if (!mr)
 		return -FI_EINVAL;
 	
-	for (i=0; i<mr->iov_count; i++) {
+	for (i = 0; i < mr->iov_count; i++) {
 		if ((uintptr_t)buf >= (uintptr_t)mr->mr_iov[i].iov_base &&
 		    ((uintptr_t)buf + len <= (uintptr_t) mr->mr_iov[i].iov_base + 
 		     mr->mr_iov[i].iov_len)) {
-			if (access & mr->access)
+			if ((access & mr->access) == access)
 				return 0;
 		}
 	}
+	SOCK_LOG_ERROR("MR check failed\n");
 	return -FI_EINVAL;
 }
 
@@ -371,7 +372,7 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 
 	sock_domain->pe = sock_pe_init(sock_domain);
 	if(!sock_domain->pe){
-		sock_debug(SOCK_ERROR, "Failed to init PE\n");
+		SOCK_LOG_ERROR("Failed to init PE\n");
 		goto err;
 	}
 
