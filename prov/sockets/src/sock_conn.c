@@ -410,7 +410,13 @@ static inline uint16_t _set_key(struct sock_conn_map *map, struct
 		return 0;
 	}
 
-	while (connect(conn_fd, c_res->ai_addr, c_res->ai_addrlen));
+	fprintf(stderr, "[_set_key] before connect\n");
+	while (connect(conn_fd, c_res->ai_addr, c_res->ai_addrlen)) {
+		fprintf(stderr, "[_set_key] connect failed with errno: %d\n", errno);
+		if (errno != ETIMEDOUT)
+			return 0;
+	}
+	fprintf(stderr, "[_set_key] after connect\n");
 
 	memcpy(&map->table[map->used].addr, c_res->ai_addr, c_res->ai_addrlen);
 	map->table[map->used].sock_fd = conn_fd;
@@ -503,9 +509,7 @@ err:
 
 int sock_conn_listen(struct sock_domain *domain)
 {
-	if (domain->listening)
-		return 0;
-	pthread_create(&domain->listen_thread, 0, _sock_conn_listen, domain);
 	domain->listening = 1;
+	pthread_create(&domain->listen_thread, 0, _sock_conn_listen, domain);
 	return 0;
 }

@@ -1684,7 +1684,6 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 				ep->rx_array[i]->av = av;
 		}
 		
-		return sock_conn_listen(ep->domain);
 		break;
 
 	case FI_CLASS_MR:
