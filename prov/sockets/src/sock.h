@@ -234,15 +234,21 @@ struct sock_comm_item{
 
 enum {
 	SOCK_OP_SEND,
+	SOCK_OP_SEND_COMPLETE,
+
 	SOCK_OP_RECV,
+
 	SOCK_OP_WRITE,
-	SOCK_OP_WRITE_OK,
-	SOCK_OP_WRITE_ERR,
+	SOCK_OP_WRITE_COMPLETE,
+	SOCK_OP_WRITE_ERROR,
+
 	SOCK_OP_READ,
-	SOCK_OP_READ_OK,
-	SOCK_OP_READ_ERR,
+	SOCK_OP_READ_COMPLETE,
+	SOCK_OP_READ_ERROR,
+
 	SOCK_OP_TSEND,
 	SOCK_OP_TRECV,
+
 	SOCK_OP_ATOMIC,
 	SOCK_OP_SEND_INJECT,
 	SOCK_OP_TSEND_INJECT,
@@ -430,6 +436,7 @@ struct sock_rx_ctx {
 
 	struct sock_ep *ep;
 	struct sock_av *av;
+	struct sock_eq *eq;
  	struct sock_domain *domain;
 
 	struct sock_cntr *recv_cntr;
@@ -471,6 +478,7 @@ struct sock_tx_ctx {
 
 	struct sock_ep *ep;
 	struct sock_av *av;
+	struct sock_eq *eq;
  	struct sock_domain *domain;
 
 	struct sock_cntr *send_cntr;
@@ -494,7 +502,8 @@ struct sock_msg_hdr{
 	uint8_t version;
 	uint8_t op_type;
 	uint16_t rx_id;
-	uint8_t reserved[4];
+	uint16_t pe_entry_id;
+	uint8_t reserved[2];
 
 	uint64_t src_addr;
 	uint64_t flags;
@@ -539,7 +548,9 @@ struct sock_tx_iov {
 struct sock_tx_pe_entry{
 	struct sock_op tx_op;	
 	uint8_t header_sent;
-	uint8_t reserved[7];
+	uint8_t send_done;
+	uint8_t ack_done;
+	uint8_t reserved[5];
 
 	union {
 		struct sock_tx_iov tx_iov[SOCK_EP_MAX_IOV_LIMIT];
@@ -549,6 +560,8 @@ struct sock_tx_pe_entry{
 
 struct sock_rx_pe_entry{
 	struct sock_op rx_op;
+	uint8_t recv_done;
+	uint8_t reserved[6];
 	void *raw_data;
 	union sock_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
 };

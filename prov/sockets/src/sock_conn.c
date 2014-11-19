@@ -248,7 +248,7 @@ int _connect_conn_map_in(struct sock_conn_map *map, struct sockaddr_in *addr,
 		if (!strcmp(my_ip, entry_ip)) {
 			/* server */
 			listen_fd = socket(s_res->ai_family, 
-					s_res->ai_socktype, 0);
+					   s_res->ai_socktype, 0);
 			if (listen_fd < 0) {
 				sock_log(SOCK_ERROR, 
 						"failed to open socket: %d\n", 
