@@ -441,13 +441,6 @@ ssize_t sock_rdm_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	for (i=0; i< msg->iov_count; i++) {
 		rx_entry->iov[i].iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
 		rx_entry->iov[i].iov.len = (uint64_t)msg->msg_iov[i].iov_len;
-		if (sock_mr_verify_desc(rx_ctx->domain, msg->desc[i],
-					(void*)rx_entry->iov[i].iov.addr, 
-					rx_entry->iov[i].iov.len, FI_RECV)) {
-			SOCK_LOG_ERROR("Memory access error\n");
-			free(rx_entry);
-			return -FI_EINVAL;
-		}
 	}
 
 	fastlock_acquire(&rx_ctx->lock);
@@ -557,13 +550,6 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 			tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
 			tx_iov.iov.len = msg->msg_iov[i].iov_len;
 			sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
-
-			if (sock_mr_verify_desc(tx_ctx->domain, msg->desc[i],
-						(void*)tx_iov.iov.addr, tx_iov.iov.len, FI_SEND)) {
-				SOCK_LOG_ERROR("Memory access error\n");
-				ret = -FI_EINVAL;
-				goto err;
-			}
 		}
 	}
 
@@ -830,13 +816,6 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 			tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
 			tx_iov.iov.len = msg->msg_iov[i].iov_len;
 			sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
-
-			if (sock_mr_verify_desc(tx_ctx->domain, msg->desc[i],
-						(void*)tx_iov.iov.addr, tx_iov.iov.len, FI_SEND)) {
-				SOCK_LOG_ERROR("Memory access error\n");
-				ret = -FI_EINVAL;
-				goto err;
-			}
 		}
 	}
 	
@@ -1031,12 +1010,6 @@ static ssize_t sock_rdm_rma_readmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *
 		tx_iov.iov.key = (uint64_t)msg->desc[i];
 		sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
 		dst_len += tx_iov.iov.len;
-		if (sock_mr_verify_desc(tx_ctx->domain, msg->desc[i],
-					(void*)tx_iov.iov.addr, tx_iov.iov.len, FI_READ)) {
-			SOCK_LOG_ERROR("Memory access error\n");
-			ret = -FI_EINVAL;
-			goto err;
-		}
 	}
 
 	if (dst_len != src_len) {
