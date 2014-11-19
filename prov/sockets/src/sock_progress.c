@@ -704,6 +704,7 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 	struct sock_conn *conn;
 	struct dlist_entry *entry;
 	struct sock_pe_entry *pe_entry;
+	struct sock_conn_map *map;
 
 	poll_fd.events = POLLIN;
 	fastlock_acquire(&pe->lock);
@@ -713,15 +714,22 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 	    entry != &rx_ctx->ep_list; entry = entry->next) {
 
 		ep = container_of(entry, struct sock_ep, rx_ctx_entry);
+
+		map = &ep->domain->r_cmap;
+
+/*
 		if (!ep->av)
 			continue;
+*/
 
-		for (i=0; i < ep->av->stored && 
-			     !dlist_empty(&pe->free_list); i++) {
+		for (i=0; i<map->used; i++) {
+			conn = &map->table[i];
 
+/*
 			if (!ep->av->key_table[i]) continue;
 			sock_conn_map_lookup_key(ep->av->cmap, 
 						 ep->av->key_table[i], &conn);
+*/
 
 			poll_fd.fd = conn->sock_fd;
 			ret = poll(&poll_fd, 1, 0);
