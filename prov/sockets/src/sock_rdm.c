@@ -319,20 +319,21 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		}
 
 		while (result) {
-			if (result->ai_family == AF_INET)
+			if (result->ai_family == AF_INET && 
+			    result->ai_addrlen == sizeof(struct sockaddr_in))
 				break;
 			result = result->ai_next;
 		}
 
 		if (!result) {
-				SOCK_LOG_ERROR("Failed to get dest_addr\n");
-				ret = -FI_EINVAL;
-				goto err;
+			SOCK_LOG_ERROR("Failed to get dest_addr\n");
+			ret = -FI_EINVAL;
+			goto err;
 		}
 		
 		memcpy(src_addr, result->ai_addr, result->ai_addrlen);
 		freeaddrinfo(result); 
-
+		
 		if (!(FI_SOURCE & flags)) {
 			socklen_t len;
 			int udp_sock;
@@ -351,23 +352,22 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 				SOCK_LOG_INFO("getaddrinfo failed!\n");
 				goto err;
 			}
-
+			
 			while (result_udp) {
 				udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
 				ret = connect(udp_sock, result_udp->ai_addr, 
 					      result_udp->ai_addrlen);
 				if ( ret != 0) {
-					SOCK_LOG_ERROR(
-						"Failed to get dest_addr\n");
+					SOCK_LOG_ERROR("Failed to get dest_addr\n");
 					ret = FI_ENODATA;
 					goto err;
 				}
-				
+
+				len = sizeof(struct sockaddr_in);				
 				ret = getsockname(udp_sock, (struct sockaddr*)dest_addr, 
 						  &len);
 				if (ret != 0) {
-					SOCK_LOG_ERROR(
-						"Failed to get dest_addr\n");
+					SOCK_LOG_ERROR("Failed to get dest_addr\n");
 					close(udp_sock);
 					ret = FI_ENODATA;
 					goto err;
@@ -444,7 +444,7 @@ ssize_t sock_rdm_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		if (sock_mr_verify_desc(rx_ctx->domain, msg->desc[i],
 					(void*)rx_entry->iov[i].iov.addr, 
 					rx_entry->iov[i].iov.len, FI_RECV)) {
-			SOCK_LOG_ERROR("Not sufficient memory access\n");
+			SOCK_LOG_ERROR("Memory access error\n");
 			free(rx_entry);
 			return -FI_EINVAL;
 		}
@@ -560,7 +560,7 @@ static ssize_t sock_rdm_sendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 			if (sock_mr_verify_desc(tx_ctx->domain, msg->desc[i],
 						(void*)tx_iov.iov.addr, tx_iov.iov.len, FI_SEND)) {
-				SOCK_LOG_ERROR("Not sufficient memory access\n");
+				SOCK_LOG_ERROR("Memory access error\n");
 				ret = -FI_EINVAL;
 				goto err;
 			}
@@ -833,7 +833,7 @@ static ssize_t sock_rdm_tsendmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av,
 
 			if (sock_mr_verify_desc(tx_ctx->domain, msg->desc[i],
 						(void*)tx_iov.iov.addr, tx_iov.iov.len, FI_SEND)) {
-				SOCK_LOG_ERROR("Not sufficient memory access\n");
+				SOCK_LOG_ERROR("Memory access error\n");
 				ret = -FI_EINVAL;
 				goto err;
 			}
@@ -1033,7 +1033,7 @@ static ssize_t sock_rdm_rma_readmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *
 		dst_len += tx_iov.iov.len;
 		if (sock_mr_verify_desc(tx_ctx->domain, msg->desc[i],
 					(void*)tx_iov.iov.addr, tx_iov.iov.len, FI_READ)) {
-			SOCK_LOG_ERROR("Not sufficient memory access\n");
+			SOCK_LOG_ERROR("Memory access error\n");
 			ret = -FI_EINVAL;
 			goto err;
 		}
