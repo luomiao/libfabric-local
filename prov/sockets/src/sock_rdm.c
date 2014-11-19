@@ -50,6 +50,9 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <limits.h>
+
 
 #include "sock.h"
 #include "sock_util.h"
@@ -258,10 +261,14 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		     uint64_t flags, struct fi_info *hints, struct fi_info **info)
 {
 	int ret;
+	int udp_sock;
+	socklen_t len;
 	struct fi_info *_info;
+	struct addrinfo sock_hints;
 	struct addrinfo *result = NULL;
-	struct addrinfo *result_udp = NULL;
 	struct sockaddr_in *src_addr = NULL, *dest_addr = NULL;
+	char sa_ip[INET_ADDRSTRLEN];
+	char hostname[HOST_NAME_MAX];
 
 	if (!info)
 		return -FI_EBADFLAGS;
@@ -291,27 +298,24 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			return ret;
 	}
 
-	if (node || service) {
-		struct addrinfo sock_hints;
-	
-		src_addr = calloc(1, sizeof(struct sockaddr_in));
-		dest_addr = calloc(1, sizeof(struct sockaddr_in));
-			
-		memset(&sock_hints, 0, sizeof(struct addrinfo));
-		sock_hints.ai_family = AF_INET;
-		sock_hints.ai_protocol = 0;
-		sock_hints.ai_canonname = NULL;
-		sock_hints.ai_addr = NULL;
-		sock_hints.ai_next = NULL;
+	src_addr = calloc(1, sizeof(struct sockaddr_in));
+	dest_addr = calloc(1, sizeof(struct sockaddr_in));
 
-		if (flags & FI_SOURCE)
-			sock_hints.ai_flags = AI_PASSIVE;
+	memset(&sock_hints, 0, sizeof(struct addrinfo));
+	sock_hints.ai_family = AF_INET;
+	sock_hints.ai_socktype = SOCK_STREAM;
 
-		if (flags & FI_NUMERICHOST)
-			sock_hints.ai_flags |= AI_NUMERICHOST;
+	if (flags & FI_NUMERICHOST)
+		sock_hints.ai_flags |= AI_NUMERICHOST;
 
-		
-		ret = getaddrinfo(node, service, &sock_hints, &result);
+	if ((flags & FI_SOURCE) || !node) {
+
+		if (!node) {
+			gethostname(hostname, HOST_NAME_MAX);
+		}
+
+		ret = getaddrinfo(node ? node : hostname, service, 
+				  &sock_hints, &result);
 		if (ret != 0) {
 			ret = FI_ENODATA;
 			SOCK_LOG_INFO("getaddrinfo failed!\n");
@@ -326,72 +330,69 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 		}
 
 		if (!result) {
-			SOCK_LOG_ERROR("Failed to get dest_addr\n");
+			SOCK_LOG_ERROR("getaddrinfo failed\n");
 			ret = -FI_EINVAL;
 			goto err;
 		}
 		
 		memcpy(src_addr, result->ai_addr, result->ai_addrlen);
 		freeaddrinfo(result); 
-		
-		if (!(FI_SOURCE & flags)) {
-			socklen_t len;
-			int udp_sock;
+	} else if (node || service) {
 
-			memset(&sock_hints, 0, sizeof(struct addrinfo));
-			sock_hints.ai_family = AF_INET;
-			sock_hints.ai_protocol = 0;
-			sock_hints.ai_socktype = SOCK_DGRAM;
-			sock_hints.ai_canonname = NULL;
-			sock_hints.ai_addr = NULL;
-			sock_hints.ai_next = NULL;
-			
-			ret = getaddrinfo(node, service, &sock_hints, &result_udp);
-			if (ret != 0) {
-				ret = FI_ENODATA;
-				SOCK_LOG_INFO("getaddrinfo failed!\n");
-				goto err;
-			}
-			
-			while (result_udp) {
-				udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
-				ret = connect(udp_sock, result_udp->ai_addr, 
-					      result_udp->ai_addrlen);
-				if ( ret != 0) {
-					SOCK_LOG_ERROR("Failed to get dest_addr\n");
-					ret = FI_ENODATA;
-					goto err;
-				}
-
-				len = sizeof(struct sockaddr_in);				
-				ret = getsockname(udp_sock, (struct sockaddr*)dest_addr, 
-						  &len);
-				if (ret != 0) {
-					SOCK_LOG_ERROR("Failed to get dest_addr\n");
-					close(udp_sock);
-					ret = FI_ENODATA;
-					goto err;
-				}
-				
-				if (dest_addr->sin_family == AF_INET)
-					break;
-				
-				result_udp = result_udp->ai_next;
-				close(udp_sock);
-			}
-
-			if (!result_udp) {
-				SOCK_LOG_ERROR("Failed to get dest_addr\n");
-				ret = -FI_EINVAL;
-				goto err;
-			}
-
-			fprintf(stderr, "dest_addr: family: %d\n", 
-				((struct sockaddr_in*)dest_addr)->sin_family);
-
-			close(udp_sock);
-			freeaddrinfo(result_udp); 
+		ret = getaddrinfo(node, service, &sock_hints, &result);
+		if (ret != 0) {
+			ret = FI_ENODATA;
+			SOCK_LOG_INFO("getaddrinfo failed!\n");
+			goto err;
 		}
+		
+		while (result) {
+			if (result->ai_family == AF_INET && 
+			    result->ai_addrlen == sizeof(struct sockaddr_in))
+				break;
+			result = result->ai_next;
+		}
+
+		if (!result) {
+			SOCK_LOG_ERROR("getaddrinfo failed\n");
+			ret = -FI_EINVAL;
+			goto err;
+		}
+		
+		memcpy(dest_addr, result->ai_addr, result->ai_addrlen);
+		
+		udp_sock = socket(AF_INET, SOCK_DGRAM, 0);
+		ret = connect(udp_sock, result->ai_addr, 
+			      result->ai_addrlen);
+		if ( ret != 0) {
+			SOCK_LOG_ERROR("Failed to create udp socket\n");
+			ret = FI_ENODATA;
+			goto err;
+		}
+
+		len = sizeof(struct sockaddr_in);				
+		ret = getsockname(udp_sock, (struct sockaddr*)src_addr, &len);
+		if (ret != 0) {
+			SOCK_LOG_ERROR("getsockname failed\n");
+			close(udp_sock);
+			ret = FI_ENODATA;
+			goto err;
+		}
+				
+		close(udp_sock);
+		freeaddrinfo(result); 
+	}
+
+	if (dest_addr) {
+		memcpy(sa_ip, inet_ntoa(dest_addr->sin_addr), INET_ADDRSTRLEN);
+		SOCK_LOG_INFO("dest_addr: family: %d, IP is %s\n",
+			      ((struct sockaddr_in*)dest_addr)->sin_family, sa_ip);
+	}
+	
+	if (src_addr) {
+		memcpy(sa_ip, inet_ntoa(src_addr->sin_addr), INET_ADDRSTRLEN);
+		SOCK_LOG_INFO("src_addr: family: %d, IP is %s\n",
+			      ((struct sockaddr_in*)src_addr)->sin_family, sa_ip);
 	}
 
 	_info = allocate_fi_info(FI_EP_RDM, FI_SOCKADDR_IN, hints, 
@@ -967,12 +968,14 @@ static ssize_t sock_rdm_rma_readmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *
 	struct sock_conn *conn;
 	uint64_t total_len, src_len, dst_len;
 
-	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
+	assert(tx_ctx->enabled && 
+	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
+	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
 	if ((ret = sock_av_lookup_addr(av, msg->addr, &conn)))
 		return ret;
 
-	total_len = sizeof(struct sock_op_tsend);
+	total_len = sizeof(struct sock_op_send);
 	total_len += (msg->iov_count * sizeof(union sock_iov));
 	total_len += (msg->rma_iov_count * sizeof(union sock_iov));
 
@@ -1013,7 +1016,7 @@ static ssize_t sock_rdm_rma_readmsg(struct sock_tx_ctx *tx_ctx, struct sock_av *
 	}
 
 	if (dst_len != src_len) {
-		SOCK_LOG_ERROR("Buffer mismatch\n");
+		SOCK_LOG_ERROR("Buffer length mismatch\n");
 		ret = -FI_EINVAL;
 		goto err;
 	}
@@ -1026,55 +1029,206 @@ err:
 	return ret;
 }
 
-
-ssize_t sock_rdm_ctx_rma_read(struct fid_ep *ep, void *buf, size_t len, void *desc,
-		uint64_t addr, uint64_t key, void *context)
+static ssize_t sock_rdm_ctx_rma_readmsg(struct fid_ep *ep, 
+					const struct fi_msg_rma *msg, 
+					uint64_t flags)
 {
-	return -FI_ENOSYS;
-}
-
-ssize_t sock_rdm_ctx_rma_readv(struct fid_ep *ep, const struct iovec *iov, void **desc,
-		 size_t count, uint64_t addr, uint64_t key, void *context)
-{
-	return -FI_ENOSYS;
+	struct sock_tx_ctx *tx_ctx;
+	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+	return sock_rdm_rma_readmsg(tx_ctx, tx_ctx->ep->av, msg, flags);
 }
 
 ssize_t sock_rdm_ctx_rma_readfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
 		    fi_addr_t src_addr, uint64_t addr, uint64_t key, void *context)
 {
-	return -FI_ENOSYS;
+	struct fi_msg_rma msg;
+	struct iovec msg_iov;
+	struct fi_rma_iov rma_iov;
+
+	msg_iov.iov_base = (void*)buf;
+	msg_iov.iov_len = len;
+	msg.msg_iov = &msg_iov;
+	msg.desc = &desc;
+	msg.iov_count = 1;
+
+	rma_iov.addr = addr;
+	rma_iov.key = key;
+	rma_iov.len = 1;
+
+	msg.addr = src_addr;
+	msg.context = context;
+
+	return sock_rdm_ctx_rma_readmsg(ep, &msg, 0);
 }
 
-ssize_t sock_rdm_ctx_rma_readmsg(struct fid_ep *ep, const struct fi_msg_rma *msg,
-		   uint64_t flags)
+ssize_t sock_rdm_ctx_rma_read(struct fid_ep *ep, void *buf, size_t len, void *desc,
+		uint64_t addr, uint64_t key, void *context)
 {
-	return -FI_ENOSYS;
+	return sock_rdm_ctx_rma_readfrom(ep, buf, len, desc,
+					 FI_ADDR_UNSPEC, addr, key, context);
 }
 
-ssize_t sock_rdm_ctx_rma_write(struct fid_ep *ep, const void *buf, size_t len, void *desc,
-		 uint64_t addr, uint64_t key, void *context)
+ssize_t sock_rdm_ctx_rma_readv(struct fid_ep *ep, const struct iovec *iov, void **desc,
+		 size_t count, uint64_t addr, uint64_t key, void *context)
 {
-	return -FI_ENOSYS;
+	struct fi_msg_rma msg;
+	struct fi_rma_iov rma_iov;
+
+	msg.msg_iov = iov;
+	msg.desc = desc;
+	msg.iov_count = count;
+
+	rma_iov.addr = addr;
+	rma_iov.key = key;
+	rma_iov.len = 1;
+	msg.context = context;
+
+	return sock_rdm_ctx_rma_readmsg(ep, &msg, 0);
 }
 
-ssize_t sock_rdm_ctx_rma_writev(struct fid_ep *ep, const struct iovec *iov, void **desc,
-				size_t count, uint64_t addr, uint64_t key, void *context)
+static ssize_t sock_rdm_rma_writemsg(struct sock_tx_ctx *tx_ctx, struct sock_av *av, 
+				     const struct fi_msg_rma *msg, uint64_t flags)
 {
-	return -FI_ENOSYS;
+	int ret, i;
+	struct sock_op tx_op;
+	union sock_iov tx_iov;
+	struct sock_conn *conn;
+	uint64_t total_len, src_len, dst_len;
+
+	assert(tx_ctx->enabled && 
+	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
+	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
+
+	if ((ret = sock_av_lookup_addr(av, msg->addr, &conn)))
+		return ret;
+	
+	total_len = 0;
+	if (flags & FI_INJECT) {
+		for (i=0; i< msg->iov_count; i++) {
+			total_len += msg->msg_iov[i].iov_len;
+		}
+		assert(total_len <= SOCK_EP_MAX_INJECT_SZ);
+	} else {
+		total_len += msg->iov_count * sizeof(union sock_iov);
+	}
+
+	total_len += sizeof(struct sock_op_send);
+	total_len += (msg->rma_iov_count * sizeof(union sock_iov));
+
+	sock_tx_ctx_start(tx_ctx);
+	if (rbfdavail(&tx_ctx->rbfd) < total_len)
+		goto err;
+	
+	memset(&tx_op, 0, sizeof(struct sock_op));
+	tx_op.op = SOCK_OP_WRITE;
+	tx_op.src_iov_len = msg->iov_count;
+	tx_op.dest_iov_len = msg->rma_iov_count;
+
+	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
+	sock_tx_ctx_write(tx_ctx, &flags, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->context, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
+	if (flags & FI_REMOTE_CQ_DATA) {
+		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
+	}
+
+	dst_len = 0;
+	for (i = 0; i< msg->rma_iov_count; i++) {
+		tx_iov.iov.addr = msg->rma_iov[i].addr;
+		tx_iov.iov.key = msg->rma_iov[i].key;
+		tx_iov.iov.len = msg->rma_iov[i].len;
+		sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
+		dst_len += tx_iov.iov.len;
+	}
+
+	src_len = 0;
+	for (i = 0; i< msg->iov_count; i++) {
+		tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
+		tx_iov.iov.len = msg->msg_iov[i].iov_len;
+		tx_iov.iov.key = (uint64_t)msg->desc[i];
+		sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
+		src_len += tx_iov.iov.len;
+		/* FIXME: should i verify desc */
+	}
+
+	if (dst_len != src_len) {
+		SOCK_LOG_ERROR("Buffer length mismatch\n");
+		ret = -FI_EINVAL;
+		goto err;
+	}
+	
+	sock_tx_ctx_commit(tx_ctx);
+	return 0;
+
+err:
+	sock_tx_ctx_abort(tx_ctx);
+	return ret;
 }
 
-ssize_t sock_rdm_ctx_rma_writeto(struct fid_ep *ep, const void *buf, size_t len, void *desc,
-		   fi_addr_t dest_addr, uint64_t addr, uint64_t key,
-		   void *context)
+ssize_t sock_rdm_ctx_rma_writemsg(struct fid_ep *ep, 
+				  const struct fi_msg_rma *msg, uint64_t flags)
 {
-	return -FI_ENOSYS;
+	struct sock_tx_ctx *tx_ctx;
+	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+	return sock_rdm_rma_writemsg(tx_ctx, tx_ctx->av, msg, flags);
 }
 
-ssize_t sock_rdm_ctx_rma_writemsg(struct fid_ep *ep, const struct fi_msg_rma *msg,
-		    uint64_t flags)
+static ssize_t sock_rdm_ctx_rma_writeto(struct fid_ep *ep, const void *buf, 
+					size_t len, void *desc, 
+					fi_addr_t dest_addr, uint64_t addr, 
+					uint64_t key, void *context)
 {
-	return -FI_ENOSYS;
+	struct fi_msg_rma msg;
+	struct iovec msg_iov;
+	struct fi_rma_iov rma_iov;
+
+	msg_iov.iov_base = (void*)buf;
+	msg_iov.iov_len = len;
+	msg.msg_iov = &msg_iov;
+	msg.desc = &desc;
+	msg.iov_count = 1;
+
+	rma_iov.addr = addr;
+	rma_iov.key = key;
+	rma_iov.len = 1;
+	msg.addr = dest_addr;
+	msg.context = context;
+
+	return sock_rdm_ctx_rma_writemsg(ep, &msg, 0);
 }
+
+
+static ssize_t sock_rdm_ctx_rma_write(struct fid_ep *ep, const void *buf, 
+				      size_t len, void *desc, uint64_t addr, 
+				      uint64_t key, void *context)
+{
+	return sock_rdm_ctx_rma_writeto(ep, buf, len, desc, 
+					FI_ADDR_UNSPEC, addr, key, context);
+}
+
+static ssize_t sock_rdm_ctx_rma_writev(struct fid_ep *ep, 
+				       const struct iovec *iov, void **desc,
+				       size_t count, uint64_t addr, uint64_t key, 
+				       void *context)
+{
+	struct fi_msg_rma msg;
+	struct fi_rma_iov rma_iov;
+
+	msg.msg_iov = iov;
+	msg.desc = desc;
+	msg.iov_count = count;
+
+	rma_iov.addr = addr;
+	rma_iov.key = key;
+	rma_iov.len = 1;
+	
+	msg.context = context;
+	msg.addr = FI_ADDR_UNSPEC;
+
+	return sock_rdm_ctx_rma_writemsg(ep, &msg, 0);
+}
+
 
 ssize_t sock_rdm_ctx_rma_inject(struct fid_ep *ep, const void *buf, size_t len,
 		  uint64_t addr, uint64_t key)
