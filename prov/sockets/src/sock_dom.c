@@ -376,6 +376,8 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		goto err;
 	}
 
+	sock_conn_listen(sock_domain);
+
 	*dom = &sock_domain->dom_fid;
 	return 0;
 
