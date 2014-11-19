@@ -283,9 +283,10 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 		if (ret < 0) {
 			if (ret == EWOULDBLOCK || ret == EAGAIN)
 				return 0;
-		}else{
-			SOCK_LOG_ERROR("Failed to progress recv\n");
-			return ret;
+			else{
+				SOCK_LOG_ERROR("Failed to progress recv\n");
+				return ret;
+			}
 		}
 		
 		pe_entry->done_len += ret;
@@ -315,9 +316,10 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 	if (ret < 0) {
 		if (ret == EWOULDBLOCK || ret == EAGAIN)
 			return 0;
-	}else{
-		SOCK_LOG_ERROR("Failed to progress recv\n");
-		return ret;
+		else{
+			SOCK_LOG_ERROR("Failed to progress recv\n");
+			return ret;
+		}
 	}
 
 	pe_entry->done_len += ret;
