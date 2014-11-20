@@ -299,9 +299,9 @@ int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 
 	if(attr == NULL)
 		memcpy(&sock_eq->attr, &_sock_eq_def_attr,
-		       sizeof(struct fi_cq_attr));
-	else
-		memcpy(&sock_eq->attr, attr, sizeof(struct fi_cq_attr));
+		       sizeof(struct fi_eq_attr));
+	else 
+		memcpy(&sock_eq->attr, attr, sizeof(struct fi_eq_attr));
 
 	ret = dlistfd_head_init(&sock_eq->list);
 	if(ret)
