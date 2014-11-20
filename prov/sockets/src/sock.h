@@ -154,9 +154,6 @@ struct sock_mr {
 	struct iovec		mr_iov[1];
 };
 
-typedef int (*sock_connect_fn) (struct sock_conn_map *map, void *addr, 
-		int count, socklen_t addrlen, uint16_t *key_table, int port);
-
 struct sock_av {
 	struct fid_av		av_fid;
 	struct sock_domain	*dom;
@@ -164,13 +161,11 @@ struct sock_av {
 	struct fi_av_attr	attr;
 	uint64_t		mask;
 	int			rx_ctx_bits;
-	int			port_num;
 	size_t			count;
 	size_t			stored;
 	uint16_t		*key_table;
 	struct sockaddr_storage *addr_table;
 	socklen_t		addrlen;
-	sock_connect_fn		connect_fn;
 	struct sock_conn_map	*cmap;
 };
 
@@ -390,7 +385,6 @@ struct sock_ep {
 
 	list_t *send_list;
 	list_t *recv_list;
-	int port_num;
 };
 
 struct sock_pep {
