@@ -52,7 +52,7 @@
 #include "sock.h"
 #include "sock_util.h"
 
-#define PORT "9931"
+//#define PORT "9931"
 
 static inline int _init_map(struct sock_conn_map *map, int init_size) 
 {
@@ -403,7 +403,7 @@ static inline uint16_t _set_key(struct sock_conn_map *map, struct
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
-	getaddrinfo(sa_ip, PORT, &hints, &c_res);
+	getaddrinfo(sa_ip, map->dom->service, &hints, &c_res);
 	conn_fd = socket(c_res->ai_family, c_res->ai_socktype, 0);
 	if (conn_fd < 0) {
 		SOCK_LOG_ERROR("failed to create conn_fd, errno: %d\n", errno);
@@ -457,7 +457,7 @@ static void * _sock_conn_listen(void *arg)
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
 
-	if(getaddrinfo(NULL, PORT, &hints, &s_res)) {
+	if(getaddrinfo(NULL, domain->service, &hints, &s_res)) {
 		SOCK_LOG_ERROR("no available AF_INET address\n");
 		perror("no available AF_INET address");
 		return NULL;

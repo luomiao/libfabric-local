@@ -53,6 +53,8 @@
 #include <fi_rbuf.h>
 #include <fi_list.h>
 
+#include <netdb.h>
+
 #ifndef _SOCK_H_
 #define _SOCK_H_
 
@@ -88,6 +90,7 @@
 #define SOCK_EP_SNDQ_LEN (128)
 #define SOCK_EP_RCVQ_LEN (128)
 
+#define SOCK_DEFAULT_PORT "3391"
 
 extern const char const sock_fab_name[];
 extern const char const sock_dom_name[];
@@ -107,6 +110,7 @@ struct sock_conn_map {
         struct sock_conn *table;
         int used;
         int size;
+		struct sock_domain *dom;
 };
 
 struct sock_domain {
@@ -126,6 +130,7 @@ struct sock_domain {
 	struct sock_conn_map r_cmap;
 	pthread_t listen_thread;
 	int	listening;
+	char service[NI_MAXSERV];
 };
 
 struct sock_cntr {
