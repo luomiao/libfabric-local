@@ -91,8 +91,6 @@ static ssize_t _sock_cq_write(struct sock_cq *cq, fi_addr_t addr,
 		goto out;
 	}
 
-	SOCK_LOG_INFO("Available Space in CQ: %u\n", rbfdavail(&cq->cq_rbfd));
-
 	rbfdwrite(&cq->cq_rbfd, buf, len);
 	rbfdcommit(&cq->cq_rbfd);
 	ret = len;
@@ -414,11 +412,13 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	sock_cq->cq_fid.ops = &sock_cq_ops;
 	atomic_inc(&sock_dom->ref);
 
-	if(attr == NULL)
-		memcpy(&sock_cq->attr, &_sock_cq_def_attr, 
-		       sizeof(struct fi_cq_attr));
-	else
-		memcpy(&sock_cq->attr, attr, sizeof(struct fi_cq_attr));
+	if(attr == NULL) 
+		sock_cq->attr = _sock_cq_def_attr;
+	else {
+		sock_cq->attr = *attr;
+		if (attr->size == 0) 
+			sock_cq->attr.size = _sock_cq_def_attr.size;
+	}
 	
 	sock_cq->domain = sock_dom;
 	sock_cq->cq_entry_size = sock_cq_entry_size(sock_cq);
