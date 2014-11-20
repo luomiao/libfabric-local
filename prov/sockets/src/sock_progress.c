@@ -182,9 +182,9 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 	}
 
 	rem = pe_entry->msg_hdr.msg_len - sizeof(struct sock_msg_hdr) - offset;
-	for (i=0; rem > 0 && i < rx_entry->rx_op.src_iov_len; i++) {
+	for (i=0; rem > 0 && i < rx_entry->rx_op.dest_iov_len; i++) {
 		len = MIN(rx_entry->iov[i].iov.len, rem);
-		memcpy((void *)pe_entry->rx.rx_iov[i].iov.addr, 
+		memcpy((void *)rx_entry->iov[i].iov.addr, 
 		       (char*)pe_entry->rx.raw_data + offset, len);
 		rem -= len;
 		offset += len;
@@ -229,11 +229,12 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	}
 		
 	msg_hdr->op_type = ntohs(msg_hdr->op_type);
+	msg_hdr->src_addr = ntohl(msg_hdr->src_addr);
 	msg_hdr->rx_id = ntohs(msg_hdr->rx_id);
 	msg_hdr->flags = ntohs(msg_hdr->flags);
-	msg_hdr->msg_len = ntohl(msg_hdr->msg_len);
 
-	SOCK_LOG_INFO("PE RX: MsgLen: %lu\n", msg_hdr->msg_len);
+	SOCK_LOG_INFO("PE RX: MsgLen: %lu, TX-ID: %d\n", msg_hdr->msg_len,
+		      msg_hdr->rx_id);
 
 	/* process rx entry */
 	switch (pe_entry->msg_hdr.op_type) {
@@ -311,7 +312,7 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 		- read_data;
 	
 	ret = recv(conn->sock_fd, 
-		   (char*)&pe_entry->rx.raw_data + read_data, rem, 0);
+		   (char*)pe_entry->rx.raw_data + read_data, rem, 0);
 
 	if (ret < 0) {
 		if (ret == EWOULDBLOCK || ret == EAGAIN)
@@ -669,9 +670,10 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 		return -FI_EINVAL;
 	}
 
+	msg_hdr->rx_id = htons(tx_ctx->tx_id);
 	/* FIXME: double check */
-	msg_hdr->rx_id = htonl(SOCK_GET_RX_ID(pe_entry->addr, 
-					      tx_ctx->av->rx_ctx_bits));
+	msg_hdr->src_addr = htonl(SOCK_GET_RX_ID(pe_entry->addr,
+						 tx_ctx->av->rx_ctx_bits));
 	msg_hdr->flags = htonl(pe_entry->flags);
 	pe_entry->total_len = msg_hdr->msg_len;
 	msg_hdr->msg_len = htonl(msg_hdr->msg_len);
