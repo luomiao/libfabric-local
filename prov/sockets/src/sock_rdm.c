@@ -57,6 +57,7 @@
 #include "sock.h"
 #include "sock_util.h"
 
+
 extern const struct fi_domain_attr sock_domain_attr;
 extern const struct fi_fabric_attr sock_fabric_attr;
 

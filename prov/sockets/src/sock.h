@@ -73,8 +73,8 @@
 #define SOCK_PE_POLL_TIMEOUT (100000)
 #define SOCK_PE_MAX_ENTRIES (128)
 
-#define SOCK_EQ_DEF_SZ (1<<12)
-#define SOCK_CQ_DEF_SZ (1<<12)
+#define SOCK_EQ_DEF_SZ (1<<8)
+#define SOCK_CQ_DEF_SZ (1<<8)
 
 #define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV)
 #define SOCK_EP_DGRAM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV)
@@ -235,8 +235,9 @@ struct sock_comm_item{
 enum {
 	SOCK_OP_SEND,
 	SOCK_OP_SEND_COMPLETE,
-
 	SOCK_OP_RECV,
+	SOCK_OP_SEND_INJECT,
+	SOCK_OP_TSEND_INJECT,
 
 	SOCK_OP_WRITE,
 	SOCK_OP_WRITE_COMPLETE,
@@ -250,8 +251,8 @@ enum {
 	SOCK_OP_TRECV,
 
 	SOCK_OP_ATOMIC,
-	SOCK_OP_SEND_INJECT,
-	SOCK_OP_TSEND_INJECT,
+	SOCK_OP_ATOMIC_COMPLETE,
+	SOCK_OP_ATOMIC_ERROR,
 };
 
 /*
@@ -561,7 +562,7 @@ struct sock_tx_pe_entry{
 struct sock_rx_pe_entry{
 	struct sock_op rx_op;
 	uint8_t recv_done;
-	uint8_t reserved[6];
+	uint8_t reserved[7];
 	void *raw_data;
 	union sock_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
 };
