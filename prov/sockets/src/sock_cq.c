@@ -87,8 +87,11 @@ static ssize_t _sock_cq_write(struct sock_cq *cq, fi_addr_t addr,
 	fastlock_acquire(&cq->lock);
 	if(rbfdavail(&cq->cq_rbfd) < len) {
 		ret = -FI_ENOSPC;
+		SOCK_LOG_ERROR("Not enough space in CQ\n");
 		goto out;
 	}
+
+	SOCK_LOG_INFO("Available Space in CQ: %u\n", rbfdavail(&cq->cq_rbfd));
 
 	rbfdwrite(&cq->cq_rbfd, buf, len);
 	rbfdcommit(&cq->cq_rbfd);
@@ -110,6 +113,7 @@ static ssize_t _sock_cq_writeerr(struct sock_cq *cq,
 	fastlock_acquire(&cq->lock);
 	if(rbavail(&cq->cqerr_rb) < len) {
 		ret = -FI_ENOSPC;
+		SOCK_LOG_ERROR("Not enough space in CQ\n");
 		goto out;
 	}
 
@@ -128,7 +132,8 @@ static int sock_cq_report_context(struct sock_cq *cq, fi_addr_t addr,
 {
 	struct fi_cq_entry cq_entry;
 	cq_entry.op_context = (void*)pe_entry->context;
-	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
+	return sizeof(cq_entry) == _sock_cq_write(cq, addr, &cq_entry, 
+						  sizeof(cq_entry)) ? 0 : -1;
 }
 
 static int sock_cq_report_msg(struct sock_cq *cq, fi_addr_t addr,
@@ -138,7 +143,8 @@ static int sock_cq_report_msg(struct sock_cq *cq, fi_addr_t addr,
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
 	cq_entry.len = pe_entry->done_len;
-	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
+	return sizeof(cq_entry) == _sock_cq_write(cq, addr, &cq_entry, 
+						  sizeof(cq_entry)) ? 0 : -1;
 }
 
 static int sock_cq_report_data(struct sock_cq *cq, fi_addr_t addr,
@@ -150,7 +156,8 @@ static int sock_cq_report_data(struct sock_cq *cq, fi_addr_t addr,
 	cq_entry.len = pe_entry->done_len;
 	cq_entry.buf = (void*)pe_entry->rx.rx_iov[0].iov.addr;
 	cq_entry.data = pe_entry->data;
-	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
+	return sizeof(cq_entry) == _sock_cq_write(cq, addr, &cq_entry, 
+						  sizeof(cq_entry)) ? 0 : -1;
 }
 
 static int sock_cq_report_tagged(struct sock_cq *cq, fi_addr_t addr,
@@ -163,7 +170,8 @@ static int sock_cq_report_tagged(struct sock_cq *cq, fi_addr_t addr,
 	cq_entry.buf = (void*)pe_entry->rx.rx_iov[0].iov.addr;
 	cq_entry.data = pe_entry->data;
 	cq_entry.tag = pe_entry->tag;
-	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
+	return sizeof(cq_entry) == _sock_cq_write(cq, addr, &cq_entry, 
+						  sizeof(cq_entry)) ? 0 : -1;
 }
 
 static void sock_cq_set_report_fn(struct sock_cq *sock_cq)
