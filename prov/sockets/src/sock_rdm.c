@@ -219,7 +219,6 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 	_info->src_addr = calloc(1, sizeof(struct sockaddr_in));
 	_info->dest_addr = calloc(1, sizeof(struct sockaddr_in));
 	
-	_info->next = NULL;
 	_info->ep_type = ep_type;
 	_info->mode = SOCK_MODE;
 	_info->addr_format = addr_format;
@@ -502,13 +501,11 @@ ssize_t sock_rdm_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	if ((ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn))) {
-		SOCK_LOG_INFO("failed to sendmsg, no connection\n");
-		return ret;
-	}
+	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
+	assert(ret == 0);
 
 	SOCK_LOG_INFO("New sendmsg on TX: %p using conn: %p\n", 
-		   tx_ctx, conn);
+		      tx_ctx, conn);
 
 	total_len = 0;
 	if (flags & FI_INJECT) {
@@ -759,8 +756,8 @@ ssize_t sock_rdm_ctx_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg
 	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	if ((ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn)))
-		return ret;
+	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
+	assert(ret == 0);
 
 	total_len = 0;
 	if (flags & FI_INJECT) {
@@ -778,7 +775,7 @@ ssize_t sock_rdm_ctx_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg
 	
 	sock_tx_ctx_start(tx_ctx);
 	if (rbfdavail(&tx_ctx->rbfd) < total_len) {
-		ret = -FI_EINVAL;
+		ret = -FI_EAGAIN;
 		goto err;
 	}
 
@@ -947,16 +944,18 @@ static ssize_t sock_rdm_ctx_rma_readmsg(struct fid_ep *ep,
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	if ((ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn)))
-		return ret;
+	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
+	assert(ret == 0);
 
 	total_len = sizeof(struct sock_op_send);
 	total_len += (msg->iov_count * sizeof(union sock_iov));
 	total_len += (msg->rma_iov_count * sizeof(union sock_iov));
 
 	sock_tx_ctx_start(tx_ctx);
-	if (rbfdavail(&tx_ctx->rbfd) < total_len)
+	if (rbfdavail(&tx_ctx->rbfd) < total_len) {
+		ret = -FI_EAGAIN;
 		goto err;
+	}
 	
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = SOCK_OP_READ;
@@ -1074,8 +1073,8 @@ static ssize_t sock_rdm_ctx_rma_writemsg(struct fid_ep *ep,
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	if ((ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn)))
-		return ret;
+	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
+	assert(ret == 0);
 	
 	total_len = 0;
 	if (flags & FI_INJECT) {
@@ -1091,8 +1090,10 @@ static ssize_t sock_rdm_ctx_rma_writemsg(struct fid_ep *ep,
 	total_len += (msg->rma_iov_count * sizeof(union sock_iov));
 
 	sock_tx_ctx_start(tx_ctx);
-	if (rbfdavail(&tx_ctx->rbfd) < total_len)
+	if (rbfdavail(&tx_ctx->rbfd) < total_len) {
+		ret = -FI_EAGAIN;
 		goto err;
+	}
 	
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = SOCK_OP_WRITE;
