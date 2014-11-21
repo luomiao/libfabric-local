@@ -211,12 +211,6 @@ struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep,
 		rx_entry = NULL;
 	
 out:
-
-	if (rx_entry) 
-		SOCK_LOG_INFO("Rx entry found; Tag:%x\n", pe_entry->tag);
-	else 
-		SOCK_LOG_INFO("Rx entry not found: Tag: %x\n", pe_entry->tag);
-	
 	fastlock_release(&rx_ctx->lock);
 	return rx_entry;
 }
