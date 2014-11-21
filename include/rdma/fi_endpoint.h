@@ -71,10 +71,10 @@ struct fi_ops_ep {
 			void *optval, size_t *optlen);
 	int	(*setopt)(fid_t fid, int level, int optname,
 			const void *optval, size_t optlen);
-	int	(*tx_ctx)(struct fid_ep *ep, int index,
+	int	(*tx_ctx)(struct fid_ep *sep, int index,
 			struct fi_tx_ctx_attr *attr, struct fid_ep **tx_ep,
 			void *context);
-	int	(*rx_ctx)(struct fid_ep *ep, int index,
+	int	(*rx_ctx)(struct fid_ep *sep, int index,
 			struct fi_rx_ctx_attr *attr, struct fid_ep **rx_ep,
 			void *context);
 };
@@ -137,6 +137,17 @@ struct fid_pep {
 	struct fi_ops_cm	*cm;
 };
 
+struct fid_stx {
+	struct fid		fid;
+	struct fi_ops_ep	ops;
+};
+
+struct fid_sep {
+	struct fid		fid;
+	struct fi_ops_ep	*ops;
+	struct fi_ops_cm	*cm;
+};
+
 #ifndef FABRIC_DIRECT
 
 static inline int
@@ -151,6 +162,13 @@ fi_endpoint(struct fid_domain *domain, struct fi_info *info,
 	    struct fid_ep **ep, void *context)
 {
 	return domain->ops->endpoint(domain, info, ep, context);
+}
+
+static inline int
+fi_scalable_ep(struct fid_domain *domain, struct fi_info *info,
+	    struct fid_sep **sep, void *context)
+{
+	return domain->ops->scalable_ep(domain, info, sep, context);
 }
 
 static inline int fi_ep_bind(struct fid_ep *ep, struct fid *bfid, uint64_t flags)
@@ -197,6 +215,20 @@ fi_rx_context(struct fid_ep *ep, int index, struct fi_rx_ctx_attr *attr,
 	      struct fid_ep **rx_ep, void *context)
 {
 	return ep->ops->rx_ctx(ep, index, attr, rx_ep, context);
+}
+
+static inline int
+fi_stx_context(struct fid_domain *domain, struct fi_tx_ctx_attr *attr,
+	       struct fid_stx **stx, void *context)
+{
+	return domain->ops->stx_ctx(domain, attr, stx, context);
+}
+
+static inline int
+fi_srx_context(struct fid_domain *domain, struct fi_rx_ctx_attr *attr,
+	       struct fid_ep **rx_ep, void *context)
+{
+	return domain->ops->srx_ctx(domain, attr, rx_ep, context);
 }
 
 static inline ssize_t

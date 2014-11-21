@@ -52,8 +52,6 @@ const struct fi_domain_attr sock_domain_attr = {
 	.rx_ctx_cnt = 0,
 	.max_ep_tx_ctx = SOCK_EP_MAX_TX_CNT,
 	.max_ep_rx_ctx = SOCK_EP_MAX_RX_CNT,
-	.op_size = -1, /* TODO */
-	.iov_size = -1, /* TODO */
 };
 
 int sock_verify_domain_attr(struct fi_domain_attr *attr)
@@ -165,7 +163,6 @@ static struct fi_ops sock_mr_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_mr_close,
 	.bind = fi_no_bind,
-	.sync = fi_no_sync,
 	.control = fi_no_control,
 	.ops_open = fi_no_ops_open,
 };
@@ -208,7 +205,7 @@ static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr
 	uint64_t key;
 
 	dom = container_of(domain, struct sock_domain, dom_fid);
-	if (!(dom->info.mode & FI_PROV_MR_KEY) && 
+	if (!(dom->info.mode & FI_PROV_MR_ATTR) && 
 	    ((attr->requested_key > IDX_MAX_INDEX) ||
 	    idm_lookup(&dom->mr_idm, (int) attr->requested_key)))
 		return -FI_ENOKEY;
@@ -228,7 +225,7 @@ static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr
 		      attr->offset : (uintptr_t) attr->mr_iov[0].iov_base;
 
 	fastlock_acquire(&dom->lock);
-	key = (dom->info.mode & FI_PROV_MR_KEY) ?
+	key = (dom->info.mode & FI_PROV_MR_ATTR) ?
 	      sock_get_mr_key(dom) : (uint16_t) attr->requested_key;
 	if (idm_set(&dom->mr_idm, key, _mr) < 0)
 		goto err;
@@ -320,7 +317,6 @@ static struct fi_ops sock_dom_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_dom_close,
 	.bind = sock_dom_bind,
-	.sync = fi_no_sync,
 	.control = fi_no_control,
 	.ops_open = fi_no_ops_open,
 };
