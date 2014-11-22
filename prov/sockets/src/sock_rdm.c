@@ -365,7 +365,7 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			ret = FI_ENODATA;
 			goto err;
 		}
-				
+		
 		close(udp_sock);
 		freeaddrinfo(result); 
 	}

@@ -251,6 +251,7 @@ enum {
 
 	SOCK_OP_SEND_INJECT,
 	SOCK_OP_TSEND_INJECT,
+	SOCK_OP_WRITE_INJECT,
 };
 
 /*
@@ -502,7 +503,8 @@ struct sock_msg_hdr{
 	uint8_t op_type;
 	uint16_t rx_id;
 	uint16_t pe_entry_id;
-	uint8_t reserved[2];
+	uint8_t dest_iov_len;
+	uint8_t reserved[1];
 
 	uint64_t src_addr;
 	uint64_t flags;
@@ -524,9 +526,9 @@ struct sock_msg_tsend{
 
 struct sock_rma_write_req {
 	struct sock_msg_hdr msg_hdr;
-	uint16_t pe_index;
-	/* dest iov(s)*/
 	/* user data */
+	/* dest iov(s)*/
+	/* data */
 };
 
 struct sock_rma_ok {
