@@ -387,9 +387,8 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 //		sock_domain->port = strtol(sock_domain->service, NULL, 0);
 		sock_domain->info = *info;
 	} else {
-//		sock_domain->port = SOCK_DEFAULT_PORT_NUM;
-		memcpy(sock_domain->service, SOCK_DEFAULT_PORT,
-				sizeof(SOCK_DEFAULT_PORT));
+		SOCK_LOG_ERROR("invalid fi_info\n");
+		goto err;
 	}
 
 	sock_domain->dom_fid.fid.fclass = FI_CLASS_DOMAIN;

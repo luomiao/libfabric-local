@@ -155,7 +155,7 @@ static int sock_at_lookup(struct fid_av *av, fi_addr_t fi_addr, void *addr,
 
 	_av = container_of(av, struct sock_av, av_fid);
 	index = ((uint64_t)fi_addr & _av->mask);
-	if (index >= _av->count || index < 0) {
+	if (index >= _av->stored || index < 0) {
 		SOCK_LOG_ERROR("requested rank is larger than av table\n");
 		return -EINVAL;
 	}

@@ -410,13 +410,12 @@ static inline uint16_t _set_key(struct sock_conn_map *map, struct
 		return 0;
 	}
 
-	fprintf(stderr, "[_set_key] before connect\n");
 	while (connect(conn_fd, c_res->ai_addr, c_res->ai_addrlen)) {
-		fprintf(stderr, "[_set_key] connect failed with errno: %d\n", errno);
+		SOCK_LOG_ERROR("connect to %s:%s failed with errno: %d\n", 
+				sa_ip, map->dom->service, errno);
 		if (errno != ETIMEDOUT)
 			return 0;
 	}
-	fprintf(stderr, "[_set_key] after connect\n");
 
 	memcpy(&map->table[map->used].addr, c_res->ai_addr, c_res->ai_addrlen);
 	map->table[map->used].sock_fd = conn_fd;
