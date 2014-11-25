@@ -1661,7 +1661,6 @@ int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 			return -EINVAL;
 		ep->av = av;
 		av->cmap = &av->dom->r_cmap;
-		av->port_num = ep->port_num;
 
 
 		if (ep->tx_ctx && 

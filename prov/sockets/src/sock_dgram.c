@@ -94,8 +94,6 @@ const struct fi_domain_attr _sockd_domain_attr = {
 	.rx_ctx_cnt 		= 0,
 	.max_ep_tx_ctx 		= SOCK_EP_MAX_TX_CNT,
 	.max_ep_rx_ctx 		= SOCK_EP_MAX_RX_CNT,
-	.op_size 		= 0,
-	.iov_size 		= 8,
 };
 
 const struct fi_fabric_attr _sockd_fabric_attr = {
@@ -113,7 +111,6 @@ const struct fi_tx_ctx_attr _sockd_tx_attr = {
 	.inject_size 	= SOCK_EP_MAX_INJECT_SZ,
 	.size 		= SOCK_EP_MAX_MSG_SZ,
 	.iov_limit 	= SOCK_EP_MAX_IOV_LIMIT,
-	.op_alignment 	= 0,
 };
 
 const struct fi_rx_ctx_attr _sockd_rx_attr = {
@@ -123,7 +120,6 @@ const struct fi_rx_ctx_attr _sockd_rx_attr = {
 	.total_buffered_recv 	= 0,
 	.size 			= SOCK_EP_MAX_MSG_SZ,
 	.iov_limit 		= SOCK_EP_MAX_IOV_LIMIT,
-	.op_alignment 		= 0,
 };
 
 int sockd_check_hints(struct fi_info *hints)
@@ -276,7 +272,7 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 	if (hints && hints->src_addr) {
 		fi->src_addr = malloc(hints->src_addrlen);
 		if (!fi->src_addr) {
-			goto err;
+			return NULL;
 		}
 		memcpy(fi->src_addr, hints->src_addr, hints->src_addrlen);
 		fi->src_addrlen = hints->src_addrlen;
@@ -286,12 +282,12 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 		fi->src_addr = NULL;
 		fi->src_addrlen = 0;
 #endif
-		goto err;
+		return NULL;
 	}
 	if (hints && hints->dest_addr) {
 		fi->dest_addr = malloc(hints->dest_addrlen);
 		if (!fi->dest_addr) {
-			goto err;
+			return NULL;
 		}
 		memcpy(fi->dest_addr, hints->dest_addr, hints->dest_addrlen);
 		fi->dest_addrlen = hints->dest_addrlen;
@@ -304,9 +300,6 @@ static struct fi_info* sockd_dupinfo(struct fi_info *hints)
 	*(fi->rx_attr) = _sockd_rx_attr;
 
 	return fi;
-err:
-	fi_freeinfo_internal(fi);
-	return NULL;
 }
 
 int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
