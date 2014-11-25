@@ -53,6 +53,7 @@ struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, void *context
 
 	dlist_init(&rx_ctx->pe_entry_list);
 	dlist_init(&rx_ctx->rx_entry_list);
+	dlist_init(&rx_ctx->rx_buffered_list);
 	dlist_init(&rx_ctx->ep_list);
 
 	fastlock_init(&rx_ctx->lock);
