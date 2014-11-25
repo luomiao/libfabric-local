@@ -378,7 +378,8 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 						   -FI_ENOSPC, -FI_ENOSPC, NULL);
 		goto out;
 	} else {
-		sock_pe_report_rx_completion(pe_entry, rx_ctx);
+		if (!rx_entry->is_buffered)
+			sock_pe_report_rx_completion(pe_entry, rx_ctx);
 	}
 
 	if (pe_entry->msg_hdr.flags & FI_REMOTE_COMPLETE) {
@@ -387,7 +388,8 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 	pe_entry->is_complete = 1;
 	
 out:
-	free(rx_entry);
+	if (!rx_entry->is_buffered)
+		sock_release_rx_entry(rx_entry);
 	return ret;
 }
 

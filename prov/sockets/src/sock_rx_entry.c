@@ -55,6 +55,12 @@ struct sock_rx_entry *sock_new_rx_entry(struct sock_rx_ctx *rx_ctx)
 	return rx_entry;
 }
 
+void sock_release_rx_entry(struct sock_rx_entry *rx_entry)
+{
+	free(rx_entry);
+}
+
+
 struct sock_rx_entry *sock_new_buffered_rx_entry(struct sock_rx_ctx *rx_ctx,
 						 size_t len)
 {

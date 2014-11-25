@@ -442,6 +442,7 @@ static ssize_t sock_rdm_handle_buffered_recv(struct sock_rx_ctx *rx_ctx,
 		return 0;
 	} else 
 		sock_pe_report_rx_completion(&pe_entry, rx_ctx);
+	sock_release_rx_entry(rx_entry);
 	return 0;
 }
 
@@ -736,6 +737,7 @@ static ssize_t sock_rdm_handle_buffered_trecv(struct sock_rx_ctx *rx_ctx,
 		return 0;
 	} else 
 		sock_pe_report_rx_completion(&pe_entry, rx_ctx);
+	sock_release_rx_entry(rx_entry);
 	return 0;
 }
 

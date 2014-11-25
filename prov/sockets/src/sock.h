@@ -773,6 +773,7 @@ struct sock_rx_entry *sock_rdm_check_buffered_list(struct sock_rx_ctx *rx_ctx,
 struct sock_rx_entry *sock_rdm_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
 						    const struct fi_msg_tagged *msg, 
 						    uint64_t flags);
+void sock_release_rx_entry(struct sock_rx_entry *rx_entry);
 
 void free_fi_info(struct fi_info *info);
 
