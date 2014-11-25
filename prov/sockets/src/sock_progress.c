@@ -459,7 +459,6 @@ static int sock_pe_progress_rx_entry(struct sock_pe *pe,
 	if (conn->rx_pe_entry != NULL && conn->rx_pe_entry != pe_entry)
 		return 0;
 
-	SOCK_LOG_INFO("[%p] Progressing RX pe_entry\n", pe_entry);
 	if (conn->rx_pe_entry == NULL) {
 		conn->rx_pe_entry = pe_entry;
 	}
@@ -728,7 +727,6 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 		conn->tx_pe_entry = pe_entry;
 	}
 
-	SOCK_LOG_INFO("[%p] Progressing TX entry\n", pe_entry);
 	if (!pe_entry->tx.header_sent) {
 		ret = sock_pe_send(conn->sock_fd, 
 				   (char*)&pe_entry->msg_hdr + pe_entry->done_len,
