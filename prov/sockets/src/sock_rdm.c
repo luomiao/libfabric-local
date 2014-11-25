@@ -82,7 +82,6 @@ const struct fi_tx_ctx_attr sock_rdm_tx_attr = {
 	.inject_size = SOCK_EP_MAX_INJECT_SZ,
 	.size = SOCK_EP_MAX_TX_CTX_SZ,
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
-	.op_alignment = 0,
 };
 
 const struct fi_rx_ctx_attr sock_rdm_rx_attr = {
@@ -92,7 +91,6 @@ const struct fi_rx_ctx_attr sock_rdm_rx_attr = {
 	.total_buffered_recv = 0,
 	.size = SOCK_EP_MAX_MSG_SZ,
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
-	.op_alignment = 0,
 };
 
 static int sock_rdm_verify_rx_attr(const struct fi_rx_ctx_attr *attr)
@@ -117,9 +115,6 @@ static int sock_rdm_verify_rx_attr(const struct fi_rx_ctx_attr *attr)
 		return -FI_ENODATA;
 
 	if (attr->iov_limit > sock_rdm_rx_attr.iov_limit)
-		return -FI_ENODATA;
-
-	if (attr->op_alignment != sock_rdm_rx_attr.op_alignment)
 		return -FI_ENODATA;
 
 	return 0;
@@ -147,9 +142,6 @@ static int sock_rdm_verify_tx_attr(const struct fi_tx_ctx_attr *attr)
 		return -FI_ENODATA;
 
 	if (attr->iov_limit > sock_rdm_tx_attr.iov_limit)
-		return -FI_ENODATA;
-
-	if (attr->op_alignment != sock_rdm_tx_attr.op_alignment)
 		return -FI_ENODATA;
 
 	return 0;
@@ -219,7 +211,6 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 	_info->src_addr = calloc(1, sizeof(struct sockaddr_in));
 	_info->dest_addr = calloc(1, sizeof(struct sockaddr_in));
 	
-	_info->next = NULL;
 	_info->ep_type = ep_type;
 	_info->mode = SOCK_MODE;
 	_info->addr_format = addr_format;
@@ -251,11 +242,6 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 	_info->fabric_attr->prov_name = strdup(sock_fab_name);
 
 	return _info;
-}
-
-void free_fi_info(struct fi_info *info)
-{
-	fi_freeinfo_internal(info);
 }
 
 int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
@@ -379,7 +365,7 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 			ret = FI_ENODATA;
 			goto err;
 		}
-				
+		
 		close(udp_sock);
 		freeaddrinfo(result); 
 	}
@@ -502,13 +488,11 @@ ssize_t sock_rdm_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	if ((ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn))) {
-		SOCK_LOG_INFO("failed to sendmsg, no connection\n");
-		return ret;
-	}
+	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
+	assert(ret == 0);
 
 	SOCK_LOG_INFO("New sendmsg on TX: %p using conn: %p\n", 
-		   tx_ctx, conn);
+		      tx_ctx, conn);
 
 	total_len = 0;
 	if (flags & FI_INJECT) {
@@ -759,8 +743,8 @@ ssize_t sock_rdm_ctx_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg
 	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	if ((ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn)))
-		return ret;
+	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
+	assert(ret == 0);
 
 	total_len = 0;
 	if (flags & FI_INJECT) {
@@ -778,7 +762,7 @@ ssize_t sock_rdm_ctx_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg
 	
 	sock_tx_ctx_start(tx_ctx);
 	if (rbfdavail(&tx_ctx->rbfd) < total_len) {
-		ret = -FI_EINVAL;
+		ret = -FI_EAGAIN;
 		goto err;
 	}
 
@@ -947,16 +931,18 @@ static ssize_t sock_rdm_ctx_rma_readmsg(struct fid_ep *ep,
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	if ((ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn)))
-		return ret;
+	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
+	assert(ret == 0);
 
 	total_len = sizeof(struct sock_op_send);
 	total_len += (msg->iov_count * sizeof(union sock_iov));
 	total_len += (msg->rma_iov_count * sizeof(union sock_iov));
 
 	sock_tx_ctx_start(tx_ctx);
-	if (rbfdavail(&tx_ctx->rbfd) < total_len)
+	if (rbfdavail(&tx_ctx->rbfd) < total_len) {
+		ret = -FI_EAGAIN;
 		goto err;
+	}
 	
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = SOCK_OP_READ;
@@ -1074,8 +1060,8 @@ static ssize_t sock_rdm_ctx_rma_writemsg(struct fid_ep *ep,
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	if ((ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn)))
-		return ret;
+	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
+	assert(ret == 0);
 	
 	total_len = 0;
 	if (flags & FI_INJECT) {
@@ -1091,8 +1077,10 @@ static ssize_t sock_rdm_ctx_rma_writemsg(struct fid_ep *ep,
 	total_len += (msg->rma_iov_count * sizeof(union sock_iov));
 
 	sock_tx_ctx_start(tx_ctx);
-	if (rbfdavail(&tx_ctx->rbfd) < total_len)
+	if (rbfdavail(&tx_ctx->rbfd) < total_len) {
+		ret = -FI_EAGAIN;
 		goto err;
+	}
 	
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = SOCK_OP_WRITE;
@@ -1456,7 +1444,6 @@ struct fi_ops sock_rdm_ctx_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_rdm_ctx_close,
 	.bind = sock_rdm_ctx_bind,
-	.sync = fi_no_sync,
 	.control = fi_no_control,
 };
 
@@ -1720,7 +1707,6 @@ struct fi_ops sock_rdm_ep_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_rdm_ep_fi_close,
 	.bind = sock_rdm_ep_fi_bind,
-	.sync = fi_no_sync,
 	.control = fi_no_control,
 	.ops_open = fi_no_ops_open,
 };
@@ -2059,7 +2045,7 @@ ssize_t sock_rdm_ep_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_rdm_ctx_trecvmsg(&sock_ep->tx_ctx->ctx, msg, flags);
+	return sock_rdm_ctx_trecvmsg(&sock_ep->rx_ctx->ctx, msg, flags);
 }
 
 ssize_t sock_rdm_ep_trecvfrom(struct fid_ep *ep, void *buf, size_t len, 
@@ -2068,7 +2054,7 @@ ssize_t sock_rdm_ep_trecvfrom(struct fid_ep *ep, void *buf, size_t len,
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_rdm_ctx_trecvfrom(&sock_ep->tx_ctx->ctx, buf, len, desc,
+	return sock_rdm_ctx_trecvfrom(&sock_ep->rx_ctx->ctx, buf, len, desc,
 				      src_addr, tag, ignore, context);
 }
 
@@ -2078,7 +2064,7 @@ ssize_t sock_rdm_ep_trecv(struct fid_ep *ep, void *buf, size_t len, void *desc,
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_rdm_ctx_trecv(&sock_ep->tx_ctx->ctx, buf, len, desc,
+	return sock_rdm_ctx_trecv(&sock_ep->rx_ctx->ctx, buf, len, desc,
 				  tag, ignore, context);
 }
 
@@ -2088,7 +2074,7 @@ ssize_t sock_rdm_ep_trecvv(struct fid_ep *ep, const struct iovec *iov,
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_rdm_ctx_trecvv(&sock_ep->tx_ctx->ctx, iov, desc, count,
+	return sock_rdm_ctx_trecvv(&sock_ep->rx_ctx->ctx, iov, desc, count,
 				   tag, ignore, context);
 }
 

@@ -44,13 +44,16 @@
 #ifndef _USD_TIME_H_
 #define _USD_TIME_H_
 
-#include <sys/time.h>
+#include <time.h>
 
-typedef time_t usd_time_t;
+typedef uint64_t usd_time_t;
 
 static inline void usd_get_time(usd_time_t * timep)
 {
-    *timep = time(NULL);
+    struct timespec now;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    *timep = now.tv_sec * 1000 + now.tv_nsec / 1000000;
 }
 
 /*
@@ -58,6 +61,6 @@ static inline void usd_get_time(usd_time_t * timep)
  */
 static inline int usd_time_diff(usd_time_t time1, usd_time_t time2)
 {
-    return (time2 - time1) * 1000;
+    return time2 - time1;
 }
 #endif /* _USD_TIME_H_ */

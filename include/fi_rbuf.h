@@ -258,8 +258,8 @@ static inline void rbfdread(struct ringbuffd *rbfd, void *buf, size_t len)
 static inline size_t rbfdsread(struct ringbuffd *rbfd, void *buf, size_t len,
 				int timeout)
 {
-	size_t avail;
 	int ret;
+	size_t avail;
 
 	avail = rbfdused(rbfd);
 	if (avail) {

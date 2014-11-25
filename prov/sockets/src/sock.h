@@ -60,7 +60,7 @@
 
 #define SOCK_EP_MAX_MSG_SZ (1<<22)
 #define SOCK_EP_MAX_INJECT_SZ (1<<12)
-#define SOCK_EP_MAX_BUFF_RECV (1<<22)
+#define SOCK_EP_MAX_BUFF_RECV (0)
 #define SOCK_EP_MAX_ORDER_RAW_SZ (0)
 #define SOCK_EP_MAX_ORDER_WAR_SZ (0)
 #define SOCK_EP_MAX_ORDER_WAW_SZ (0)
@@ -78,19 +78,13 @@
 #define SOCK_EQ_DEF_SZ (1<<8)
 #define SOCK_CQ_DEF_SZ (1<<8)
 
-#define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV)
+#define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV | FI_TAGGED)
 #define SOCK_EP_DGRAM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV)
 #define SOCK_OPS_CAP (FI_INJECT | FI_SEND | FI_RECV )
 #define SOCK_MODE (0)
 
 #define SOCK_MAJOR_VERSION 1
 #define SOCK_MINOR_VERSION 0
-
-/* TODO: to remove */
-#define SOCK_EP_SNDQ_LEN (128)
-#define SOCK_EP_RCVQ_LEN (128)
-
-#define SOCK_DEFAULT_PORT "3391"
 
 extern const char const sock_fab_name[];
 extern const char const sock_dom_name[];
@@ -233,26 +227,30 @@ struct sock_comm_item{
 };
 
 enum {
-	SOCK_OP_SEND,
-	SOCK_OP_SEND_COMPLETE,
+	/* wire protocol */
+	SOCK_OP_SEND = 0,
+	SOCK_OP_TSEND = 1,
+	SOCK_OP_SEND_COMPLETE = 2,
+
+	SOCK_OP_WRITE = 3,
+	SOCK_OP_WRITE_COMPLETE = 4,
+	SOCK_OP_WRITE_ERROR = 5,
+
+	SOCK_OP_READ = 6,
+	SOCK_OP_READ_COMPLETE = 7,
+	SOCK_OP_READ_ERROR = 8,
+
+	SOCK_OP_ATOMIC = 9,
+	SOCK_OP_ATOMIC_COMPLETE = 10,
+	SOCK_OP_ATOMIC_ERROR = 11,
+
+	/* internal */
 	SOCK_OP_RECV,
-	SOCK_OP_SEND_INJECT,
-	SOCK_OP_TSEND_INJECT,
-
-	SOCK_OP_WRITE,
-	SOCK_OP_WRITE_COMPLETE,
-	SOCK_OP_WRITE_ERROR,
-
-	SOCK_OP_READ,
-	SOCK_OP_READ_COMPLETE,
-	SOCK_OP_READ_ERROR,
-
-	SOCK_OP_TSEND,
 	SOCK_OP_TRECV,
 
-	SOCK_OP_ATOMIC,
-	SOCK_OP_ATOMIC_COMPLETE,
-	SOCK_OP_ATOMIC_ERROR,
+	SOCK_OP_SEND_INJECT,
+	SOCK_OP_TSEND_INJECT,
+	SOCK_OP_WRITE_INJECT,
 };
 
 /*
@@ -503,7 +501,8 @@ struct sock_msg_hdr{
 	uint8_t op_type;
 	uint16_t rx_id;
 	uint16_t pe_entry_id;
-	uint8_t reserved[2];
+	uint8_t dest_iov_len;
+	uint8_t reserved[1];
 
 	uint64_t src_addr;
 	uint64_t flags;
@@ -525,9 +524,9 @@ struct sock_msg_tsend{
 
 struct sock_rma_write_req {
 	struct sock_msg_hdr msg_hdr;
-	uint16_t pe_index;
-	/* dest iov(s)*/
 	/* user data */
+	/* dest iov(s)*/
+	/* data */
 };
 
 struct sock_rma_ok {

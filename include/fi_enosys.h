@@ -51,13 +51,11 @@ static struct fi_ops X = {
 	.size = sizeof(struct fi_ops);,
 	.close = X,
 	.bind = fi_no_bind,
-	.sync = fi_no_sync,
 	.control = fi_no_control,
 	.ops_open = fi_no_ops_open,
 };
  */
 int fi_no_bind(struct fid *fid, struct fid *bfid, uint64_t flags);
-int fi_no_sync(struct fid *fid, uint64_t flags, void *context);
 int fi_no_control(struct fid *fid, int command, void *arg);
 int fi_no_ops_open(struct fid *fid, const char *name,
 		uint64_t flags, void **ops, void *context);
@@ -220,6 +218,8 @@ static struct fi_ops_domain X = {
 	.cntr_open = fi_no_cntr_open,
 	.wait_open = fi_no_wait_open,
 	.poll_open = fi_no_poll_open,
+	.stx_ctx = fi_no_stx_context,
+	.srx_ctx = fi_no_srx_context,
 };
 */
 int fi_no_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
@@ -234,6 +234,10 @@ int fi_no_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
 		struct fid_wait **waitset);
 int fi_no_poll_open(struct fid_domain *domain, struct fi_poll_attr *attr,
 		struct fid_poll **pollset);
+int fi_no_stx_context(struct fid_domain *domain, struct fi_tx_ctx_attr *attr,
+		struct fid_stx **stx, void *context);
+int fi_no_srx_context(struct fid_domain *domain, struct fi_rx_ctx_attr *attr,
+		struct fid_ep **rx_ep, void *context);
 
 /*
 static struct fi_ops_mr X = {
@@ -256,7 +260,7 @@ int fi_no_mr_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr,
 /*
 static struct fi_ops_ep X = {
 	.size = sizeof(struct fi_ops_ep);,
-	.enable = X,
+	.enable = fi_no_enable,
 	.cancel = fi_no_cancel,
 	.getopt = fi_no_getopt,
 	.setopt = fi_no_setopt,
@@ -264,6 +268,7 @@ static struct fi_ops_ep X = {
 	.rx_ctx = fi_no_rx_ctx,
 };
 */
+int fi_no_enable(struct fid_ep *ep);
 ssize_t fi_no_cancel(fid_t fid, void *context);
 int fi_no_getopt(fid_t fid, int level, int optname,
 		void *optval, size_t *optlen);

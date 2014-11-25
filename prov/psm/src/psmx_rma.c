@@ -116,6 +116,8 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 				}
 				if (mr->cntr)
 					psmx_cntr_inc(mr->cntr);
+				if (mr->domain->rma_ep->remote_write_cntr)
+					psmx_cntr_inc(mr->domain->rma_ep->remote_write_cntr);
 			}
 		}
 		if (eom || op_error) {
@@ -193,26 +195,8 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 				NULL, NULL );
 
 		if (eom && !op_error) {
-			if (mr->cq) {
-				/* TODO: report the addr/len of the whole read */
-				event = psmx_cq_create_event(
-						mr->cq,
-						0, /* context */
-						rma_addr,
-						0, /* flags */
-						rma_len,
-						0, /* data */
-						0, /* tag */
-						0, /* olen */
-						0);
-
-				if (event)
-					psmx_cq_enqueue_event(mr->cq, event);
-				else
-					err = -ENOMEM;
-			}
-			if (mr->cntr)
-				psmx_cntr_inc(mr->cntr);
+			if (mr->domain->rma_ep->remote_read_cntr)
+				psmx_cntr_inc(mr->domain->rma_ep->remote_read_cntr);
 		}
 		break;
 
@@ -278,11 +262,9 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 					err = -ENOMEM;
 			}
 
-			if (req->ep->write_cntr &&
-			    !(req->ep->write_cntr_event_flag && req->no_event))
+			if (req->ep->write_cntr)
 				psmx_cntr_inc(req->ep->write_cntr);
 
-			req->ep->pending_writes--;
 			free(req);
 		}
 		break;
@@ -316,11 +298,9 @@ int psmx_am_rma_handler(psm_am_token_t token, psm_epaddr_t epaddr,
 					err = -ENOMEM;
 			}
 
-			if (req->ep->read_cntr &&
-			    !(req->ep->read_cntr_event_flag && req->no_event))
+			if (req->ep->read_cntr)
 				psmx_cntr_inc(req->ep->read_cntr);
 
-			req->ep->pending_reads--;
 			free(req);
 		}
 		break;
@@ -339,6 +319,7 @@ static ssize_t psmx_rma_self(int am_cmd,
 {
 	struct psmx_fid_mr *mr;
 	struct psmx_cq_event *event;
+	struct psmx_fid_cntr *cntr;
 	int no_event;
 	int err = 0;
 	int op_error = 0;
@@ -347,11 +328,9 @@ static ssize_t psmx_rma_self(int am_cmd,
 
 	switch (am_cmd) {
 	case PSMX_AM_REQ_WRITE:
-		ep->pending_writes++;
 		access = FI_REMOTE_WRITE;
 		break;
 	case PSMX_AM_REQ_READ:
-		ep->pending_reads++;
 		access = FI_REMOTE_READ;
 		break;
 	default:
@@ -366,15 +345,17 @@ static ssize_t psmx_rma_self(int am_cmd,
 		if (am_cmd == PSMX_AM_REQ_WRITE) {
 			dst = (void *)addr;
 			src = buf;
+			cntr = mr->domain->rma_ep->remote_write_cntr;
 		}
 		else {
 			dst = buf;
 			src = (void *)addr;
+			cntr = mr->domain->rma_ep->remote_read_cntr;
 		}
 
 		memcpy(dst, src, len);
 
-		if (mr->cq) {
+		if (mr->cq && am_cmd == PSMX_AM_REQ_WRITE) {
 			event = psmx_cq_create_event(
 					mr->cq,
 					0, /* context */
@@ -391,8 +372,10 @@ static ssize_t psmx_rma_self(int am_cmd,
 			else
 				err = -ENOMEM;
 		}
-		if (mr->cntr)
+		if (mr->cntr && am_cmd == PSMX_AM_REQ_WRITE)
 			psmx_cntr_inc(mr->cntr);
+		if (cntr)
+			psmx_cntr_inc(cntr);
 	}
 
 	no_event = (flags & FI_INJECT) ||
@@ -417,17 +400,13 @@ static ssize_t psmx_rma_self(int am_cmd,
 
 	switch (am_cmd) {
 	case PSMX_AM_REQ_WRITE:
-		if (ep->write_cntr &&
-		    !(ep->write_cntr_event_flag && no_event))
+		if (ep->write_cntr)
 			psmx_cntr_inc(ep->write_cntr);
-		ep->pending_writes--;
 		break;
 
 	case PSMX_AM_REQ_READ:
-		if (ep->read_cntr &&
-		    !(ep->read_cntr_event_flag && no_event))
+		if (ep->read_cntr)
 			psmx_cntr_inc(ep->read_cntr);
-		ep->pending_reads--;
 		break;
 	}
 
@@ -557,7 +536,6 @@ ssize_t _psmx_readfrom(struct fid_ep *ep, void *buf, size_t len,
 					PSMX_AM_RMA_HANDLER, args, 5, NULL, 0,
 					PSM_AM_FLAG_NOREPLY, NULL, NULL);
 
-		ep_priv->pending_reads++;
 		return 0;
 	}
 
@@ -584,7 +562,6 @@ ssize_t _psmx_readfrom(struct fid_ep *ep, void *buf, size_t len,
 				PSMX_AM_RMA_HANDLER, args, 5, NULL, 0,
 				0, NULL, NULL);
 
-	ep_priv->pending_reads++;
 	return 0;
 }
 
@@ -768,7 +745,6 @@ ssize_t _psmx_writeto(struct fid_ep *ep, const void *buf, size_t len,
 		psm_mq_isend(ep_priv->domain->psm_mq, (psm_epaddr_t) dest_addr,
 				0, psm_tag, buf, len, (void *)&req->fi_context, &psm_req);
 
-		ep_priv->pending_writes++;
 		return 0;
 	}
 
@@ -802,7 +778,6 @@ ssize_t _psmx_writeto(struct fid_ep *ep, const void *buf, size_t len,
 				PSMX_AM_RMA_HANDLER, args, nargs,
 				(void *)buf, len, am_flags, NULL, NULL);
 
-	ep_priv->pending_writes++;
 	return 0;
 }
 
