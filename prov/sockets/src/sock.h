@@ -544,6 +544,19 @@ struct sock_msg_response {
 	uint8_t reserved[6];
 };
 
+struct sock_rma_read_req {
+	struct sock_msg_hdr msg_hdr;
+	/* src iov(s)*/
+};
+
+struct sock_rma_read_response {
+	struct sock_msg_hdr msg_hdr;
+	uint16_t pe_entry_id;
+	uint8_t reserved[6];
+	/* data */
+};
+
+
 struct sock_tx_iov {
 	union sock_iov src;
 	union sock_iov dst;
@@ -566,6 +579,7 @@ struct sock_tx_pe_entry{
 struct sock_rx_pe_entry{
 	struct sock_op rx_op;
 	uint8_t recv_done;
+	uint8_t pending_send;
 	uint8_t reserved[7];
 	void *raw_data;
 	struct sock_rx_entry *rx_entry;
@@ -614,7 +628,6 @@ struct sock_pe{
 
 	struct dlist_entry free_list;
 	struct dlist_entry busy_list;
-	struct dlist_entry ack_list;
 
 	struct dlistfd_head tx_list;
 	struct dlistfd_head rx_list;

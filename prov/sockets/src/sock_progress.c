@@ -116,14 +116,6 @@ static void sock_pe_release_entry(struct sock_pe *pe,
 	SOCK_LOG_INFO("progress entry %p released\n", pe_entry);
 }
 
-static void sock_pe_mark_pending(struct sock_pe *pe, 
-				 struct sock_pe_entry *pe_entry)
-{
-	dlist_remove(&pe_entry->entry);
-	dlist_insert_tail(&pe_entry->entry, &pe->ack_list);
-	SOCK_LOG_INFO("progress entry %p added to ack-list\n", pe_entry);
-}
-
 static struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
 {
 	struct dlist_entry *entry;
@@ -242,7 +234,7 @@ static int sock_pe_send_response(struct sock_pe *pe,
 	response->msg_hdr.msg_len = HTON_64(response->msg_hdr.msg_len);
 
 	pe_entry->done_len = 0;
-	sock_pe_mark_pending(pe, pe_entry);
+	pe_entry->rx.pending_send = 1;
 	return 0;
 }
 
@@ -987,6 +979,23 @@ int sock_pe_add_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *ctx)
 	return 0;
 }
 
+static void sock_pe_progress_pending_ack(struct sock_pe *pe, 
+					 struct sock_pe_entry *pe_entry)
+{
+	int ret, offset = pe_entry->done_len;
+
+	ret = sock_pe_send(pe_entry->conn->sock_fd, 
+			   (char*)&pe_entry->rx.response + offset,
+			   sizeof(struct sock_msg_response) - offset, 0);
+	if (ret < 0) 
+		return;
+	pe_entry->done_len += ret;
+	if (pe_entry->done_len == sizeof(struct sock_msg_response)) {
+		pe_entry->is_complete = 1;
+		pe_entry->rx.pending_send = 0;
+	}
+}
+
 int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 {
 	int i, ret = 0;
@@ -1033,6 +1042,17 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 		
 		pe_entry = container_of(entry, struct sock_pe_entry, ctx_entry);
 		entry = entry->next;
+
+		if (pe_entry->rx.pending_send) {
+			sock_pe_progress_pending_ack(pe, pe_entry);
+			if (pe_entry->is_complete) {
+				sock_pe_release_entry(pe, pe_entry);
+				SOCK_LOG_INFO("[%p] RX done\n", pe_entry);
+			}
+			continue;
+		}
+
+
 		if (!pe_entry->rx.recv_done) {
 			ret = sock_pe_read_hdr(pe, pe_entry);
 			if (ret < 0) 
@@ -1105,22 +1125,6 @@ out:
 	return ret;
 }
 
-static void sock_pe_progress_pending_ack(struct sock_pe *pe, 
-					 struct sock_pe_entry *pe_entry)
-{
-	int ret, offset = pe_entry->done_len;
-
-	ret = sock_pe_send(pe_entry->conn->sock_fd, 
-			   (char*)&pe_entry->rx.response + offset,
-			   sizeof(struct sock_msg_response) - offset, 0);
-	if (ret < 0) 
-		return;
-	pe_entry->done_len += ret;
-	if (pe_entry->done_len == sizeof(struct sock_msg_response)) {
-		pe_entry->is_complete = 1;
-	} 
-}
-
 static void *sock_pe_progress_thread(void *data)
 {
 	int ret;
@@ -1129,7 +1133,6 @@ static void *sock_pe_progress_thread(void *data)
 	struct sock_tx_ctx *tx_ctx;
 	struct sock_rx_ctx *rx_ctx;
 	struct sock_pe *pe = (struct sock_pe *)data;
-	struct sock_pe_entry *pe_entry;
 
 	SOCK_LOG_INFO("Progress thread started\n");
 
@@ -1140,26 +1143,6 @@ static void *sock_pe_progress_thread(void *data)
 	fds[1].fd = pe->rx_list.fd[LIST_READ_FD];
 	
 	while (pe->do_progress) {
-
-		if (dlistfd_empty(&pe->tx_list) &&
-		   dlistfd_empty(&pe->rx_list) &&
-		    dlist_empty(&pe->ack_list)) {
-			ret = poll(fds, 2, SOCK_PE_POLL_TIMEOUT);
-			if (ret == 0)
-				continue;
-		}
-
-		/* progress ack list */
-		for (entry = pe->ack_list.next; entry != &pe->ack_list;) {
-			pe_entry = container_of(entry, struct sock_pe_entry,
-						entry);
-			sock_pe_progress_pending_ack(pe, pe_entry);
-			entry = entry->next;
-			if (pe_entry->is_complete) {
-				sock_pe_release_entry(pe, pe_entry);
-				SOCK_LOG_INFO("[%p] RX done\n", pe_entry);
-			}
-		}
 
 		/* progress tx */
 		if (!dlistfd_empty(&pe->tx_list)) {
@@ -1206,7 +1189,6 @@ static void sock_pe_init_table(
 
 	dlist_init(&pe->free_list);
 	dlist_init(&pe->busy_list);
-	dlist_init(&pe->ack_list);
 
 	for (i=0; i<SOCK_PE_MAX_ENTRIES; i++) {
 		dlist_insert_tail(&pe->pe_table[i].entry, &pe->free_list);
