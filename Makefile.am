@@ -50,9 +50,11 @@ _sockets_files = \
 	prov/sockets/src/sock_fabric.c \
 	prov/sockets/src/sock_ep.c \
 	prov/sockets/src/sock_ctx.c \
+	prov/sockets/src/sock_rx_entry.c \
+	prov/sockets/src/sock_progress.c \
+	prov/sockets/src/sock_comm.c \
 	prov/sockets/src/sock_util.c \
 	prov/sockets/src/sock_util.h \
-	prov/sockets/src/sock_progress.c \
 	prov/sockets/src/indexer.c \
 	prov/sockets/src/list.c \
 	prov/sockets/src/list.h \

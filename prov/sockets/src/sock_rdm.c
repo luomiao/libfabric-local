@@ -88,7 +88,7 @@ const struct fi_rx_ctx_attr sock_rdm_rx_attr = {
 	.caps = SOCK_EP_RDM_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
-	.total_buffered_recv = 0,
+	.total_buffered_recv = SOCK_EP_MAX_BUFF_RECV,
 	.size = SOCK_EP_MAX_MSG_SZ,
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
 };
@@ -401,6 +401,51 @@ err:
 	return ret;	
 }
 
+static ssize_t sock_rdm_handle_buffered_recv(struct sock_rx_ctx *rx_ctx, 
+					     const struct fi_msg *msg,
+					     uint64_t flags,
+					     struct sock_rx_entry *rx_entry)
+{
+	int offset, len, rem, i, ret;
+	struct sock_pe_entry pe_entry;
+
+	offset = 0;
+	rem = rx_entry->iov[0].iov.len;
+
+	fastlock_acquire(&rx_ctx->lock);
+	rx_ctx->buffered_len -= rem;
+	fastlock_release(&rx_ctx->lock);
+
+	for (i=0; i< msg->iov_count && rem > 0; i++) {
+		len = MIN(msg->msg_iov[i].iov_len, rem);
+		memcpy(msg->msg_iov[i].iov_base, 
+		       (char*) rx_entry->iov[0].iov.addr + offset, len);
+		offset += len;
+		rem -= len;
+	}
+	
+	pe_entry.done_len = offset;
+	pe_entry.flags = flags;
+	pe_entry.data = msg->data;
+	pe_entry.tag = 0;
+	pe_entry.context = (uint64_t)msg->context;
+	pe_entry.rx.rx_iov[0].iov.addr = (uint64_t)msg->msg_iov[0].iov_base;
+	pe_entry.type = SOCK_PE_RX;
+
+	if (rem) {
+		SOCK_LOG_INFO("Not enough space in posted recv buffer\n");
+		if (rx_ctx->recv_cntr)
+			sock_cntr_err_inc(rx_ctx->recv_cntr);
+		if (rx_ctx->recv_cq)
+			ret = sock_cq_report_error(rx_ctx->recv_cq, &pe_entry, rem,
+						   -FI_ENOSPC, -FI_ENOSPC, NULL);
+		return 0;
+	} else 
+		sock_pe_report_rx_completion(&pe_entry, rx_ctx);
+	sock_release_rx_entry(rx_entry);
+	return 0;
+}
+
 ssize_t sock_rdm_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		   uint64_t flags)
 {
@@ -411,8 +456,11 @@ ssize_t sock_rdm_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	rx_ctx = container_of(ep, struct sock_rx_ctx, ctx);
 	assert(rx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	/* FIXME: pool of rx_entry */
-	rx_entry = calloc(1, sizeof(struct sock_rx_entry));
+	rx_entry = sock_rdm_check_buffered_list(rx_ctx, msg, flags);
+	if (rx_entry)
+		return sock_rdm_handle_buffered_recv(rx_ctx, msg, flags, rx_entry);
+
+	rx_entry = sock_new_rx_entry(rx_ctx);
 	if (!rx_entry)
 		return -FI_ENOMEM;
 	
@@ -648,6 +696,51 @@ struct fi_ops_msg sock_rdm_ctx_msg_ops = {
 	.senddatato = sock_rdm_ctx_senddatato,
 };
 
+static ssize_t sock_rdm_handle_buffered_trecv(struct sock_rx_ctx *rx_ctx, 
+					      const struct fi_msg_tagged *msg, 
+					      uint64_t flags, 
+					      struct sock_rx_entry *rx_entry)
+{
+	int offset, len, rem, i, ret;
+	struct sock_pe_entry pe_entry;
+	
+	offset = 0;
+	rem = rx_entry->iov[0].iov.len;
+
+	fastlock_acquire(&rx_ctx->lock);
+	rx_ctx->buffered_len -= rem;
+	fastlock_release(&rx_ctx->lock);
+
+	for (i=0; i< msg->iov_count && rem > 0; i++) {
+		len = MIN(msg->msg_iov[i].iov_len, rem);
+		memcpy(msg->msg_iov[i].iov_base, 
+		       (char*) rx_entry->iov[0].iov.addr + offset, len);
+		offset += len;
+		rem -= len;
+	}
+	
+	pe_entry.done_len = offset;
+	pe_entry.flags = flags;
+	pe_entry.data = msg->data;
+	pe_entry.tag = msg->tag;
+	pe_entry.context = (uint64_t)msg->context;
+	pe_entry.rx.rx_iov[0].iov.addr = (uint64_t)msg->msg_iov[0].iov_base;
+	pe_entry.type = SOCK_PE_RX;
+
+	if (rem) {
+		SOCK_LOG_INFO("Not enough space in posted recv buffer\n");
+		if (rx_ctx->recv_cntr)
+			sock_cntr_err_inc(rx_ctx->recv_cntr);
+		if (rx_ctx->recv_cq)
+			ret = sock_cq_report_error(rx_ctx->recv_cq, &pe_entry, rem,
+						   -FI_ENOSPC, -FI_ENOSPC, NULL);
+		return 0;
+	} else 
+		sock_pe_report_rx_completion(&pe_entry, rx_ctx);
+	sock_release_rx_entry(rx_entry);
+	return 0;
+}
+
 ssize_t sock_rdm_ctx_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 		   uint64_t flags)
 {
@@ -658,13 +751,15 @@ ssize_t sock_rdm_ctx_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg
 	rx_ctx = container_of(ep, struct sock_rx_ctx, ctx);
 	assert(rx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	/* FIXME: pool of rx_entry */
-	rx_entry = calloc(1, sizeof(struct sock_rx_entry));
+	rx_entry = sock_rdm_check_buffered_tlist(rx_ctx, msg, flags);
+	if (rx_entry)
+		return sock_rdm_handle_buffered_trecv(rx_ctx, msg, flags, rx_entry);
+
+	rx_entry = sock_new_rx_entry(rx_ctx);
 	if (!rx_entry)
 		return -FI_ENOMEM;
 	
 	dlist_init(&rx_entry->entry);
-
 	rx_entry->rx_op.op = SOCK_OP_TRECV;
 	rx_entry->rx_op.dest_iov_len = msg->iov_count;
 
@@ -1007,7 +1102,9 @@ static ssize_t sock_rdm_ctx_rma_readfrom(struct fid_ep *ep, void *buf, size_t le
 
 	rma_iov.addr = addr;
 	rma_iov.key = key;
-	rma_iov.len = 1;
+	rma_iov.len = len;
+	msg.rma_iov_count = 1;
+	msg.rma_iov = &rma_iov;
 
 	msg.addr = src_addr;
 	msg.context = context;
@@ -1096,15 +1193,6 @@ static ssize_t sock_rdm_ctx_rma_writemsg(struct fid_ep *ep,
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
 	}
 
-	dst_len = 0;
-	for (i = 0; i< msg->rma_iov_count; i++) {
-		tx_iov.iov.addr = msg->rma_iov[i].addr;
-		tx_iov.iov.key = msg->rma_iov[i].key;
-		tx_iov.iov.len = msg->rma_iov[i].len;
-		sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
-		dst_len += tx_iov.iov.len;
-	}
-
 	src_len = 0;
 	if (flags & FI_INJECT) {
 		for (i=0; i< msg->iov_count; i++) {
@@ -1120,6 +1208,15 @@ static ssize_t sock_rdm_ctx_rma_writemsg(struct fid_ep *ep,
 			sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
 			src_len += tx_iov.iov.len;
 		}
+	}
+
+	dst_len = 0;
+	for (i = 0; i< msg->rma_iov_count; i++) {
+		tx_iov.iov.addr = msg->rma_iov[i].addr;
+		tx_iov.iov.key = msg->rma_iov[i].key;
+		tx_iov.iov.len = msg->rma_iov[i].len;
+		sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
+		dst_len += tx_iov.iov.len;
 	}
 	
 	if (dst_len != src_len) {
@@ -1147,13 +1244,18 @@ static ssize_t sock_rdm_ctx_rma_writeto(struct fid_ep *ep, const void *buf,
 
 	msg_iov.iov_base = (void*)buf;
 	msg_iov.iov_len = len;
+
 	msg.msg_iov = &msg_iov;
 	msg.desc = &desc;
 	msg.iov_count = 1;
 
 	rma_iov.addr = addr;
 	rma_iov.key = key;
-	rma_iov.len = 1;
+	rma_iov.len = len;
+
+	msg.rma_iov_count = 1;
+	msg.rma_iov = &rma_iov;
+
 	msg.addr = dest_addr;
 	msg.context = context;
 

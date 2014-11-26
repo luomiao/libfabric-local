@@ -60,7 +60,7 @@
 
 #define SOCK_EP_MAX_MSG_SZ (1<<22)
 #define SOCK_EP_MAX_INJECT_SZ (1<<12)
-#define SOCK_EP_MAX_BUFF_RECV (0)
+#define SOCK_EP_MAX_BUFF_RECV (1<<20)
 #define SOCK_EP_MAX_ORDER_RAW_SZ (0)
 #define SOCK_EP_MAX_ORDER_WAR_SZ (0)
 #define SOCK_EP_MAX_ORDER_WAW_SZ (0)
@@ -78,7 +78,8 @@
 #define SOCK_EQ_DEF_SZ (1<<8)
 #define SOCK_CQ_DEF_SZ (1<<8)
 
-#define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV | FI_TAGGED)
+#define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV | \
+			 FI_TAGGED | FI_RMA)
 #define SOCK_EP_DGRAM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV)
 #define SOCK_OPS_CAP (FI_INJECT | FI_SEND | FI_RECV )
 #define SOCK_MODE (0)
@@ -97,7 +98,11 @@ struct sock_fabric{
 struct sock_conn {
         int sock_fd;
         struct sockaddr addr;
-        struct sock_pe_entry *pe_entry;
+        struct sock_pe_entry *rx_pe_entry;
+        struct sock_pe_entry *tx_pe_entry;
+	struct ringbuf inbuf;
+	struct ringbuf outbuf;
+	int buf_initialised;
 };
 
 struct sock_conn_map {
@@ -333,7 +338,8 @@ struct sock_ep {
 	uint8_t rem_write_cq_event;
 
 	uint16_t sock_fd;
-	uint8_t reserved[6];
+	uint16_t buffered;
+	uint8_t reserved[4];
 
 	atomic_t ref;
 
@@ -402,6 +408,8 @@ struct sock_pep {
 
 struct sock_rx_entry {
 	struct sock_op rx_op;
+	uint8_t is_buffered;
+	uint8_t reserved[7];
 
 	uint64_t flags;
 	uint64_t context;
@@ -424,7 +432,8 @@ struct sock_rx_ctx {
 	uint8_t recv_cq_event;
 	uint8_t rem_read_cq_event;
 	uint8_t rem_write_cq_event;
-	uint8_t reserved[1];
+	uint16_t buffered_len;
+	uint8_t reserved[7];
 
 	uint64_t addr;
 
@@ -446,6 +455,7 @@ struct sock_rx_ctx {
 
 	struct dlist_entry pe_entry_list;
 	struct dlist_entry rx_entry_list;
+	struct dlist_entry rx_buffered_list;
 	struct dlist_entry ep_list;
 	fastlock_t lock;
 
@@ -529,15 +539,24 @@ struct sock_rma_write_req {
 	/* data */
 };
 
-struct sock_rma_ok {
+struct sock_msg_response {
 	struct sock_msg_hdr msg_hdr;
-	uint16_t pe_index;
+	uint16_t pe_entry_id;
+	uint8_t reserved[6];
 };
 
-struct sock_rma_err {
+struct sock_rma_read_req {
 	struct sock_msg_hdr msg_hdr;
-	uint16_t pe_index;
+	/* src iov(s)*/
 };
+
+struct sock_rma_read_response {
+	struct sock_msg_hdr msg_hdr;
+	uint16_t pe_entry_id;
+	uint8_t reserved[6];
+	/* data */
+};
+
 
 struct sock_tx_iov {
 	union sock_iov src;
@@ -551,6 +570,7 @@ struct sock_tx_pe_entry{
 	uint8_t ack_done;
 	uint8_t reserved[5];
 
+	struct sock_tx_ctx *tx_ctx;
 	union {
 		struct sock_tx_iov tx_iov[SOCK_EP_MAX_IOV_LIMIT];
 		char inject_data[SOCK_EP_MAX_INJECT_SZ];
@@ -560,8 +580,11 @@ struct sock_tx_pe_entry{
 struct sock_rx_pe_entry{
 	struct sock_op rx_op;
 	uint8_t recv_done;
+	uint8_t pending_send;
 	uint8_t reserved[7];
 	void *raw_data;
+	struct sock_rx_entry *rx_entry;
+	struct sock_msg_response response;
 	union sock_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
 };
 
@@ -753,6 +776,27 @@ int sock_pe_add_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *ctx);
 int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx);
 int sock_pe_progress_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx);
 void sock_pe_finalize(struct sock_pe *pe);
+int sock_pe_report_rx_completion(struct sock_pe_entry *pe_entry,
+				 struct sock_rx_ctx *rx_ctx);
+
+
+struct sock_rx_entry *sock_new_rx_entry(struct sock_rx_ctx *rx_ctx);
+struct sock_rx_entry *sock_new_buffered_rx_entry(struct sock_rx_ctx *rx_ctx,
+						 size_t len);
+struct sock_rx_entry *sock_rdm_check_buffered_list(struct sock_rx_ctx *rx_ctx,
+						   const struct fi_msg *msg, uint64_t flags);
+struct sock_rx_entry *sock_rdm_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
+						    const struct fi_msg_tagged *msg, 
+						    uint64_t flags);
+void sock_release_rx_entry(struct sock_rx_entry *rx_entry);
+
+int sock_comm_send_socket(struct sock_conn *conn, const void *buf, size_t len, 
+			  uint64_t flags);
+int sock_comm_send_flush(struct sock_conn *conn);
+int sock_comm_send(struct sock_conn *conn, const void *buf, size_t len, 
+		   uint64_t flags);
+int sock_comm_recv(struct sock_conn *conn, void *buf, size_t len, 
+		   uint64_t flags);
 
 
 void free_fi_info(struct fi_info *info);

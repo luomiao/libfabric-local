@@ -56,9 +56,47 @@
 #include "sock_util.h"
 
 
-#define PE_INDEX(_pe, _e) ((_e - &_pe->pe_table[0])/sizeof(struct sock_pe_entry))
+#define PE_INDEX(_pe, _e) (_e - &_pe->pe_table[0])
 
-int sock_pe_report_tx_completion(struct sock_pe_entry *pe_entry,
+
+static void sock_pe_release_entry(struct sock_pe *pe, 
+				  struct sock_pe_entry *pe_entry)
+{
+	dlist_remove(&pe_entry->ctx_entry);
+
+	if (pe_entry->type == SOCK_PE_TX)
+		pe_entry->conn->tx_pe_entry = NULL;
+	else
+		pe_entry->conn->rx_pe_entry = NULL;
+
+	pe_entry->conn = NULL;
+	memset(&pe_entry->rx, 0, sizeof(struct sock_rx_pe_entry));
+	memset(&pe_entry->tx, 0, sizeof(struct sock_tx_pe_entry));
+
+	pe_entry->type =0;
+	pe_entry->is_complete = 0;
+	pe_entry->done_len = 0;
+	pe_entry->total_len = 0;
+
+	dlist_remove(&pe_entry->entry);
+	dlist_insert_tail(&pe_entry->entry, &pe->free_list);
+	SOCK_LOG_INFO("progress entry %p released\n", pe_entry);
+}
+
+static struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
+{
+	struct dlist_entry *entry;
+	struct sock_pe_entry *pe_entry;
+
+	entry = pe->free_list.next;
+	pe_entry = container_of(entry, struct sock_pe_entry, entry);
+	dlist_remove(&pe_entry->entry);
+	dlist_insert_tail(&pe_entry->entry, &pe->busy_list);
+	SOCK_LOG_INFO("progress entry %p acquired \n", pe_entry);
+	return pe_entry;
+}
+
+static int sock_pe_report_tx_completion(struct sock_pe_entry *pe_entry,
 				 struct sock_tx_ctx *tx_ctx)
 {
 	int ret;
@@ -148,41 +186,99 @@ int sock_pe_report_rx_completion(struct sock_pe_entry *pe_entry,
 	return 0;
 }
 
-static int sock_pe_send_ack(struct sock_pe_entry *pe_entry)
+static int sock_pe_send_response(struct sock_pe *pe, 
+				 struct sock_pe_entry *pe_entry, uint8_t op_type)
 {
-	/* FIXME */
-	SOCK_LOG_ERROR("FI_REMOTE_COMPLETE not implemented\n");
-	return -FI_ENOSYS;
+	struct sock_msg_response *response = &pe_entry->rx.response;
+	memset(response, 0, sizeof(struct sock_msg_response));
+
+	response->pe_entry_id = HTON_16(pe_entry->msg_hdr.pe_entry_id);
+	response->msg_hdr.dest_iov_len = 0;
+	response->msg_hdr.flags = 0;
+	response->msg_hdr.msg_len = sizeof(*response);
+	response->msg_hdr.version = SOCK_WIRE_PROTO_VERSION;
+	response->msg_hdr.op_type = op_type;
+	response->msg_hdr.msg_len = HTON_64(response->msg_hdr.msg_len);
+
+	pe_entry->done_len = 0;
+	pe_entry->rx.pending_send = 1;
+	return 0;
 }
 
-static int sock_pe_send_nack(struct sock_pe_entry *pe_entry)
+static int sock_pe_handle_ack(struct sock_pe *pe, struct sock_pe_entry *pe_entry)
 {
-	/* FIXME */
-	SOCK_LOG_ERROR("FI_REMOTE_COMPLETE not implemented\n");
-	return -FI_ENOSYS;
+	struct sock_pe_entry *waiting_entry;
+	uint16_t pe_entry_id;
+	int ret;
+
+	ret = sock_comm_recv(pe_entry->conn,
+			   &pe_entry_id, sizeof(uint64_t), 0);
+	if (ret != sizeof(uint64_t))
+		return -FI_EINVAL;
+
+	pe_entry_id = NTOH_16(pe_entry_id);
+	assert(pe_entry_id <= SOCK_PE_MAX_ENTRIES);
+	waiting_entry = &pe->pe_table[pe_entry_id];
+	SOCK_LOG_INFO("Received ack for PE entry %p (index: %d)\n", 
+		      waiting_entry, pe_entry_id);
+
+	assert(waiting_entry->type == SOCK_PE_TX);
+	sock_pe_report_tx_completion(waiting_entry, waiting_entry->tx.tx_ctx);
+	waiting_entry->is_complete = 1;
+	return 0;
 }
 
 static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 				   struct sock_pe_entry *pe_entry)
 {
 	int i, ret;
-	uint64_t offset, rem;
+	uint64_t offset, rem, len, entry_len, done_data, data_len;
 
 	offset = 0;
+	len = sizeof(struct sock_msg_hdr);
 	if (pe_entry->msg_hdr.flags & FI_REMOTE_CQ_DATA) {
-		memcpy(&pe_entry->data, (char*)pe_entry->rx.raw_data + offset,
-		       sizeof(uint64_t));
-		offset += sizeof(uint64_t);
+		offset = len - pe_entry->done_len;
+		len += sizeof(uint64_t);
+		if (pe_entry->done_len < len) {
+			ret = sock_comm_recv(pe_entry->conn, 
+					   (char*)&pe_entry->data + offset, 
+					   sizeof(uint64_t) - offset, 0);
+			if (ret < 0)
+				return ret;
+			pe_entry->done_len += ret;
+			if (pe_entry->done_len != len)
+				return 0;
+		}
 	}
 
-	/* dest iovs */
-	memcpy(&pe_entry->rx.rx_iov[0], (char*)pe_entry->rx.raw_data + offset,
-	       sizeof(union sock_iov) * pe_entry->msg_hdr.dest_iov_len);
-	offset += sizeof(union sock_iov) * pe_entry->msg_hdr.dest_iov_len;
-	
-	/* write data */
-	rem = pe_entry->msg_hdr.msg_len - sizeof(struct sock_msg_hdr) - offset;
+	entry_len = sizeof(union sock_iov) * pe_entry->msg_hdr.dest_iov_len;
+	if (pe_entry->done_len < len + entry_len) {
+		offset = len - pe_entry->done_len;
+		len += entry_len;
+
+		ret = sock_comm_recv(pe_entry->conn,
+				   (char *)&pe_entry->rx.rx_iov[0] + offset,
+				   entry_len - offset, 0);
+		if (ret < 0)
+			return ret;
+		pe_entry->done_len += ret;
+		if (ret != entry_len - offset)
+			return 0;
+	}
+
+	done_data = pe_entry->done_len - len;
+	rem = pe_entry->msg_hdr.msg_len - len;
+
 	for (i = 0; i < pe_entry->msg_hdr.dest_iov_len; i++) {
+		
+		data_len = pe_entry->rx.rx_iov[i].iov.len;
+		if (done_data >= data_len) {
+			done_data -= data_len;
+			rem -= data_len;
+			continue;
+		}
+
+		offset = done_data;
 		ret = sock_mr_verify_key(rx_ctx->domain, 
 					 pe_entry->rx.rx_iov[i].iov.key,
 					 (void*)pe_entry->rx.rx_iov[i].iov.addr,
@@ -193,16 +289,22 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 				       (void*)pe_entry->rx.rx_iov[i].iov.addr,
 				       pe_entry->rx.rx_iov[i].iov.len,
 				       pe_entry->rx.rx_iov[i].iov.key);
-			sock_pe_send_nack(pe_entry);
+			sock_pe_send_response(pe, pe_entry, SOCK_OP_WRITE_ERROR);
 			break;
 		}
-		memcpy((void*)pe_entry->rx.rx_iov[i].iov.addr, 
-		       (char*)pe_entry->rx.raw_data + offset, 
-		       pe_entry->rx.rx_iov[i].iov.len);
-		offset += pe_entry->rx.rx_iov[i].iov.len;
-		rem -= pe_entry->rx.rx_iov[i].iov.len;
-	}
 
+		ret = sock_comm_recv(pe_entry->conn,
+				   (char*)pe_entry->rx.rx_iov[i].iov.addr + offset,
+				   pe_entry->rx.rx_iov[i].iov.len - offset, 0);
+		if (ret < 0)
+			return ret;
+		done_data = 0;
+		rem -= ret;
+		pe_entry->done_len -= ret;
+		if (ret != pe_entry->rx.rx_iov[i].iov.len - offset)
+			return 0;
+	}
+				   
 	/* report error, if any */
 	if (rem) {
 		if (rx_ctx->recv_cntr)
@@ -212,15 +314,12 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 						   -FI_ENOSPC, -FI_ENOSPC, NULL);
 		goto out;
 	} else {
-		sock_pe_report_rx_completion(pe_entry, rx_ctx);
+		if (pe_entry->flags & FI_REMOTE_COMPLETE)
+			sock_pe_report_rx_completion(pe_entry, rx_ctx);
 	}
 
-	if (pe_entry->msg_hdr.flags & FI_REMOTE_COMPLETE) {
-		sock_pe_send_ack(pe_entry);
-	}
-	pe_entry->is_complete = 1;
-	
 out:
+	sock_pe_send_response(pe, pe_entry, SOCK_OP_WRITE_COMPLETE);	
 	return ret;
 }
 
@@ -229,40 +328,85 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 {
 	int i, ret;
 	struct sock_rx_entry *rx_entry;
-	uint64_t len, rem, offset;
+	uint64_t len, rem, offset, data_len, done_data;
 
 	offset = 0;
-	if (pe_entry->msg_hdr.op_type == SOCK_OP_TSEND) {
-		memcpy(&pe_entry->tag, (char*)pe_entry->rx.raw_data + offset,
-		       sizeof(uint64_t));
-		offset += sizeof(uint64_t);
-	}
+	len = sizeof(struct sock_msg_hdr);
 
-	rx_entry = sock_ep_get_rx_entry(pe_entry->ep, pe_entry);
-	if (!rx_entry) {
-		SOCK_LOG_ERROR("No matching recv!\n");
-		if (rx_ctx->recv_cntr)
-			sock_cntr_err_inc(rx_ctx->recv_cntr);
-		if (rx_ctx->recv_cq)
-			sock_cq_report_error(rx_ctx->recv_cq, pe_entry, 0,
-					     -FI_ENOENT, -FI_ENOENT, NULL);
-		ret = -FI_ENOENT;
-		goto out;
+	if (pe_entry->msg_hdr.op_type == SOCK_OP_TSEND) {
+		offset = len - pe_entry->done_len;
+		len += sizeof(uint64_t);
+		if (pe_entry->done_len < len) {
+			ret = sock_comm_recv(pe_entry->conn, 
+					   (char*)&pe_entry->tag + offset, 
+					   sizeof(uint64_t) - offset, 0);
+			if (ret < 0)
+				return ret;
+			pe_entry->done_len += ret;
+			if (pe_entry->done_len != len)
+				return 0;
+		}
 	}
 
 	if (pe_entry->msg_hdr.flags & FI_REMOTE_CQ_DATA) {
-		memcpy(&pe_entry->data, (char*)pe_entry->rx.raw_data + offset,
-		       sizeof(uint64_t));
-		offset += sizeof(uint64_t);
+		offset = len - pe_entry->done_len;
+		len += sizeof(uint64_t);
+		if (pe_entry->done_len < len) {
+			sock_comm_recv(pe_entry->conn, (char*)&pe_entry->data 
+				     + offset, sizeof(uint64_t) - offset, 0);
+			if (ret < 0)
+				return ret;
+			pe_entry->done_len += ret;
+			if (pe_entry->done_len != len)
+				return 0;
+		}
 	}
 
-	rem = pe_entry->msg_hdr.msg_len - sizeof(struct sock_msg_hdr) - offset;
+	if (pe_entry->done_len == len && !pe_entry->rx.rx_entry) {
+
+		data_len = pe_entry->msg_hdr.msg_len - len;
+		rx_entry = sock_ep_get_rx_entry(pe_entry->ep, pe_entry);
+		if (!rx_entry) {
+			SOCK_LOG_INFO("%p: No matching recv, buffering recv (len=%llu)\n", 
+				      pe_entry, (long long unsigned int)data_len);
+			
+			rx_entry = sock_new_buffered_rx_entry(rx_ctx, data_len);
+			if (!rx_entry) {
+				SOCK_LOG_ERROR("%p: Failed to buffer recv\n", pe_entry);
+				return -FI_ENOMEM;
+			}
+			
+			rx_entry->addr = pe_entry->addr;
+			rx_entry->tag = pe_entry->tag;
+			rx_entry->data = pe_entry->data;
+			rx_entry->flags = pe_entry->flags;
+			rx_entry->ignore = 0;
+		}
+	}
+	
+	done_data = pe_entry->done_len - len;
+	rem = pe_entry->msg_hdr.msg_len - len;
+	
 	for (i=0; rem > 0 && i < rx_entry->rx_op.dest_iov_len; i++) {
-		len = MIN(rx_entry->iov[i].iov.len, rem);
-		memcpy((void *)rx_entry->iov[i].iov.addr, 
-		       (char*)pe_entry->rx.raw_data + offset, len);
-		rem -= len;
-		offset += len;
+		data_len = MIN(rx_entry->iov[i].iov.len, rem);
+		if (done_data >= data_len) {
+			done_data -= data_len;
+			rem -= data_len;
+			continue;
+		}
+		
+		offset = done_data;
+		ret = sock_comm_recv(pe_entry->conn, 
+				   (char *)rx_entry->iov[i].iov.addr + offset, 
+				   data_len - offset, 0);
+		if (ret < 0)
+			return ret;
+		
+		rem -= ret;
+		done_data = 0;
+		pe_entry->done_len += ret;
+		if (ret != data_len - offset)
+			return 0;
 	}
 
 	/* report error, if any */
@@ -275,16 +419,18 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 						   -FI_ENOSPC, -FI_ENOSPC, NULL);
 		goto out;
 	} else {
-		sock_pe_report_rx_completion(pe_entry, rx_ctx);
+		if (!rx_entry->is_buffered)
+			sock_pe_report_rx_completion(pe_entry, rx_ctx);
 	}
-
+	
 	if (pe_entry->msg_hdr.flags & FI_REMOTE_COMPLETE) {
-		sock_pe_send_ack(pe_entry);
+		sock_pe_send_response(pe, pe_entry, SOCK_OP_SEND_COMPLETE);
 	}
 	pe_entry->is_complete = 1;
 	
 out:
-	free(rx_entry);
+	if (!rx_entry->is_buffered)
+		sock_release_rx_entry(rx_entry);
 	return ret;
 }
 
@@ -295,7 +441,6 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	struct sock_msg_hdr *msg_hdr;
 
 	msg_hdr = &pe_entry->msg_hdr;
-	msg_hdr->version = ntohs(msg_hdr->version);
 	if (msg_hdr->version != SOCK_WIRE_PROTO_VERSION) {
 		SOCK_LOG_ERROR("Invalid wire protocol\n");
 		ret = -FI_EINVAL;
@@ -303,9 +448,10 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	}
 		
 	msg_hdr->op_type = msg_hdr->op_type;
-	msg_hdr->src_addr = ntohl(msg_hdr->src_addr);
-	msg_hdr->rx_id = ntohs(msg_hdr->rx_id);
-	msg_hdr->flags = ntohl(msg_hdr->flags);
+	msg_hdr->src_addr = NTOH_64(msg_hdr->src_addr);
+	msg_hdr->rx_id = NTOH_16(msg_hdr->rx_id);
+	msg_hdr->flags = NTOH_64(msg_hdr->flags);
+	msg_hdr->pe_entry_id = NTOH_16(msg_hdr->pe_entry_id);
 
 	SOCK_LOG_INFO("PE RX: MsgLen: %lu, TX-ID: %d\n", msg_hdr->msg_len,
 		      msg_hdr->rx_id);
@@ -322,6 +468,15 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 		ret = sock_pe_process_rx_write(pe, rx_ctx, pe_entry);
 		break;
 
+	case SOCK_OP_SEND_COMPLETE:
+	case SOCK_OP_WRITE_COMPLETE:
+	case SOCK_OP_WRITE_ERROR:
+	case SOCK_OP_READ_COMPLETE:
+	case SOCK_OP_READ_ERROR:
+		ret = sock_pe_handle_ack(pe, pe_entry);
+		pe_entry->is_complete = 1;
+		break;
+
 	case SOCK_OP_READ:
 	case SOCK_OP_ATOMIC:
 	default:
@@ -331,73 +486,41 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	}
 
 out:
-	free(pe_entry->rx.raw_data);
 	return ret;
 }
 
-static int sock_pe_progress_rx_entry(struct sock_pe *pe, 
-				     struct sock_pe_entry *pe_entry)
+static int sock_pe_read_hdr(struct sock_pe *pe, 
+			    struct sock_pe_entry *pe_entry)
 {
-	int ret, rem, read_data; 
+	int ret; 
 	struct sock_conn *conn = pe_entry->conn;
 
-	SOCK_LOG_INFO("[%p] Progressing RX pe_entry\n", pe_entry);
-	if (conn->pe_entry != NULL && conn->pe_entry != pe_entry)
+	if (pe_entry->rx.recv_done)
 		return 0;
 
-	if (conn->pe_entry == NULL) {
-		conn->pe_entry = pe_entry;
+	if (conn->rx_pe_entry != NULL && conn->rx_pe_entry != pe_entry)
+		return 0;
+
+	if (conn->rx_pe_entry == NULL) {
+		conn->rx_pe_entry = pe_entry;
 	}
 
 	if (pe_entry->done_len < sizeof(struct sock_msg_hdr)) {
-		ret = recv(conn->sock_fd, 
-			   (char*)&pe_entry->msg_hdr + pe_entry->done_len, 
-			   sizeof(struct sock_msg_hdr) - pe_entry->done_len, 0);
-		if (ret < 0) {
-			if (ret == EWOULDBLOCK || ret == EAGAIN)
-				return 0;
-			else{
-				SOCK_LOG_ERROR("Failed to progress recv\n");
-				return ret;
-			}
-		}
+		ret = sock_comm_recv(conn, 
+				   (char*)&pe_entry->msg_hdr + pe_entry->done_len, 
+				   sizeof(struct sock_msg_hdr) - pe_entry->done_len, 0);
+		if (ret < 0) 
+			return ret;
 		
 		pe_entry->done_len += ret;
 		if (pe_entry->done_len == sizeof(struct sock_msg_hdr)) {
 			pe_entry->msg_hdr.msg_len = 
-				ntohl(pe_entry->msg_hdr.msg_len);
-			
-			pe_entry->rx.raw_data = 
-				calloc(1, pe_entry->msg_hdr.msg_len - 
-				       sizeof(struct sock_msg_hdr));
-			if (!pe_entry->rx.raw_data) {
-				SOCK_LOG_ERROR("Not enough memory\n");
-				return -FI_ENOMEM;
-			}
-		}else {
-			return 0;
+				NTOH_64(pe_entry->msg_hdr.msg_len);
+
+			SOCK_LOG_INFO("Received header; msg size: %lu\n", 
+				      (long unsigned int)pe_entry->msg_hdr.msg_len);
+			pe_entry->rx.recv_done = 1;
 		}
-	}
-
-	read_data = pe_entry->done_len - sizeof(struct sock_msg_hdr);
-	rem = pe_entry->msg_hdr.msg_len - sizeof(struct sock_msg_hdr) 
-		- read_data;
-	
-	ret = recv(conn->sock_fd, 
-		   (char*)pe_entry->rx.raw_data + read_data, rem, 0);
-
-	if (ret < 0) {
-		if (ret == EWOULDBLOCK || ret == EAGAIN)
-			return 0;
-		else{
-			SOCK_LOG_ERROR("Failed to progress recv\n");
-			return ret;
-		}
-	}
-
-	pe_entry->done_len += ret;
-	if (pe_entry->done_len == pe_entry->msg_hdr.msg_len) {
-		pe_entry->rx.recv_done = 1;
 	}
 	return 0;
 }
@@ -410,23 +533,20 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 	union sock_iov dest_iov[SOCK_EP_MAX_IOV_LIMIT];
 	ssize_t len, i, offset, done_data, data_len, dest_iov_len;
 
+	if (pe_entry->tx.send_done)
+		return 0;
+
 	len = sizeof(struct sock_msg_hdr);
 	if (pe_entry->flags & FI_REMOTE_CQ_DATA) {
 
 		offset = pe_entry->done_len - len;
 		len += sizeof(uint64_t);
 		if (pe_entry->done_len < len) {
-			ret = send(conn->sock_fd, 
-				   (char*)pe_entry->data + offset,
-				   sizeof(uint64_t) - offset, 0);
-			if (ret < 0) {
-				if (ret == EWOULDBLOCK || ret == EAGAIN)
-					return 0;
-				else{
-					SOCK_LOG_ERROR("Failed to send\n");
-					return ret;
-				}		
-			}	
+			ret = sock_comm_send(conn, 
+					   (char*)pe_entry->data + offset,
+					   sizeof(uint64_t) - offset, 0);
+			if (ret < 0)
+				return ret;
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len != len)
 				return 0;
@@ -445,18 +565,11 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 			dest_iov[i].iov.key = pe_entry->tx.tx_iov[i].dst.iov.key;
 		}
 
-		ret = send(conn->sock_fd, 
-			   (char*)&dest_iov[0] + offset, 
-			   dest_iov_len - offset, 0);
-		
-		if (ret < 0) {
-			if (ret == EWOULDBLOCK || ret == EAGAIN)
-				return 0;
-			else{
-				SOCK_LOG_ERROR("Failed to send\n");
-				return ret;
-			}		
-		}	
+		ret = sock_comm_send(conn,
+				   (char*)&dest_iov[0] + offset, 
+				   dest_iov_len - offset, 0);
+		if (ret < 0)
+			return ret;
 		pe_entry->done_len += ret;
 		if (pe_entry->done_len != len)
 			return 0;
@@ -468,18 +581,11 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 		len += pe_entry->tx.tx_op.src_iov_len;
 		
 		if (pe_entry->done_len < len) {
-			ret = send(conn->sock_fd, 
-				   (char*)pe_entry->tx.inject_data + offset,
-				   pe_entry->tx.tx_op.src_iov_len - offset, 0);
-			
-			if (ret < 0) {
-				if (ret == EWOULDBLOCK || ret == EAGAIN)
-					return 0;
-				else{
-					SOCK_LOG_ERROR("Failed to send\n");
-					return ret;
-				}
-			}
+			ret = sock_comm_send(conn, 
+					   (char*)pe_entry->tx.inject_data + offset,
+					   pe_entry->tx.tx_op.src_iov_len - offset, 0);
+			if (ret < 0)
+				return ret;
 			
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len <= len)
@@ -497,20 +603,13 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 			}
 
 			offset = done_data;
-			ret = send(conn->sock_fd, 
-				   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
-				   offset, pe_entry->tx.tx_iov[i].src.iov.len -
-				   offset, 0);
-
-			if (ret < 0) {
-				if (ret == EWOULDBLOCK || ret == EAGAIN)
-					return 0;
-				else{
-					SOCK_LOG_ERROR("Failed to send\n");
+			ret = sock_comm_send(conn, 
+					   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
+					   offset, pe_entry->tx.tx_iov[i].src.iov.len -
+					   offset, 0);
+			if (ret < 0)
 					return ret;
-				}
-			}
-			
+
 			pe_entry->done_len += ret;
 			if ( ret != pe_entry->tx.tx_iov[i].src.iov.len - offset)
 				return 0;
@@ -519,11 +618,9 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 
 	if (pe_entry->done_len == pe_entry->total_len) {
 		pe_entry->tx.send_done = 1;
-		SOCK_LOG_INFO("Send complete\n");
-		
-		if (!(pe_entry->flags & FI_REMOTE_COMPLETE)) 
-			pe_entry->tx.ack_done = 1;
+		SOCK_LOG_INFO("Send complete\n");		
 	}
+	sock_comm_send_flush(pe_entry->conn);
 	return 0;
 }
 
@@ -534,6 +631,9 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 	int ret;
 	ssize_t len, i, offset, done_data, data_len;
 
+	if (pe_entry->tx.send_done)
+		return 0;
+
 	len = sizeof(struct sock_msg_hdr);
 	if (pe_entry->tx.tx_op.op == SOCK_OP_TSEND ||
 		pe_entry->tx.tx_op.op == SOCK_OP_TSEND_INJECT) {
@@ -542,17 +642,12 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 
 		len += sizeof(uint64_t);
 		if (pe_entry->done_len < len) {
-			ret = send(conn->sock_fd, 
-				   (char*)&pe_entry->tag + offset,
-				   sizeof(uint64_t) - offset, 0);
-			if (ret < 0) {
-				if (ret == EWOULDBLOCK || ret == EAGAIN)
-					return 0;
-				else{
-					SOCK_LOG_ERROR("Failed to send: %d\n", ret);
-					return ret;
-				}		
-			}	
+			ret = sock_comm_send(conn, 
+					   (char*)&pe_entry->tag + offset,
+					   sizeof(uint64_t) - offset, 0);
+			if (ret < 0) 
+				return ret;
+
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len != len)
 				return 0;
@@ -564,17 +659,12 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		offset = pe_entry->done_len - len;
 		len += sizeof(uint64_t);
 		if (pe_entry->done_len < len) {
-			ret = send(conn->sock_fd, 
-				   (char*)pe_entry->data + offset,
-				   sizeof(uint64_t) - offset, 0);
-			if (ret < 0) {
-				if (ret == EWOULDBLOCK || ret == EAGAIN)
-					return 0;
-				else{
-					SOCK_LOG_ERROR("Failed to send\n");
-					return ret;
-				}		
-			}	
+			ret = sock_comm_send(conn, 
+					   (char*)pe_entry->data + offset,
+					   sizeof(uint64_t) - offset, 0);
+			if (ret < 0) 
+				return ret;
+
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len != len)
 				return 0;
@@ -588,18 +678,11 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		len += pe_entry->tx.tx_op.src_iov_len;
 		
 		if (pe_entry->done_len < len) {
-			ret = send(conn->sock_fd, 
-				   (char*)pe_entry->tx.inject_data + offset,
-				   pe_entry->tx.tx_op.src_iov_len - offset, 0);
-			
-			if (ret < 0) {
-				if (ret == EWOULDBLOCK || ret == EAGAIN)
-					return 0;
-				else{
-					SOCK_LOG_ERROR("Failed to send\n");
-					return ret;
-				}
-			}
+			ret = sock_comm_send(conn, 
+					   (char*)pe_entry->tx.inject_data + offset,
+					   pe_entry->tx.tx_op.src_iov_len - offset, 0);
+			if (ret < 0) 
+				return ret;
 			
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len <= len)
@@ -617,24 +700,16 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			}
 
 			offset = done_data;
-			ret = send(conn->sock_fd, 
-				   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
-				   offset, pe_entry->tx.tx_iov[i].src.iov.len -
-				   offset, 0);
-
-			if (ret < 0) {
-				if (ret == EWOULDBLOCK || ret == EAGAIN)
-					return 0;
-				else{
-					SOCK_LOG_ERROR("Failed to send\n");
-					return ret;
-				}
-			}
+			ret = sock_comm_send(conn, 
+					   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
+					   offset, pe_entry->tx.tx_iov[i].src.iov.len -
+					   offset, 0);
+			if (ret < 0) 
+				return ret;
 			
 			pe_entry->done_len += ret;
 			if ( ret != pe_entry->tx.tx_iov[i].src.iov.len - offset)
 				return 0;
-
 		}
 	}
 
@@ -645,17 +720,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		if (!(pe_entry->flags & FI_REMOTE_COMPLETE)) 
 			pe_entry->tx.ack_done = 1;
 	}
-	return 0;
-}
-
-int sock_pe_handle_ack(struct sock_pe *pe, struct sock_pe_entry *pe_entry)
-{
-	struct sock_pe_entry *waiting_entry;
-
-	assert(pe_entry->msg_hdr.pe_entry_id <= SOCK_PE_MAX_ENTRIES);
-	waiting_entry = &pe->pe_table[pe_entry->msg_hdr.pe_entry_id];
-	assert(waiting_entry->type == SOCK_PE_TX);
-	waiting_entry->is_complete = 1;
+	sock_comm_send_flush(pe_entry->conn);
 	return 0;
 }
 
@@ -665,27 +730,26 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 {
 	int ret; 
 	struct sock_conn *conn = pe_entry->conn;
-	if (conn->pe_entry != NULL && conn->pe_entry != pe_entry)
-		return 0;
 
-	if (conn->pe_entry == NULL) {
-		conn->pe_entry = pe_entry;
+	assert(pe_entry->conn);
+	if (conn->tx_pe_entry != NULL && conn->tx_pe_entry != pe_entry) {
+		SOCK_LOG_INFO("Cannot progress %p as conn %p is being used by %p\n",
+			      pe_entry, conn, conn->tx_pe_entry);
+		return 0;
 	}
 
-	SOCK_LOG_INFO("[%p] Progressing TX entry\n", pe_entry);
-	if (!pe_entry->tx.header_sent) {
-		ret = send(conn->sock_fd, 
-			   (char*)&pe_entry->msg_hdr + pe_entry->done_len,
-			   sizeof(struct sock_msg_hdr) - pe_entry->done_len, 0);
-		if (ret < 0) {
-			if (ret == EWOULDBLOCK || ret == EAGAIN)
-				return 0;
-			else {
-				SOCK_LOG_ERROR("Failed to send\n");
-				return ret;
-			}
-		}
+	if (conn->tx_pe_entry == NULL) {
+		SOCK_LOG_INFO("Connection %p grabbed by %p\n", conn, pe_entry);
+		conn->tx_pe_entry = pe_entry;
+	}
 
+	if (!pe_entry->tx.header_sent) {
+		ret = sock_comm_send(conn, 
+				   (char*)&pe_entry->msg_hdr + pe_entry->done_len,
+				   sizeof(struct sock_msg_hdr) - pe_entry->done_len, 0);
+		if (ret < 0) 
+			return ret;
+		
 		pe_entry->done_len += ret;
 		if (pe_entry->done_len == sizeof(struct sock_msg_hdr)) {
 			pe_entry->tx.header_sent = 1;
@@ -706,21 +770,9 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 			pe_entry->is_complete = 1;
 		}
 		break;
-
-	case SOCK_OP_SEND_COMPLETE:
-	case SOCK_OP_WRITE_COMPLETE:
-	case SOCK_OP_READ_COMPLETE:
-		ret = sock_pe_handle_ack(pe, pe_entry);
-		pe_entry->is_complete = 1;
-		break;
-		
+	
 	case SOCK_OP_WRITE:
 		ret = sock_pe_progress_tx_write(pe, pe_entry, conn);
-		
-		if (pe_entry->tx.ack_done) {
-			sock_pe_report_tx_completion(pe_entry, tx_ctx);
-			pe_entry->is_complete = 1;
-		}
 		break;
 
 	case SOCK_OP_READ:
@@ -733,31 +785,6 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 	}
 	
 	return ret;
-}
-
-static void sock_pe_release_entry(struct sock_pe *pe, 
-			struct sock_pe_entry *pe_entry)
-{
-	dlist_remove(&pe_entry->ctx_entry);
-	pe_entry->conn->pe_entry = NULL;
-	pe_entry->conn = NULL;
-
-	dlist_remove(&pe_entry->entry);
-	dlist_insert_tail(&pe_entry->entry, &pe->free_list);
-	SOCK_LOG_INFO("progress entry %p released\n", pe_entry);
-}
-
-static struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
-{
-	struct dlist_entry *entry;
-	struct sock_pe_entry *pe_entry;
-
-	entry = pe->free_list.next;
-	pe_entry = container_of(entry, struct sock_pe_entry, entry);
-	dlist_remove(&pe_entry->entry);
-	dlist_insert_tail(&pe_entry->entry, &pe->busy_list);
-	SOCK_LOG_INFO("progress entry %p acquired \n", pe_entry);
-	return pe_entry;
 }
 
 static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
@@ -777,6 +804,9 @@ static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	pe_entry->ep = ep;
 	pe_entry->is_complete = 0;
 	pe_entry->done_len = 0;
+
+	SOCK_LOG_INFO("New RX on PE entry %p (%ld)\n", 
+		      pe_entry, PE_INDEX(pe, pe_entry));
 
 	SOCK_LOG_INFO("Inserting rx_entry to PE entry %p, conn: %p\n",
 		      pe_entry, pe_entry->conn);
@@ -800,12 +830,14 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	}
 
 	memset(&pe_entry->tx, 0, sizeof(struct sock_tx_pe_entry));
+	memset(&pe_entry->msg_hdr, 0, sizeof(struct sock_msg_hdr));
 
 	pe_entry->type = SOCK_PE_TX;
 	pe_entry->is_complete = 0;
 	pe_entry->done_len = 0;
 	pe_entry->conn = NULL;
 	pe_entry->ep = tx_ctx->ep;
+	pe_entry->tx.tx_ctx = tx_ctx;
 
 	dlist_insert_tail(&pe_entry->ctx_entry, &tx_ctx->pe_entry_list);
 
@@ -813,6 +845,10 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	memset(&pe_entry->msg_hdr, 0, sizeof(struct sock_msg_hdr));
 	msg_hdr = &pe_entry->msg_hdr;
 	msg_hdr->msg_len = sizeof(struct sock_msg_hdr);
+
+	msg_hdr->pe_entry_id = PE_INDEX(pe, pe_entry);
+	SOCK_LOG_INFO("New TX on PE entry %p (%d)\n", 
+		      pe_entry, msg_hdr->pe_entry_id);
 
 	rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_op, sizeof(struct sock_op));
 	rbfdread(&tx_ctx->rbfd, &pe_entry->flags, sizeof(uint64_t));
@@ -845,10 +881,12 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 		}
 
 		/* read dst iov(s)*/
+		msg_hdr->msg_len += sizeof(union sock_iov) * 
+			pe_entry->tx.tx_op.dest_iov_len;
+
 		for (i = 0; i<pe_entry->tx.tx_op.dest_iov_len; i++) {
 			rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_iov[i].dst, 
 			       sizeof(union sock_iov));
-			msg_hdr->msg_len += pe_entry->tx.tx_iov[i].dst.iov.len;
 		}
 	}
 
@@ -879,15 +917,16 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 		return -FI_EINVAL;
 	}
 
-	msg_hdr->rx_id = htons(tx_ctx->tx_id);
+	msg_hdr->rx_id = HTON_16(tx_ctx->tx_id);
 
 	/* FIXME: double check */
-	msg_hdr->src_addr = htonl(SOCK_GET_RX_ID(pe_entry->addr,
-						 tx_ctx->av->rx_ctx_bits));
+	msg_hdr->src_addr = HTON_64(SOCK_GET_RX_ID(pe_entry->addr,
+						   tx_ctx->av->rx_ctx_bits));
 	msg_hdr->dest_iov_len = pe_entry->tx.tx_op.dest_iov_len;
-	msg_hdr->flags = htonl(pe_entry->flags);
+	msg_hdr->flags = HTON_64(pe_entry->flags);
 	pe_entry->total_len = msg_hdr->msg_len;
-	msg_hdr->msg_len = htonl(msg_hdr->msg_len);
+	msg_hdr->msg_len = HTON_64(msg_hdr->msg_len);
+	msg_hdr->pe_entry_id = HTON_16(msg_hdr->pe_entry_id);
 	return 0;
 }
 
@@ -907,6 +946,24 @@ int sock_pe_add_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *ctx)
 	fastlock_release(&pe->lock);
 	SOCK_LOG_INFO("RX ctx added to PE\n");
 	return 0;
+}
+
+static void sock_pe_progress_pending_ack(struct sock_pe *pe, 
+					 struct sock_pe_entry *pe_entry)
+{
+	int ret, offset = pe_entry->done_len;
+
+	ret = sock_comm_send(pe_entry->conn, 
+			   (char*)&pe_entry->rx.response + offset,
+			   sizeof(struct sock_msg_response) - offset, 0);
+	if (ret < 0) 
+		return;
+	pe_entry->done_len += ret;
+	if (pe_entry->done_len == sizeof(struct sock_msg_response)) {
+		pe_entry->is_complete = 1;
+		pe_entry->rx.pending_send = 0;
+	}
+	sock_comm_send_flush(pe_entry->conn);
 }
 
 int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
@@ -940,7 +997,7 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 				goto out;
 			}
 
-			if (ret == 1) {
+			if (ret == 1 && conn->rx_pe_entry == NULL) {
 				/* new RX PE entry */
 				ret = sock_pe_new_rx_entry(pe, rx_ctx, ep, conn);
 				if (ret < 0) 
@@ -955,9 +1012,22 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 		
 		pe_entry = container_of(entry, struct sock_pe_entry, ctx_entry);
 		entry = entry->next;
-		ret = sock_pe_progress_rx_entry(pe, pe_entry);
-		if (ret < 0) 
-			goto out;
+
+		if (pe_entry->rx.pending_send) {
+			sock_pe_progress_pending_ack(pe, pe_entry);
+			if (pe_entry->is_complete) {
+				sock_pe_release_entry(pe, pe_entry);
+				SOCK_LOG_INFO("[%p] RX done\n", pe_entry);
+			}
+			continue;
+		}
+
+
+		if (!pe_entry->rx.recv_done) {
+			ret = sock_pe_read_hdr(pe, pe_entry);
+			if (ret < 0) 
+				goto out;
+		}
 
 		if (pe_entry->rx.recv_done) {
 			ret = sock_pe_process_recv(pe, rx_ctx, pe_entry);
@@ -1043,13 +1113,6 @@ static void *sock_pe_progress_thread(void *data)
 	fds[1].fd = pe->rx_list.fd[LIST_READ_FD];
 	
 	while (pe->do_progress) {
-
-		if (dlistfd_empty(&pe->tx_list) &&
-		   dlistfd_empty(&pe->rx_list)) {
-			ret = poll(fds, 2, SOCK_PE_POLL_TIMEOUT);
-			if (ret == 0)
-				continue;
-		}
 
 		/* progress tx */
 		if (!dlistfd_empty(&pe->tx_list)) {
