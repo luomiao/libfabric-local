@@ -377,6 +377,12 @@ int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 	}
 
 	*entry = &(conn_map->table[key-1]);
+	if (!(*entry)->buf_initialised) {
+		rbinit(&(*entry)->inbuf, 128 * 1024 * 1024);
+		rbinit(&(*entry)->outbuf, 128 * 1024 * 1024);
+		(*entry)->buf_initialised = 1;
+	}
+
 	return 0;
 }
 
