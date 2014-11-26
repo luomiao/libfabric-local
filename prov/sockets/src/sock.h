@@ -568,6 +568,7 @@ struct sock_rx_pe_entry{
 	uint8_t recv_done;
 	uint8_t reserved[7];
 	void *raw_data;
+	struct sock_rx_entry *rx_entry;
 	struct sock_msg_response response;
 	union sock_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
 };
