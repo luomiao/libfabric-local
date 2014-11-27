@@ -212,7 +212,7 @@ static int sock_pe_handle_ack(struct sock_pe *pe, struct sock_pe_entry *pe_entry
 	int ret;
 
 	ret = sock_comm_recv(pe_entry->conn,
-			   &pe_entry_id, sizeof(uint64_t), 0);
+			   &pe_entry_id, sizeof(uint64_t));
 	if (ret != sizeof(uint64_t))
 		return -FI_EINVAL;
 
@@ -242,7 +242,7 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 		if (pe_entry->done_len < len) {
 			ret = sock_comm_recv(pe_entry->conn, 
 					   (char*)&pe_entry->data + offset, 
-					   sizeof(uint64_t) - offset, 0);
+					   sizeof(uint64_t) - offset);
 			if (ret < 0)
 				return ret;
 			pe_entry->done_len += ret;
@@ -258,7 +258,7 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 
 		ret = sock_comm_recv(pe_entry->conn,
 				   (char *)&pe_entry->rx.rx_iov[0] + offset,
-				   entry_len - offset, 0);
+				   entry_len - offset);
 		if (ret < 0)
 			return ret;
 		pe_entry->done_len += ret;
@@ -295,7 +295,7 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 
 		ret = sock_comm_recv(pe_entry->conn,
 				   (char*)pe_entry->rx.rx_iov[i].iov.addr + offset,
-				   pe_entry->rx.rx_iov[i].iov.len - offset, 0);
+				   pe_entry->rx.rx_iov[i].iov.len - offset);
 		if (ret < 0)
 			return ret;
 		done_data = 0;
@@ -339,7 +339,7 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		if (pe_entry->done_len < len) {
 			ret = sock_comm_recv(pe_entry->conn, 
 					   (char*)&pe_entry->tag + offset, 
-					   sizeof(uint64_t) - offset, 0);
+					   sizeof(uint64_t) - offset);
 			if (ret < 0)
 				return ret;
 			pe_entry->done_len += ret;
@@ -353,7 +353,7 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		len += sizeof(uint64_t);
 		if (pe_entry->done_len < len) {
 			sock_comm_recv(pe_entry->conn, (char*)&pe_entry->data 
-				     + offset, sizeof(uint64_t) - offset, 0);
+				     + offset, sizeof(uint64_t) - offset);
 			if (ret < 0)
 				return ret;
 			pe_entry->done_len += ret;
@@ -398,7 +398,7 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		offset = done_data;
 		ret = sock_comm_recv(pe_entry->conn, 
 				   (char *)rx_entry->iov[i].iov.addr + offset, 
-				   data_len - offset, 0);
+				   data_len - offset);
 		if (ret < 0)
 			return ret;
 		
@@ -508,7 +508,7 @@ static int sock_pe_read_hdr(struct sock_pe *pe,
 	if (pe_entry->done_len < sizeof(struct sock_msg_hdr)) {
 		ret = sock_comm_recv(conn, 
 				   (char*)&pe_entry->msg_hdr + pe_entry->done_len, 
-				   sizeof(struct sock_msg_hdr) - pe_entry->done_len, 0);
+				   sizeof(struct sock_msg_hdr) - pe_entry->done_len);
 		if (ret < 0) 
 			return ret;
 		
@@ -544,7 +544,7 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 		if (pe_entry->done_len < len) {
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->data + offset,
-					   sizeof(uint64_t) - offset, 0);
+					   sizeof(uint64_t) - offset);
 			if (ret < 0)
 				return ret;
 			pe_entry->done_len += ret;
@@ -567,7 +567,7 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 
 		ret = sock_comm_send(conn,
 				   (char*)&dest_iov[0] + offset, 
-				   dest_iov_len - offset, 0);
+				   dest_iov_len - offset);
 		if (ret < 0)
 			return ret;
 		pe_entry->done_len += ret;
@@ -583,7 +583,7 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 		if (pe_entry->done_len < len) {
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->tx.inject_data + offset,
-					   pe_entry->tx.tx_op.src_iov_len - offset, 0);
+					   pe_entry->tx.tx_op.src_iov_len - offset);
 			if (ret < 0)
 				return ret;
 			
@@ -606,7 +606,7 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
 					   offset, pe_entry->tx.tx_iov[i].src.iov.len -
-					   offset, 0);
+					   offset);
 			if (ret < 0)
 					return ret;
 
@@ -644,7 +644,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		if (pe_entry->done_len < len) {
 			ret = sock_comm_send(conn, 
 					   (char*)&pe_entry->tag + offset,
-					   sizeof(uint64_t) - offset, 0);
+					   sizeof(uint64_t) - offset);
 			if (ret < 0) 
 				return ret;
 
@@ -661,7 +661,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		if (pe_entry->done_len < len) {
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->data + offset,
-					   sizeof(uint64_t) - offset, 0);
+					   sizeof(uint64_t) - offset);
 			if (ret < 0) 
 				return ret;
 
@@ -680,7 +680,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		if (pe_entry->done_len < len) {
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->tx.inject_data + offset,
-					   pe_entry->tx.tx_op.src_iov_len - offset, 0);
+					   pe_entry->tx.tx_op.src_iov_len - offset);
 			if (ret < 0) 
 				return ret;
 			
@@ -703,7 +703,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
 					   offset, pe_entry->tx.tx_iov[i].src.iov.len -
-					   offset, 0);
+					   offset);
 			if (ret < 0) 
 				return ret;
 			
@@ -746,7 +746,7 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 	if (!pe_entry->tx.header_sent) {
 		ret = sock_comm_send(conn, 
 				   (char*)&pe_entry->msg_hdr + pe_entry->done_len,
-				   sizeof(struct sock_msg_hdr) - pe_entry->done_len, 0);
+				   sizeof(struct sock_msg_hdr) - pe_entry->done_len);
 		if (ret < 0) 
 			return ret;
 		
@@ -955,7 +955,7 @@ static void sock_pe_progress_pending_ack(struct sock_pe *pe,
 
 	ret = sock_comm_send(pe_entry->conn, 
 			   (char*)&pe_entry->rx.response + offset,
-			   sizeof(struct sock_msg_response) - offset, 0);
+			   sizeof(struct sock_msg_response) - offset);
 	if (ret < 0) 
 		return;
 	pe_entry->done_len += ret;
@@ -968,7 +968,7 @@ static void sock_pe_progress_pending_ack(struct sock_pe *pe,
 
 int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 {
-	int i, ret = 0;
+	int i, ret = 0, data_avail;
 	struct sock_ep *ep;
 	struct pollfd poll_fd;
 	struct sock_conn *conn;
@@ -990,14 +990,21 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 		for (i=0; i<map->used; i++) {
 			conn = &map->table[i];
 
-			poll_fd.fd = conn->sock_fd;
-			ret = poll(&poll_fd, 1, 0);
-			if (ret < 0) {
-				SOCK_LOG_INFO("Error polling fd: %d\n", conn->sock_fd);
-				goto out;
+			data_avail = 0;
+			if (rbused(&conn->inbuf) > 0) {
+				data_avail = 1;
+			} else {
+				poll_fd.fd = conn->sock_fd;
+				ret = poll(&poll_fd, 1, 0);
+				if (ret < 0) {
+					SOCK_LOG_INFO("Error polling fd: %d\n", 
+						      conn->sock_fd);
+					goto out;
+				}
+				data_avail = (ret == 1)?1:0;
 			}
 
-			if (ret == 1 && conn->rx_pe_entry == NULL) {
+			if (data_avail && conn->rx_pe_entry == NULL) {
 				/* new RX PE entry */
 				ret = sock_pe_new_rx_entry(pe, rx_ctx, ep, conn);
 				if (ret < 0) 

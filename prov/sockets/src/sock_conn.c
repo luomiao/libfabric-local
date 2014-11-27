@@ -377,12 +377,6 @@ int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 	}
 
 	*entry = &(conn_map->table[key-1]);
-	if (!(*entry)->buf_initialised) {
-		rbinit(&(*entry)->inbuf, 128 * 1024 * 1024);
-		rbinit(&(*entry)->outbuf, 128 * 1024 * 1024);
-		(*entry)->buf_initialised = 1;
-	}
-
 	return 0;
 }
 
@@ -395,6 +389,7 @@ static inline uint16_t _set_key(struct sock_conn_map *map, struct
 	struct sockaddr_in *entry;
 	struct addrinfo *c_res = NULL;
 	struct addrinfo hints;
+	struct sock_conn *conn;
 
 	memcpy(sa_ip, inet_ntoa(addr->sin_addr), INET_ADDRSTRLEN);
 	for (i=0; i < map->used; i++) {
@@ -426,6 +421,11 @@ static inline uint16_t _set_key(struct sock_conn_map *map, struct
 
 	memcpy(&map->table[map->used].addr, c_res->ai_addr, c_res->ai_addrlen);
 	map->table[map->used].sock_fd = conn_fd;
+	conn = &map->table[map->used];
+
+	rbinit(&conn->inbuf, 64 * 1024 * 1024);
+	rbinit(&conn->outbuf, 64 * 1024 * 1024);
+
 	map->used++;
 	return map->used;
 
@@ -453,10 +453,12 @@ static void * _sock_conn_listen(void *arg)
 	struct sock_conn_map *map = &domain->r_cmap;
 	struct addrinfo *s_res = NULL;
 	struct addrinfo hints;
-	int optval;
+	int optval, ret;
 	int listen_fd, conn_fd;
 	struct sockaddr_in remote;
 	socklen_t addr_size;
+	struct sock_conn *conn;
+	uint64_t flags;
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
@@ -501,7 +503,19 @@ static void * _sock_conn_listen(void *arg)
 			_increase_map(map, map->size*2);
 		}
 		memcpy(&map->table[map->used].addr, &remote, addr_size);
-		map->table[map->used].sock_fd = conn_fd;
+
+		conn = &map->table[map->used];
+
+		conn->sock_fd = conn_fd;
+
+		flags = fcntl(conn_fd, F_GETFL, 0);
+		ret = fcntl(conn_fd, F_SETFL, flags | O_NONBLOCK);
+		if (ret < 0)
+			goto err;
+
+		SOCK_LOG_INFO("Socket is non-blocking\n");
+		rbinit(&conn->inbuf, 64 * 1024 * 1024);
+		rbinit(&conn->outbuf, 64 * 1024 * 1024);
 		map->used++;
 	}
 

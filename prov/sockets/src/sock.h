@@ -792,14 +792,10 @@ struct sock_rx_entry *sock_rdm_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
 						    uint64_t flags);
 void sock_release_rx_entry(struct sock_rx_entry *rx_entry);
 
-int sock_comm_send_socket(struct sock_conn *conn, const void *buf, size_t len, 
-			  uint64_t flags);
+int sock_comm_send_socket(struct sock_conn *conn, const void *buf, size_t len);
 int sock_comm_send_flush(struct sock_conn *conn);
-int sock_comm_send(struct sock_conn *conn, const void *buf, size_t len, 
-		   uint64_t flags);
-int sock_comm_recv(struct sock_conn *conn, void *buf, size_t len, 
-		   uint64_t flags);
-
+int sock_comm_send(struct sock_conn *conn, const void *buf, size_t len);
+int sock_comm_recv(struct sock_conn *conn, void *buf, size_t len);
 
 void free_fi_info(struct fi_info *info);
 
