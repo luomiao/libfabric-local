@@ -141,7 +141,7 @@ ssize_t sock_comm_send(struct sock_conn *conn, const void *buf, size_t len)
 
 
 
-ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len)
+ssize_t sock_comm_recv_socket(struct sock_conn *conn, void *buf, size_t len)
 {
 	ssize_t ret;
 
@@ -151,4 +151,56 @@ ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len)
 
 	SOCK_LOG_INFO("READ from wire: %lu\n", ret);
 	return ret;
+}
+
+ssize_t sock_comm_recv_buffer(struct sock_conn *conn)
+{
+	int ret;
+	size_t endlen;
+	endlen = conn->inbuf.size - (conn->inbuf.wpos & conn->inbuf.size_mask);
+
+	ret = sock_comm_recv_socket(conn, 
+				    (char*) conn->inbuf.buf + 
+				    (conn->inbuf.wpos & conn->inbuf.size_mask), endlen);
+	if (ret <= 0)
+		return 0;
+	
+	conn->inbuf.wpos += ret;
+	rbcommit(&conn->inbuf);
+	if (ret != endlen) 
+		return ret;
+
+	ret = sock_comm_recv_socket(conn, conn->inbuf.buf, rbavail(&conn->inbuf));
+	if (ret <= 0)
+		return 0;
+
+	conn->inbuf.wpos += ret;
+	rbcommit(&conn->inbuf);
+	return 0;
+}
+
+ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len)
+{
+	int ret;
+	ssize_t used;
+
+	used = rbused(&conn->inbuf);
+	if (used == 0) {
+		ret = sock_comm_recv_socket(conn, buf, len);
+		sock_comm_recv_buffer(conn);
+		return ret;
+	}
+
+	if (used >= len) {
+		rbread(&conn->inbuf, buf, len);
+		return len;
+	}
+
+	rbread(&conn->inbuf, buf, used);
+	ret = sock_comm_recv_socket(conn, (char*)buf + used, len - used);
+	if (ret < 0)
+		return used;
+
+	sock_comm_recv_buffer(conn);
+	return ret + used;
 }
