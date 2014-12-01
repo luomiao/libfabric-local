@@ -416,6 +416,8 @@ static ssize_t sock_rdm_handle_buffered_recv(struct sock_rx_ctx *rx_ctx,
 	rx_ctx->buffered_len -= rem;
 	fastlock_release(&rx_ctx->lock);
 
+	SOCK_LOG_INFO("Consuming buffered entry: %p, ctx: %p\n", rx_entry, rx_ctx);
+
 	for (i=0; i< msg->iov_count && rem > 0; i++) {
 		len = MIN(msg->msg_iov[i].iov_len, rem);
 		memcpy(msg->msg_iov[i].iov_base, 
@@ -473,6 +475,7 @@ ssize_t sock_rdm_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	rx_entry->context = (uint64_t)msg->context;
 	rx_entry->addr = msg->addr;
 	rx_entry->data = msg->data;
+	rx_entry->ignore = 0xFFFF;
 
 	for (i=0; i< msg->iov_count; i++) {
 		rx_entry->iov[i].iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
@@ -480,6 +483,9 @@ ssize_t sock_rdm_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	}
 
 	fastlock_acquire(&rx_ctx->lock);
+
+	SOCK_LOG_INFO("New rx_entry: %p (ctx: %p)\n", rx_entry, rx_ctx);
+
 	dlist_insert_tail(&rx_entry->entry, &rx_ctx->rx_entry_list);
 	fastlock_release(&rx_ctx->lock);
 	return 0;
@@ -710,6 +716,8 @@ static ssize_t sock_rdm_handle_buffered_trecv(struct sock_rx_ctx *rx_ctx,
 	fastlock_acquire(&rx_ctx->lock);
 	rx_ctx->buffered_len -= rem;
 	fastlock_release(&rx_ctx->lock);
+
+	SOCK_LOG_INFO("Consuming buffered entry: %p, ctx: %p\n", rx_entry, rx_ctx);
 
 	for (i=0; i< msg->iov_count && rem > 0; i++) {
 		len = MIN(msg->msg_iov[i].iov_len, rem);

@@ -82,6 +82,8 @@
 #define SOCK_OPS_CAP (FI_INJECT | FI_SEND | FI_RECV )
 #define SOCK_MODE (0)
 
+#define SOCK_COMM_BUF_SZ (512 * 1024)
+
 #define SOCK_MAJOR_VERSION 1
 #define SOCK_MINOR_VERSION 0
 
@@ -581,7 +583,7 @@ struct sock_tx_pe_entry{
 
 struct sock_rx_pe_entry{
 	struct sock_op rx_op;
-	uint8_t recv_done;
+	uint8_t header_read;
 	uint8_t pending_send;
 	uint8_t reserved[7];
 	void *raw_data;
@@ -726,8 +728,8 @@ int sock_mr_verify_desc(struct sock_domain *domain, void *desc,
 
 int sock_ep_connect(struct fid_ep *ep, const void *addr,
 		    const void *param, size_t paramlen);
-struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep, 
-					   struct sock_pe_entry *pe_entry);
+struct sock_rx_entry *sock_get_rx_entry(struct sock_rx_ctx *rx_ctx, 
+					uint64_t addr, uint64_t tag);
 
 
 struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, 
@@ -792,10 +794,10 @@ struct sock_rx_entry *sock_rdm_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
 						    uint64_t flags);
 void sock_release_rx_entry(struct sock_rx_entry *rx_entry);
 
-int sock_comm_send_socket(struct sock_conn *conn, const void *buf, size_t len);
-int sock_comm_send_flush(struct sock_conn *conn);
-int sock_comm_send(struct sock_conn *conn, const void *buf, size_t len);
-int sock_comm_recv(struct sock_conn *conn, void *buf, size_t len);
+ssize_t sock_comm_send_socket(struct sock_conn *conn, const void *buf, size_t len);
+ssize_t sock_comm_send_flush(struct sock_conn *conn);
+ssize_t sock_comm_send(struct sock_conn *conn, const void *buf, size_t len);
+ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len);
 
 void free_fi_info(struct fi_info *info);
 
