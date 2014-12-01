@@ -70,18 +70,10 @@ ssize_t sock_comm_send_socket(struct sock_conn *conn, const void *buf, size_t le
 
 		ret = send(conn->sock_fd, buf + offset, comm_len, 0);
 		if (ret < 0) {
-			if (ret == EWOULDBLOCK || ret == EAGAIN)
-				return done_len;
-			else{
-/*
-				SOCK_LOG_ERROR("Failed to send [buf:%p, len:%lu\n",
-					       buf, (long unsigned int)len);
-				SOCK_LOG_ERROR("writing socket: %s",
-					       SOCK_STRERROR (SOCK_ERRNO));
-*/
-				return done_len;
-			}		
+			SOCK_LOG_INFO("WROTE %lu on wire\n", done_len);
+			return done_len;
 		}
+		
 		done_len += ret;
 		rem -= ret;
 		offset += ret;
@@ -92,8 +84,6 @@ ssize_t sock_comm_send_socket(struct sock_conn *conn, const void *buf, size_t le
 
 ssize_t sock_comm_send_flush(struct sock_conn *conn)
 {
-//	return 0;
-
 	ssize_t ret;
 	size_t endlen, len;
 
@@ -130,13 +120,11 @@ ssize_t sock_comm_send_flush(struct sock_conn *conn)
 
 	conn->outbuf.rcnt += ret;
 	return ret + endlen;
-
 }
 
 
 ssize_t sock_comm_send(struct sock_conn *conn, const void *buf, size_t len)
 {
-
 	ssize_t ret;
 
 	if (rbavail(&conn->outbuf) < len) {
@@ -149,8 +137,6 @@ ssize_t sock_comm_send(struct sock_conn *conn, const void *buf, size_t len)
 	rbwrite(&conn->outbuf, buf, len);
 	SOCK_LOG_INFO("Buffered %lu\n", len);
 	return len;
-
-//	return sock_comm_send_socket(conn, buf, len);
 }
 
 
@@ -159,21 +145,10 @@ ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len)
 {
 	ssize_t ret;
 
-	//len = MIN(COMM_LEN, len);
 	ret = recv(conn->sock_fd, buf, len, 0);
-	if (ret < 0) {
-		if (ret == EWOULDBLOCK || ret == EAGAIN)
+	if (ret < 0)
 			return 0;
-		else{
-/*
-			SOCK_LOG_ERROR("Failed to recv %d [buf:%p, len:%lu]\n",
-				       ret, buf, (long unsigned int)len);
-			SOCK_LOG_ERROR("reading socket: %s",
-			       SOCK_STRERROR (SOCK_ERRNO));
-*/
-			return 0;
-		}
-	}
+
 	SOCK_LOG_INFO("READ from wire: %lu\n", ret);
 	return ret;
 }
