@@ -186,6 +186,24 @@ int sock_pe_report_rx_completion(struct sock_pe_entry *pe_entry,
 	return 0;
 }
 
+static void sock_pe_progress_pending_ack(struct sock_pe *pe, 
+					 struct sock_pe_entry *pe_entry)
+{
+	int ret, offset = pe_entry->done_len;
+
+	ret = sock_comm_send(pe_entry->conn, 
+			   (char*)&pe_entry->rx.response + offset,
+			   sizeof(struct sock_msg_response) - offset);
+	if (ret < 0) 
+		return;
+	pe_entry->done_len += ret;
+	if (pe_entry->done_len == sizeof(struct sock_msg_response)) {
+		pe_entry->is_complete = 1;
+		pe_entry->rx.pending_send = 0;
+	}
+	sock_comm_send_flush(pe_entry->conn);
+}
+
 static int sock_pe_send_response(struct sock_pe *pe, 
 				 struct sock_pe_entry *pe_entry, uint8_t op_type)
 {
@@ -203,6 +221,8 @@ static int sock_pe_send_response(struct sock_pe *pe,
 
 	pe_entry->done_len = 0;
 	pe_entry->rx.pending_send = 1;
+
+	sock_pe_progress_pending_ack(pe, pe_entry);
 	return 0;
 }
 
@@ -962,24 +982,6 @@ int sock_pe_add_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *ctx)
 	fastlock_release(&pe->lock);
 	SOCK_LOG_INFO("RX ctx added to PE\n");
 	return 0;
-}
-
-static void sock_pe_progress_pending_ack(struct sock_pe *pe, 
-					 struct sock_pe_entry *pe_entry)
-{
-	int ret, offset = pe_entry->done_len;
-
-	ret = sock_comm_send(pe_entry->conn, 
-			   (char*)&pe_entry->rx.response + offset,
-			   sizeof(struct sock_msg_response) - offset);
-	if (ret < 0) 
-		return;
-	pe_entry->done_len += ret;
-	if (pe_entry->done_len == sizeof(struct sock_msg_response)) {
-		pe_entry->is_complete = 1;
-		pe_entry->rx.pending_send = 0;
-	}
-	sock_comm_send_flush(pe_entry->conn);
 }
 
 int sock_pe_progress_buffered_rx(struct sock_rx_ctx *rx_ctx)
