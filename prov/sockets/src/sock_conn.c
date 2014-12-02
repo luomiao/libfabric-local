@@ -383,7 +383,6 @@ int sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 static inline uint16_t _set_key(struct sock_conn_map *map, struct
 		sockaddr_in *addr)
 {
-	int64_t flags;
 	int i, conn_fd;
 	char entry_ip[INET_ADDRSTRLEN];
 	char sa_ip[INET_ADDRSTRLEN];
@@ -423,31 +422,7 @@ static inline uint16_t _set_key(struct sock_conn_map *map, struct
 	memcpy(&map->table[map->used].addr, c_res->ai_addr, c_res->ai_addrlen);
 	map->table[map->used].sock_fd = conn_fd;
 	conn = &map->table[map->used];
-
-	flags = fcntl(conn_fd, F_GETFL, 0);
-	fcntl(conn_fd, F_SETFL, flags | O_NONBLOCK);
-
-	rbinit(&conn->inbuf, SOCK_COMM_BUF_SZ);
-	rbinit(&conn->outbuf, SOCK_COMM_BUF_SZ);
-
-	int ret;
-
-	socklen_t size = SOCK_COMM_BUF_SZ;
-	socklen_t optlen = sizeof(int);
-
-		
-	ret = setsockopt(conn_fd, SOL_SOCKET, SO_RCVBUF, &size, optlen);
-	ret = setsockopt(conn_fd, SOL_SOCKET, SO_SNDBUF, &size, optlen);
-
-		
-		ret = getsockopt(conn_fd, SOL_SOCKET, SO_RCVBUF, &size, &optlen);
-		SOCK_LOG_ERROR("SO_RCVBUF: %d, ret: %d\n", size, ret);
-		
-		
-		optlen = sizeof(int);
-		ret = getsockopt(conn_fd, SOL_SOCKET, SO_SNDBUF, &size, &optlen);
-		SOCK_LOG_ERROR("SO_SNDBUF: %d, ret: %d\n", size, ret);
-
+	sock_comm_buffer_init(conn);
 	map->used++;
 	return map->used;
 
@@ -475,12 +450,11 @@ static void * _sock_conn_listen(void *arg)
 	struct sock_conn_map *map = &domain->r_cmap;
 	struct addrinfo *s_res = NULL;
 	struct addrinfo hints;
-	int optval, ret;
+	int optval;
 	int listen_fd, conn_fd;
 	struct sockaddr_in remote;
 	socklen_t addr_size;
 	struct sock_conn *conn;
-	uint64_t flags;
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
@@ -527,34 +501,8 @@ static void * _sock_conn_listen(void *arg)
 		memcpy(&map->table[map->used].addr, &remote, addr_size);
 
 		conn = &map->table[map->used];
-
 		conn->sock_fd = conn_fd;
-
-		flags = fcntl(conn_fd, F_GETFL, 0);
-		ret = fcntl(conn_fd, F_SETFL, flags | O_NONBLOCK);
-		if (ret < 0)
-			goto err;
-
-		SOCK_LOG_INFO("Socket is non-blocking\n");
-		rbinit(&conn->inbuf, SOCK_COMM_BUF_SZ);
-		rbinit(&conn->outbuf, SOCK_COMM_BUF_SZ);
-
-		socklen_t size = SOCK_COMM_BUF_SZ;
-		socklen_t optlen = sizeof(int);
-
-	ret = setsockopt(conn_fd, SOL_SOCKET, SO_RCVBUF, &size, optlen);
-	ret = setsockopt(conn_fd, SOL_SOCKET, SO_SNDBUF, &size, optlen);
-
-		
-		ret = getsockopt(conn_fd, SOL_SOCKET, SO_RCVBUF, &size, &optlen);
-		SOCK_LOG_ERROR("SO_RCVBUF: %d, ret: %d\n", size, ret);
-		
-		
-		optlen = sizeof(int);
-		ret = getsockopt(conn_fd, SOL_SOCKET, SO_SNDBUF, &size, &optlen);
-		SOCK_LOG_ERROR("SO_SNDBUF: %d, ret: %d\n", size, ret);
-		
-
+		sock_comm_buffer_init(conn);
 		map->used++;
 	}
 

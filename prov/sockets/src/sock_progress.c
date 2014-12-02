@@ -1072,7 +1072,6 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 		break;
 
 	case SOCK_OP_ATOMIC:
-	case SOCK_OP_SEND_INJECT:
 	default:
 		ret = -FI_ENOSYS;
 		SOCK_LOG_ERROR("Operation not supported\n");

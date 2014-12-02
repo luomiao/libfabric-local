@@ -204,3 +204,34 @@ ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len)
 	sock_comm_recv_buffer(conn);
 	return ret + used;
 }
+
+int sock_comm_buffer_init(struct sock_conn *conn)
+{
+	uint64_t flags;
+	socklen_t size = SOCK_COMM_BUF_SZ;
+	socklen_t optlen = sizeof(socklen_t);
+
+	flags = fcntl(conn->sock_fd, F_GETFL, 0);
+	fcntl(conn->sock_fd, F_SETFL, flags | O_NONBLOCK);
+
+	rbinit(&conn->inbuf, SOCK_COMM_BUF_SZ);
+	rbinit(&conn->outbuf, SOCK_COMM_BUF_SZ);
+		
+	setsockopt(conn->sock_fd, SOL_SOCKET, SO_RCVBUF, &size, optlen);
+	setsockopt(conn->sock_fd, SOL_SOCKET, SO_SNDBUF, &size, optlen);
+
+	getsockopt(conn->sock_fd, SOL_SOCKET, SO_RCVBUF, &size, &optlen);
+	SOCK_LOG_INFO("SO_RCVBUF: %d\n", size);
+		
+	optlen = sizeof(socklen_t);
+	getsockopt(conn->sock_fd, SOL_SOCKET, SO_SNDBUF, &size, &optlen);
+	SOCK_LOG_INFO("SO_SNDBUF: %d\n", size);
+	return 0;
+}
+
+
+void sock_comm_buffer_finalize(struct sock_conn *conn)
+{
+	rbfree(&conn->inbuf);
+	rbfree(&conn->outbuf);
+}
