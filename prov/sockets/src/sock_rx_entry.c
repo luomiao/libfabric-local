@@ -47,7 +47,7 @@
 #include "sock_util.h"
 
 
-struct sock_rx_entry *sock_new_rx_entry(struct sock_rx_ctx *rx_ctx)
+struct sock_rx_entry *sock_rx_new_entry(struct sock_rx_ctx *rx_ctx)
 {
 	/* FIXME: pool of rx_entry */
 	struct sock_rx_entry *rx_entry;
@@ -64,7 +64,7 @@ void sock_release_rx_entry(struct sock_rx_entry *rx_entry)
 }
 
 
-struct sock_rx_entry *sock_new_buffered_rx_entry(struct sock_rx_ctx *rx_ctx,
+struct sock_rx_entry *sock_rx_new_buffered_entry(struct sock_rx_ctx *rx_ctx,
 						 size_t len)
 {
 	struct sock_rx_entry *rx_entry;
@@ -100,7 +100,7 @@ out:
 	return rx_entry;
 }
 
-struct sock_rx_entry *sock_rdm_check_buffered_list(struct sock_rx_ctx *rx_ctx,
+struct sock_rx_entry *sock_rx_check_buffered_list(struct sock_rx_ctx *rx_ctx,
 						   const struct fi_msg *msg, uint64_t flags)
 {
 	struct sock_rx_entry *rx_entry;
@@ -121,7 +121,7 @@ struct sock_rx_entry *sock_rdm_check_buffered_list(struct sock_rx_ctx *rx_ctx,
 	return NULL;
 }
 
-struct sock_rx_entry *sock_rdm_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
+struct sock_rx_entry *sock_rx_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
 						    const struct fi_msg_tagged *msg, 
 						    uint64_t flags)
 {
@@ -144,7 +144,7 @@ struct sock_rx_entry *sock_rdm_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
 	return NULL;
 }
 
-struct sock_rx_entry *sock_get_rx_entry(struct sock_rx_ctx *rx_ctx, 
+struct sock_rx_entry *sock_rx_get_entry(struct sock_rx_ctx *rx_ctx, 
 					uint64_t addr, uint64_t tag)
 {
 	struct dlist_entry *entry;

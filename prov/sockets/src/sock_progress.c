@@ -610,7 +610,7 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 			SOCK_LOG_INFO("%p: No matching recv, buffering recv (len=%llu)\n", 
 				      pe_entry, (long long unsigned int)data_len);
 			
-			rx_entry = sock_new_buffered_rx_entry(rx_ctx, data_len);
+			rx_entry = sock_rx_new_buffered_entry(rx_ctx, data_len);
 			assert(rx_entry != NULL);
 			
 			rx_entry->addr = pe_entry->addr;
@@ -668,7 +668,7 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 	
 out:
 	if (!rx_entry->is_buffered)
-		sock_release_rx_entry(rx_entry);
+		sock_rx_release_entry(rx_entry);
 	return ret;
 }
 
@@ -1308,8 +1308,8 @@ int sock_pe_progress_buffered_rx(struct sock_rx_ctx *rx_ctx)
 			sock_pe_report_rx_completion(&pe_entry, rx_ctx);
 
 		dlist_remove(&rx_buffered->entry);
-		sock_release_rx_entry(rx_buffered);
-		sock_release_rx_entry(rx_posted);
+		sock_rx_release_entry(rx_buffered);
+		sock_rx_release_entry(rx_posted);
 	}
 	
 out:

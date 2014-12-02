@@ -784,15 +784,15 @@ int sock_pe_report_rx_completion(struct sock_pe_entry *pe_entry,
 				 struct sock_rx_ctx *rx_ctx);
 
 
-struct sock_rx_entry *sock_new_rx_entry(struct sock_rx_ctx *rx_ctx);
-struct sock_rx_entry *sock_new_buffered_rx_entry(struct sock_rx_ctx *rx_ctx,
+struct sock_rx_entry *sock_rx_new_entry(struct sock_rx_ctx *rx_ctx);
+struct sock_rx_entry *sock_rx_new_buffered_entry(struct sock_rx_ctx *rx_ctx,
 						 size_t len);
-struct sock_rx_entry *sock_rdm_check_buffered_list(struct sock_rx_ctx *rx_ctx,
+struct sock_rx_entry *sock_rx_check_buffered_list(struct sock_rx_ctx *rx_ctx,
 						   const struct fi_msg *msg, uint64_t flags);
-struct sock_rx_entry *sock_rdm_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
+struct sock_rx_entry *sock_rx_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
 						    const struct fi_msg_tagged *msg, 
 						    uint64_t flags);
-void sock_release_rx_entry(struct sock_rx_entry *rx_entry);
+void sock_rx_release_entry(struct sock_rx_entry *rx_entry);
 
 int sock_comm_buffer_init(struct sock_conn *conn);
 void sock_comm_buffer_finalize(struct sock_conn *conn);
