@@ -221,29 +221,30 @@ static void sock_pe_progress_pending_ack(struct sock_pe *pe,
 	switch (pe_entry->rx.response.msg_hdr.op_type) {
 	case SOCK_OP_READ_COMPLETE:
 
-		data_len = 0;
 		done_data = pe_entry->done_len - len;
-
+		
 		for (i = 0; i < pe_entry->msg_hdr.dest_iov_len; i++) {
-			data_len += pe_entry->rx.rx_iov[i].iov.len;
-			if (done_data >= pe_entry->rx.rx_iov[i].iov.len + data_len) {
-				done_data -= data_len;
+			if (done_data >= pe_entry->rx.rx_iov[i].iov.len) {
+				done_data -= pe_entry->rx.rx_iov[i].iov.len;
 				continue;
 			}
 
 			offset = done_data;
+			data_len = pe_entry->rx.rx_iov[i].iov.len - done_data;
+
 			ret = sock_comm_send(conn, 
-					     (char*)pe_entry->rx.rx_iov[i].iov.addr + offset,
-					     pe_entry->rx.rx_iov[i].iov.len - offset);
+					     (char*)pe_entry->rx.rx_iov[i].iov.addr 
+					     + offset, data_len);
 			if (ret < 0)
 				return;
+			done_data = 0;
 			pe_entry->done_len += ret;
-			if (ret != pe_entry->rx.rx_iov[i].iov.len - offset)
+			if (ret != data_len)
 				return;
 		}
-
+		
 		break;
-
+		
 	default:
 		break;
 	}
@@ -274,6 +275,7 @@ static int sock_pe_send_response(struct sock_pe *pe,
 	pe_entry->done_len = 0;
 	pe_entry->rx.pending_send = 1;
 	pe_entry->conn->rx_pe_entry = NULL;
+	pe_entry->total_len = sizeof(*response);
 
 	sock_pe_progress_pending_ack(pe, pe_entry);
 	return 0;
@@ -296,7 +298,9 @@ static int sock_pe_send_rma_read_response(struct sock_pe *pe,
 
 	pe_entry->done_len = 0;
 	pe_entry->rx.pending_send = 1;
+	pe_entry->conn->rx_pe_entry = NULL;
 	pe_entry->total_len = sizeof(*response) + data_len;
+
 	sock_pe_progress_pending_ack(pe, pe_entry);
 	return 0;
 }
@@ -383,6 +387,7 @@ static int sock_pe_handle_read_complete(struct sock_pe *pe,
 		if (ret < 0) 
 			return 0;
 			
+		done_data = 0;
 		pe_entry->done_len += ret;
 		if ( ret != data_len)
 			return 0;
@@ -526,7 +531,7 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 		if (ret < 0)
 			return ret;
 
-		done_data -= ret;
+		done_data = 0;
 		rem -= ret;
 		pe_entry->done_len += ret;
 		if (ret != data_len){
@@ -636,7 +641,7 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 			return ret;
 		
 		rem -= ret;
-		done_data -= ret;
+		done_data = 0;
 		pe_entry->done_len += ret;
 		if (ret != data_len)
 			return 0;
@@ -828,26 +833,27 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 				return 0;
 		}
 	} else {
-		data_len = 0;
 		done_data = pe_entry->done_len - len;
 
 		for (i=0; i < pe_entry->tx.tx_op.src_iov_len; i++) {
-			data_len += pe_entry->tx.tx_iov[i].src.iov.len;
-			if (done_data >= pe_entry->tx.tx_iov[i].src.iov.len + data_len) {
-				done_data -= data_len;
+			
+			if (done_data >= pe_entry->tx.tx_iov[i].src.iov.len) {
+				done_data -= pe_entry->tx.tx_iov[i].src.iov.len;
 				continue;
 			}
 
 			offset = done_data;
+			data_len = pe_entry->tx.tx_iov[i].src.iov.len - done_data;
+
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
-					   offset, pe_entry->tx.tx_iov[i].src.iov.len -
-					   offset);
+					   offset, data_len);
 			if (ret < 0)
-					return ret;
+				return ret;
 
+			done_data = 0;
 			pe_entry->done_len += ret;
-			if ( ret != pe_entry->tx.tx_iov[i].src.iov.len - offset)
+			if ( ret != data_len)
 				return 0;
 		}
 	}
@@ -970,26 +976,27 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 				return 0;
 		}
 	} else {
-		data_len = 0;
 		done_data = pe_entry->done_len - len;
 
 		for (i=0; i < pe_entry->tx.tx_op.src_iov_len; i++) {
-			data_len += pe_entry->tx.tx_iov[i].src.iov.len;
-			if (done_data >= pe_entry->tx.tx_iov[i].src.iov.len + data_len) {
-				done_data -= data_len;
+
+			if (done_data >= pe_entry->tx.tx_iov[i].src.iov.len) {
+				done_data -= pe_entry->tx.tx_iov[i].src.iov.len;
 				continue;
 			}
 
 			offset = done_data;
+			data_len = pe_entry->tx.tx_iov[i].src.iov.len - done_data;
+
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
-					   offset, pe_entry->tx.tx_iov[i].src.iov.len -
-					   offset);
+					   offset, data_len);
 			if (ret < 0) 
 				return ret;
 			
+			done_data = 0;
 			pe_entry->done_len += ret;
-			if ( ret != pe_entry->tx.tx_iov[i].src.iov.len - offset)
+			if ( ret != data_len)
 				return 0;
 		}
 	}
