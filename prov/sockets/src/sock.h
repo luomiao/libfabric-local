@@ -190,59 +190,6 @@ struct sock_wait {
 };
 
 enum {
-	SOCK_REQ_TYPE_SEND,
-	SOCK_REQ_TYPE_RECV,
-	SOCK_REQ_TYPE_USER,
-};
-
-enum{
-	SOCK_COMM_TYPE_SEND,
-	SOCK_COMM_TYPE_SENDV,
-	SOCK_COMM_TYPE_SENDTO,
-	SOCK_COMM_TYPE_SENDMSG,
-	SOCK_COMM_TYPE_SENDDATA,
-	SOCK_COMM_TYPE_SENDDATATO,
-};
-
-struct sock_req_item{
-	int req_type;
-	int comm_type;
-	struct sock_ep *ep;
-
-	void *context;
-	uint64_t flags;
-	uint64_t tag;
-	uint64_t data;
-
-	size_t done_len;
-	size_t total_len;
-	struct sockaddr  src_addr;
-	struct sockaddr addr;
-
-	union{
-		struct fi_msg msg;
-		void *buf;
-	}item;
-
-};
-
-struct sock_comm_item{
-	int type;
-	int is_done;
-	void *context;
-	size_t done_len;
-	size_t total_len;
-	uint64_t flags;
-
-	struct sockaddr addr;
-
-	union{
-		struct fi_msg msg;
-		void *buf;
-	}item;
-};
-
-enum {
 	/* wire protocol */
 	SOCK_OP_SEND = 0,
 	SOCK_OP_TSEND = 1,
