@@ -199,7 +199,7 @@ enum {
 	FI_PROTO_IB_UD,
 	FI_PROTO_PSMX,
 	FI_PROTO_UDP,
-	FI_PROTO_SOCK_RDS,
+	FI_PROTO_SOCK_TCP,
 };
 
 /* Mode bits */
