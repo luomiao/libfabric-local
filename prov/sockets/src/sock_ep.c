@@ -72,6 +72,8 @@ struct fi_ops_ep sock_ep_ops = {
 int sock_ep_connect(struct fid_ep *ep, const void *addr,
 			const void *param, size_t paramlen)
 {
+/*
+
 	int ret;
 	struct sock_ep *sock_ep;
 
@@ -87,6 +89,7 @@ int sock_ep_connect(struct fid_ep *ep, const void *addr,
 	if(ret)
 		return -errno;
 	sock_ep->connected = 1;
+*/
 
 	/* TODO: event */
 	return 0;

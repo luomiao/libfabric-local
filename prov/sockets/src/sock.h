@@ -76,9 +76,17 @@
 #define SOCK_EQ_DEF_SZ (1<<8)
 #define SOCK_CQ_DEF_SZ (1<<8)
 
-#define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV | \
-			 FI_TAGGED | FI_RMA)
-#define SOCK_EP_DGRAM_CAP (FI_MSG | FI_INJECT | FI_SOURCE | FI_SEND | FI_RECV)
+#define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE |	\
+			 FI_SEND | FI_RECV | FI_TAGGED | FI_RMA |	\
+			 FI_BUFFERED_RECV)
+
+#define SOCK_EP_DGRAM_CAP (FI_MSG | FI_INJECT | FI_SOURCE |	\
+			   FI_SEND | FI_RECV | FI_TAGGED | FI_BUFFERED_RECV)
+
+#define SOCK_EP_MSG_CAP (FI_MSG | FI_INJECT | FI_SOURCE |		\
+			 FI_SEND | FI_RECV | FI_TAGGED | FI_RMA |	\
+			 FI_BUFFERED_RECV)
+
 #define SOCK_OPS_CAP (FI_INJECT | FI_SEND | FI_RECV )
 #define SOCK_MODE (0)
 
@@ -340,9 +348,8 @@ struct sock_ep {
 	uint8_t rem_read_cq_event;
 	uint8_t rem_write_cq_event;
 
-	uint16_t sock_fd;
 	uint16_t buffered;
-	uint8_t reserved[4];
+	uint8_t reserved[6];
 
 	atomic_t ref;
 
@@ -383,16 +390,7 @@ struct sock_ep {
 	enum fi_ep_type ep_type;
 	struct sockaddr_in *src_addr;
 	struct sockaddr_in *dest_addr;
-
-	/* TODO: remove */
-	struct sock_ep *next;
-	struct sock_ep *prev;
-	struct sock_ep *alias;
-	struct sock_ep *base;
-
-	list_t *send_list;
-	list_t *recv_list;
-	int port_num;
+	fi_addr_t conn_addr;
 };
 
 struct sock_pep {
@@ -728,8 +726,6 @@ int sock_mr_verify_desc(struct sock_domain *domain, void *desc,
 
 int sock_ep_connect(struct fid_ep *ep, const void *addr,
 		    const void *param, size_t paramlen);
-struct sock_rx_entry *sock_get_rx_entry(struct sock_rx_ctx *rx_ctx, 
-					uint64_t addr, uint64_t tag);
 
 
 struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, 
@@ -792,6 +788,8 @@ struct sock_rx_entry *sock_rx_check_buffered_list(struct sock_rx_ctx *rx_ctx,
 struct sock_rx_entry *sock_rx_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
 						    const struct fi_msg_tagged *msg, 
 						    uint64_t flags);
+struct sock_rx_entry *sock_rx_get_entry(struct sock_rx_ctx *rx_ctx, 
+					uint64_t addr, uint64_t tag);
 void sock_rx_release_entry(struct sock_rx_entry *rx_entry);
 
 int sock_comm_buffer_init(struct sock_conn *conn);

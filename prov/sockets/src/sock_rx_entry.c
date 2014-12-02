@@ -58,7 +58,7 @@ struct sock_rx_entry *sock_rx_new_entry(struct sock_rx_ctx *rx_ctx)
 	return rx_entry;
 }
 
-void sock_release_rx_entry(struct sock_rx_entry *rx_entry)
+void sock_rx_release_entry(struct sock_rx_entry *rx_entry)
 {
 	free(rx_entry);
 }
