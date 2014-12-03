@@ -231,6 +231,7 @@ struct sock_op {
 		struct {
 			uint8_t	op;
 			uint8_t	datatype;
+			uint8_t	res_iov_len;
 		} atomic;
 		uint8_t		reserved[5];
 	};
@@ -242,6 +243,7 @@ struct sock_op_send {
 	uint64_t context;
 	uint64_t dest_addr;
 	struct sock_conn *conn;
+	uint64_t buf;
 };
 
 struct sock_op_tsend {
@@ -251,6 +253,7 @@ struct sock_op_tsend {
 	uint64_t dest_addr;
 	struct sock_conn *conn;
 	uint64_t tag;
+	uint64_t buf;
 };
 
 union sock_iov {
@@ -295,8 +298,9 @@ struct sock_ep {
 	uint8_t rem_read_cq_event;
 	uint8_t rem_write_cq_event;
 
-	uint16_t buffered;
-	uint8_t reserved[6];
+	uint16_t buffered_len;
+	uint16_t min_multi_recv;
+	uint8_t reserved[4];
 
 	atomic_t ref;
 
@@ -358,7 +362,9 @@ struct sock_pep {
 struct sock_rx_entry {
 	struct sock_op rx_op;
 	uint8_t is_buffered;
-	uint8_t reserved[7];
+	uint16_t used;
+	uint8_t is_busy;
+	uint8_t reserved[5];
 
 	uint64_t flags;
 	uint64_t context;
@@ -382,6 +388,7 @@ struct sock_rx_ctx {
 	uint8_t rem_read_cq_event;
 	uint8_t rem_write_cq_event;
 	uint16_t buffered_len;
+	uint16_t min_multi_recv;
 	uint8_t reserved[7];
 
 	uint64_t addr;
@@ -484,7 +491,14 @@ struct sock_msg_tsend{
 struct sock_rma_write_req {
 	struct sock_msg_hdr msg_hdr;
 	/* user data */
-	/* dest iov(s)*/
+	/* dst iov(s)*/
+	/* data */
+};
+
+struct sock_atomic_req {
+	struct sock_msg_hdr msg_hdr;
+	/* user data */
+	/* dst iov(s)*/
 	/* data */
 };
 
@@ -506,10 +520,17 @@ struct sock_rma_read_response {
 	/* data */
 };
 
+struct sock_atomic_response {
+	struct sock_msg_hdr msg_hdr;
+	uint16_t pe_entry_id;
+	uint8_t reserved[6];
+	/* data */
+};
 
 struct sock_tx_iov {
 	union sock_iov src;
 	union sock_iov dst;
+	union sock_iov res;
 };
 
 struct sock_tx_pe_entry{
@@ -556,6 +577,7 @@ struct sock_pe_entry{
 	uint64_t addr;
 	uint64_t data;
 	uint64_t tag;
+	uint64_t buf;
 
 	uint8_t type;
 	uint8_t is_complete;
@@ -737,12 +759,13 @@ struct sock_rx_entry *sock_rx_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
 						    uint64_t flags);
 struct sock_rx_entry *sock_rx_get_entry(struct sock_rx_ctx *rx_ctx, 
 					uint64_t addr, uint64_t tag);
+size_t sock_rx_avail_len(struct sock_rx_entry *rx_entry);
 void sock_rx_release_entry(struct sock_rx_entry *rx_entry);
 
 int sock_comm_buffer_init(struct sock_conn *conn);
 void sock_comm_buffer_finalize(struct sock_conn *conn);
 ssize_t sock_comm_send_socket(struct sock_conn *conn, const void *buf, size_t len);
-ssize_t sock_comm_send_flush(struct sock_conn *conn);
+ssize_t sock_comm_flush(struct sock_conn *conn);
 ssize_t sock_comm_send(struct sock_conn *conn, const void *buf, size_t len);
 ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len);
 

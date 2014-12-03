@@ -96,6 +96,8 @@ static ssize_t sock_ctx_rma_readmsg(struct fid_ep *ep,
 	sock_tx_ctx_write(tx_ctx, &msg->context, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->msg_iov[0].iov_base, sizeof(uint64_t));
+
 	if (flags & FI_REMOTE_CQ_DATA) {
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
 	}
@@ -236,6 +238,8 @@ static ssize_t sock_ctx_rma_writemsg(struct fid_ep *ep,
 	sock_tx_ctx_write(tx_ctx, &msg->context, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->msg_iov[0].iov_base, sizeof(uint64_t));
+
 	if (flags & FI_REMOTE_CQ_DATA) {
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
 	}

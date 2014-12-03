@@ -60,6 +60,7 @@ struct sock_rx_entry *sock_rx_new_entry(struct sock_rx_ctx *rx_ctx)
 
 void sock_rx_release_entry(struct sock_rx_entry *rx_entry)
 {
+	SOCK_LOG_INFO("Releasing rx_entry: %p\n", rx_entry);
 	free(rx_entry);
 }
 
@@ -68,8 +69,6 @@ struct sock_rx_entry *sock_rx_new_buffered_entry(struct sock_rx_ctx *rx_ctx,
 						 size_t len)
 {
 	struct sock_rx_entry *rx_entry;
-
-	fastlock_acquire(&rx_ctx->lock);
 
 	if (rx_ctx->buffered_len + len >= rx_ctx->attr.total_buffered_recv) {
 		SOCK_LOG_ERROR("Reached max buffered recv limit\n");
@@ -96,52 +95,18 @@ struct sock_rx_entry *sock_rx_new_buffered_entry(struct sock_rx_ctx *rx_ctx,
 	}
 
 out:
-	fastlock_release(&rx_ctx->lock);
 	return rx_entry;
 }
 
-struct sock_rx_entry *sock_rx_check_buffered_list(struct sock_rx_ctx *rx_ctx,
-						   const struct fi_msg *msg, uint64_t flags)
+size_t sock_rx_avail_len(struct sock_rx_entry *rx_entry)
 {
-	struct sock_rx_entry *rx_entry;
-	struct dlist_entry *entry;
+	int i;
+	size_t avail = 0;
 
-	fastlock_acquire(&rx_ctx->lock);
-	for (entry = rx_ctx->rx_buffered_list.next; 
-	     entry != &rx_ctx->rx_buffered_list; entry = entry->next) {
-		rx_entry = container_of(entry, struct sock_rx_entry, entry);
-		if (msg->addr == FI_ADDR_UNSPEC ||
-		    rx_entry->addr == msg->addr) {
-			dlist_remove(&rx_entry->entry);
-			fastlock_release(&rx_ctx->lock);
-			return rx_entry;
-		}
+	for (i = 0; i < rx_entry->rx_op.dest_iov_len; i++) {
+		avail += rx_entry->iov[i].iov.len;
 	}
-	fastlock_release(&rx_ctx->lock);
-	return NULL;
-}
-
-struct sock_rx_entry *sock_rx_check_buffered_tlist(struct sock_rx_ctx *rx_ctx,
-						    const struct fi_msg_tagged *msg, 
-						    uint64_t flags)
-{
-	struct sock_rx_entry *rx_entry;
-	struct dlist_entry *entry;
-
-	fastlock_acquire(&rx_ctx->lock);
-	for (entry = rx_ctx->rx_buffered_list.next; 
-	     entry != &rx_ctx->rx_buffered_list; entry = entry->next) {
-		rx_entry = container_of(entry, struct sock_rx_entry, entry);
-
-		if (((rx_entry->tag & ~msg->ignore) == (msg->tag & ~msg->ignore)) &&
-		    (msg->addr == FI_ADDR_UNSPEC || rx_entry->addr == msg->addr)) {
-			dlist_remove(&rx_entry->entry);
-			fastlock_release(&rx_ctx->lock);
-			return rx_entry;
-		}
-	}
-	fastlock_release(&rx_ctx->lock);
-	return NULL;
+	return avail;
 }
 
 struct sock_rx_entry *sock_rx_get_entry(struct sock_rx_ctx *rx_ctx, 
@@ -149,8 +114,6 @@ struct sock_rx_entry *sock_rx_get_entry(struct sock_rx_ctx *rx_ctx,
 {
 	struct dlist_entry *entry;
 	struct sock_rx_entry *rx_entry;
-
-	fastlock_acquire(&rx_ctx->lock);
 
 	for (entry = rx_ctx->rx_entry_list.next;
 	    entry != &rx_ctx->rx_entry_list; entry = entry->next) {
@@ -160,7 +123,8 @@ struct sock_rx_entry *sock_rx_get_entry(struct sock_rx_ctx *rx_ctx,
 		     (tag & ~rx_entry->ignore)) &&
 		    (rx_entry->addr == FI_ADDR_UNSPEC ||
 		     rx_entry->addr == addr)) {
-			dlist_remove(&rx_entry->entry);
+			if (rx_entry->is_busy)
+				rx_entry = NULL;
 			goto out;
 		}
 	}
@@ -169,6 +133,5 @@ struct sock_rx_entry *sock_rx_get_entry(struct sock_rx_ctx *rx_ctx,
 		rx_entry = NULL;
 	
 out:
-	fastlock_release(&rx_ctx->lock);
 	return rx_entry;
 }

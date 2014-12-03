@@ -150,7 +150,7 @@ static int sock_cq_report_data(struct sock_cq *cq, fi_addr_t addr,
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
 	cq_entry.len = pe_entry->done_len;
-	cq_entry.buf = (void*)pe_entry->rx.rx_iov[0].iov.addr;
+	cq_entry.buf = (void*)pe_entry->buf;
 	cq_entry.data = pe_entry->data;
 	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
 }
@@ -162,7 +162,7 @@ static int sock_cq_report_tagged(struct sock_cq *cq, fi_addr_t addr,
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
 	cq_entry.len = pe_entry->done_len;
-	cq_entry.buf = (void*)pe_entry->rx.rx_iov[0].iov.addr;
+	cq_entry.buf = (void*)pe_entry->buf;
 	cq_entry.data = pe_entry->data;
 	cq_entry.tag = pe_entry->tag;
 	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));

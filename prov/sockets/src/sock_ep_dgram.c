@@ -913,52 +913,11 @@ int sock_dgram_ep_cm_getpeer(struct fid_ep *ep, void *addr, size_t *addrlen)
 	return 0;
 }
 
-int sock_dgram_ep_cm_connect(struct fid_ep *ep, const void *addr,
-			   const void *param, size_t paramlen)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-
-/*
-	if (sock_ep->info.addr_format == FI_SOCKADDR) {
-		if (memcmp((void*)sock_ep->dest_addr,
-			  addr, sizeof(struct sockaddr_in)) != 0) {
-			memcpy(sock_ep->dest_addr, addr, sizeof(struct sockaddr_in));
-		}
-	} else {
-		return -FI_EINVAL;
-	}
-	
-	if (paramlen > 0) {
-		int ret;
-		struct iovec msg_iov ={
-			.iov_base = (void*) param,
-			.iov_len = paramlen,
-		};
-		
-		struct msghdr msg = {
-			.msg_name = NULL,
-			.msg_namelen = 0,
-			.msg_iov = &msg_iov,
-			.msg_iovlen = 1,
-			.msg_control = NULL,
-			.msg_controllen = 0,
-			.msg_flags = 0,
-		};
-		ret = sendmsg(sock_ep->sock_fd, &msg, 0);
-		if (ret)
-			return -FI_EINVAL;
-	}
-	sock_ep->enabled = 1;
-*/
-	return 0;
-}
-
 struct fi_ops_cm sock_dgram_ep_cm_ops = {
 	.size = sizeof(struct fi_ops_cm),
 	.getname = sock_dgram_ep_cm_getname,
 	.getpeer = sock_dgram_ep_cm_getpeer,
-	.connect = sock_dgram_ep_cm_connect,
+	.connect = fi_no_connect,
 	.listen = fi_no_listen,
 	.accept = fi_no_accept,
 	.reject = fi_no_reject,

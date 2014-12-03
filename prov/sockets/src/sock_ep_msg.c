@@ -1004,42 +1004,28 @@ int sock_msg_ep_cm_getpeer(struct fid_ep *ep, void *addr, size_t *addrlen)
 int sock_msg_ep_cm_connect(struct fid_ep *ep, const void *addr,
 			   const void *param, size_t paramlen)
 {
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
+	return -FI_ENOSYS;
+}
 
-/*
-	if (sock_ep->info.addr_format == FI_SOCKADDR) {
-		if (memcmp((void*)sock_ep->dest_addr,
-			  addr, sizeof(struct sockaddr_in)) != 0) {
-			memcpy(sock_ep->dest_addr, addr, sizeof(struct sockaddr_in));
-		}
-	} else {
-		return -FI_EINVAL;
-	}
-	
-	if (paramlen > 0) {
-		int ret;
-		struct iovec msg_iov ={
-			.iov_base = (void*) param,
-			.iov_len = paramlen,
-		};
-		
-		struct msghdr msg = {
-			.msg_name = NULL,
-			.msg_namelen = 0,
-			.msg_iov = &msg_iov,
-			.msg_iovlen = 1,
-			.msg_control = NULL,
-			.msg_controllen = 0,
-			.msg_flags = 0,
-		};
-		ret = sendmsg(sock_ep->sock_fd, &msg, 0);
-		if (ret)
-			return -FI_EINVAL;
-	}
-	sock_ep->enabled = 1;
-*/
-	return 0;
+int sock_msg_ep_cm_listen(struct fid_pep *pep)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_msg_ep_cm_accept(struct fid_ep *ep, const void *param, size_t paramlen)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_msg_ep_cm_reject(struct fid_pep *pep, fi_connreq_t connreq,
+			const void *param, size_t paramlen)
+{
+	return -FI_ENOSYS;
+}
+
+int sock_msg_ep_cm_shutdown(struct fid_ep *ep, uint64_t flags)
+{
+	return -FI_ENOSYS;
 }
 
 struct fi_ops_cm sock_msg_ep_cm_ops = {
@@ -1047,10 +1033,10 @@ struct fi_ops_cm sock_msg_ep_cm_ops = {
 	.getname = sock_msg_ep_cm_getname,
 	.getpeer = sock_msg_ep_cm_getpeer,
 	.connect = sock_msg_ep_cm_connect,
-	.listen = fi_no_listen,
-	.accept = fi_no_accept,
-	.reject = fi_no_reject,
-	.shutdown = fi_no_shutdown,
+	.listen = sock_msg_ep_cm_listen,
+	.accept = sock_msg_ep_cm_accept,
+	.reject = sock_msg_ep_cm_reject,
+	.shutdown = sock_msg_ep_cm_shutdown,
 	.join = fi_no_join,
 	.leave = fi_no_leave,
 };

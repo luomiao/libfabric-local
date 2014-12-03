@@ -77,6 +77,7 @@ static void sock_pe_release_entry(struct sock_pe *pe,
 	pe_entry->is_complete = 0;
 	pe_entry->done_len = 0;
 	pe_entry->total_len = 0;
+	pe_entry->buf = 0;
 
 	dlist_remove(&pe_entry->entry);
 	dlist_insert_tail(&pe_entry->entry, &pe->free_list);
@@ -97,7 +98,7 @@ static struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
 }
 
 static int sock_pe_report_tx_completion(struct sock_pe_entry *pe_entry,
-				 struct sock_tx_ctx *tx_ctx)
+					struct sock_tx_ctx *tx_ctx)
 {
 	int ret;
 
@@ -252,7 +253,7 @@ static void sock_pe_progress_pending_ack(struct sock_pe *pe,
 	if (pe_entry->total_len == pe_entry->done_len) {
 		pe_entry->is_complete = 1;
 		pe_entry->rx.pending_send = 0;
-		sock_comm_send_flush(pe_entry->conn);
+		sock_comm_flush(pe_entry->conn);
 		pe_entry->conn->tx_pe_entry = NULL;
 	}
 }
@@ -451,6 +452,7 @@ static int sock_pe_process_rx_read(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		data_len += pe_entry->rx.rx_iov[i].iov.len;
 	}
 
+	pe_entry->buf = pe_entry->rx.rx_iov[0].iov.addr;
 	if (pe_entry->flags & FI_REMOTE_COMPLETE)
 		sock_pe_report_rx_completion(pe_entry, rx_ctx);
 
@@ -539,6 +541,7 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 			return 0;
 		}
 	}
+	pe_entry->buf = pe_entry->rx.rx_iov[0].iov.addr;
 				   
 	/* report error, if any */
 	if (rem) {
@@ -558,12 +561,102 @@ out:
 	return ret;
 }
 
+int sock_pe_progress_buffered_rx(struct sock_rx_ctx *rx_ctx)
+{
+	struct dlist_entry *entry;
+	struct sock_pe_entry pe_entry;
+	struct sock_rx_entry *rx_buffered, *rx_posted;
+	int i, rem, offset, len, used_len, dst_offset;
+
+	if (dlist_empty(&rx_ctx->rx_entry_list) ||
+	    dlist_empty(&rx_ctx->rx_buffered_list)) 
+		goto out;
+
+	for (entry = rx_ctx->rx_buffered_list.next; 
+	     entry != &rx_ctx->rx_buffered_list;) {
+
+		rx_buffered = container_of(entry, struct sock_rx_entry, entry);
+		entry = entry->next;
+
+		rx_posted = sock_rx_get_entry(rx_ctx, rx_buffered->addr, 
+					      rx_buffered->tag);
+		if (!rx_posted) 
+			continue;
+
+		rx_ctx->buffered_len -= rem;
+		SOCK_LOG_INFO("Consuming buffered entry: %p, ctx: %p\n", 
+			      rx_buffered, rx_ctx);
+		SOCK_LOG_INFO("Consuming posted entry: %p, ctx: %p\n", 
+			      rx_posted, rx_ctx);
+
+		offset = 0;
+		rem = rx_buffered->iov[0].iov.len;
+		used_len = rx_posted->used;
+		for (i = 0; i < rx_posted->rx_op.dest_iov_len && rem > 0; i++) {
+			if (used_len >= rx_posted->rx_op.dest_iov_len) {
+				used_len -= rx_posted->rx_op.dest_iov_len;
+				continue;
+			}
+
+			dst_offset = used_len;
+			len = MIN(rx_posted->iov[i].iov.len, rem);
+			pe_entry.buf = (uint64_t)
+				(char*)rx_posted->iov[i].iov.addr + dst_offset;
+			memcpy((char*)rx_posted->iov[i].iov.addr + dst_offset,
+			       (char*)rx_buffered->iov[0].iov.addr + offset, len);
+			offset += len;
+			rem -= len;
+			dst_offset = used_len = 0;
+			rx_posted->used += len;
+		}
+		
+		pe_entry.done_len = offset;
+		pe_entry.flags = rx_buffered->flags;
+		pe_entry.data = rx_buffered->data;
+		pe_entry.tag = rx_buffered->tag;
+		pe_entry.context = (uint64_t)rx_posted->context;
+		pe_entry.rx.rx_iov[0].iov.addr = rx_posted->iov[0].iov.addr;
+		pe_entry.type = SOCK_PE_RX;
+
+		if (rx_posted->flags & FI_MULTI_RECV) {
+			if (sock_rx_avail_len(rx_posted) < rx_ctx->min_multi_recv) {
+				pe_entry.flags |= FI_MULTI_RECV;
+				dlist_remove(&rx_posted->entry);
+			}
+		} else {
+			dlist_remove(&rx_posted->entry);
+		}
+
+		if (rem) {
+			SOCK_LOG_INFO("Not enough space in posted recv buffer\n");
+			if (rx_ctx->recv_cntr)
+				sock_cntr_err_inc(rx_ctx->recv_cntr);
+			if (rx_ctx->recv_cq)
+				sock_cq_report_error(rx_ctx->recv_cq, 
+						     &pe_entry, rem,
+						     -FI_ENOSPC, -FI_ENOSPC, 
+						     NULL);
+			goto out;
+		} else 
+			sock_pe_report_rx_completion(&pe_entry, rx_ctx);
+
+		dlist_remove(&rx_buffered->entry);
+		sock_rx_release_entry(rx_buffered);
+
+		if (pe_entry.flags & FI_MULTI_RECV)
+			sock_rx_release_entry(rx_posted);
+	}
+	
+out:
+	return 0;
+}
+
 static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 				   struct sock_pe_entry *pe_entry)
 {
 	int i, ret;
 	struct sock_rx_entry *rx_entry;
-	uint64_t len, rem, offset, data_len, done_data;
+	uint64_t len, rem, offset, data_len, done_data, used, iov_len;
 
 	offset = 0;
 	len = sizeof(struct sock_msg_hdr);
@@ -603,13 +696,18 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		rx_ctx = pe_entry->ep->rx_array[pe_entry->msg_hdr.rx_id];
 		assert(rx_ctx != NULL);
 
+		fastlock_acquire(&rx_ctx->lock);
+
+		/* progress buffered recvs, if any  */
+		sock_pe_progress_buffered_rx(rx_ctx);
+
 		rx_entry = sock_rx_get_entry(rx_ctx, pe_entry->addr, pe_entry->tag);
 		SOCK_LOG_INFO("Consuming posted entry: %p\n", rx_entry);
 
 		if (!rx_entry) {
 			SOCK_LOG_INFO("%p: No matching recv, buffering recv (len=%llu)\n", 
 				      pe_entry, (long long unsigned int)data_len);
-			
+
 			rx_entry = sock_rx_new_buffered_entry(rx_ctx, data_len);
 			assert(rx_entry != NULL);
 			
@@ -620,32 +718,64 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 			rx_entry->ignore = 0;
 		}
 		pe_entry->rx.rx_entry = rx_entry;
+		rx_entry->is_busy = 1;
+		fastlock_release(&rx_ctx->lock);
 	}
 	
 	done_data = pe_entry->done_len - len;
 	rem = pe_entry->msg_hdr.msg_len - (len + done_data);
+	used = rx_entry->used;
 
 	for (i = 0; rem > 0 && i < rx_entry->rx_op.dest_iov_len; i++) {
 
-		if (done_data >= rx_entry->iov[i].iov.len) {
-			done_data -= data_len;
+		/* skip used contents in rx_entry */
+		if (used >= rx_entry->iov[i].iov.len) {
+			used -= rx_entry->iov[i].iov.len;
 			continue;
 		}
 
-		data_len = MIN(rx_entry->iov[i].iov.len - done_data, rem);
+		iov_len = rx_entry->iov[i].iov.len - used;
+		used = 0;
+
+		/* skip done_data */
+		if (done_data >= iov_len) {
+			done_data -= iov_len;
+			continue;
+		}
+
+		data_len = MIN(iov_len - done_data, rem);
 		offset = done_data;
 		ret = sock_comm_recv(pe_entry->conn, 
 				     (char *)rx_entry->iov[i].iov.addr + offset, 
 				     data_len);
 		if (ret <= 0)
 			return ret;
-		
+
+		if (!pe_entry->buf)
+			pe_entry->buf = (uint64_t)
+				((char *)rx_entry->iov[i].iov.addr + offset);
 		rem -= ret;
 		done_data = 0;
 		pe_entry->done_len += ret;
+		rx_entry->used += ret;
 		if (ret != data_len)
 			return 0;
 	}
+
+	fastlock_acquire(&rx_ctx->lock);
+	if (rx_entry->flags & FI_MULTI_RECV) {
+		if (sock_rx_avail_len(rx_entry) < rx_ctx->min_multi_recv) {
+			pe_entry->flags |= FI_MULTI_RECV;
+			dlist_remove(&rx_entry->entry);
+		}
+	} else {
+		if (!rx_entry->is_buffered)
+			dlist_remove(&rx_entry->entry);
+	}
+	fastlock_release(&rx_ctx->lock);
+
+	pe_entry->is_complete = 1;
+	rx_entry->is_busy = 0;
 
 	/* report error, if any */
 	if (rem) {
@@ -664,10 +794,11 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 	if (pe_entry->msg_hdr.flags & FI_REMOTE_COMPLETE) {
 		sock_pe_send_response(pe, pe_entry, SOCK_OP_SEND_COMPLETE);
 	}
-	pe_entry->is_complete = 1;
 	
 out:
-	if (!rx_entry->is_buffered)
+	if (!rx_entry->is_buffered &&
+	    (!(rx_entry->flags & FI_MULTI_RECV) ||
+	     (pe_entry->flags & FI_MULTI_RECV)))
 		sock_rx_release_entry(rx_entry);
 	return ret;
 }
@@ -863,7 +994,7 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 		pe_entry->conn->tx_pe_entry = NULL;
 		SOCK_LOG_INFO("Send complete\n");		
 	}
-	sock_comm_send_flush(pe_entry->conn);
+	sock_comm_flush(pe_entry->conn);
 	return 0;
 }
 
@@ -906,7 +1037,7 @@ static int sock_pe_progress_tx_read(struct sock_pe *pe,
 		pe_entry->conn->tx_pe_entry = NULL;
 		SOCK_LOG_INFO("Send complete\n");		
 	}
-	sock_comm_send_flush(pe_entry->conn);
+	sock_comm_flush(pe_entry->conn);
 	return 0;
 }
 
@@ -1009,7 +1140,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		if (!(pe_entry->flags & FI_REMOTE_COMPLETE)) 
 			pe_entry->tx.ack_done = 1;
 	}
-	sock_comm_send_flush(pe_entry->conn);
+	sock_comm_flush(pe_entry->conn);
 	return 0;
 }
 
@@ -1149,6 +1280,7 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	rbfdread(&tx_ctx->rbfd, &pe_entry->context, sizeof(uint64_t));
 	rbfdread(&tx_ctx->rbfd, &pe_entry->addr, sizeof(uint64_t));
 	rbfdread(&tx_ctx->rbfd, &pe_entry->conn, sizeof(uint64_t));
+	rbfdread(&tx_ctx->rbfd, &pe_entry->buf, sizeof(uint64_t));
 
 	if (pe_entry->flags & FI_REMOTE_CQ_DATA) {
 		rbfdread(&tx_ctx->rbfd, &pe_entry->data, sizeof(uint64_t));
@@ -1248,77 +1380,6 @@ int sock_pe_add_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *ctx)
 	return 0;
 }
 
-int sock_pe_progress_buffered_rx(struct sock_rx_ctx *rx_ctx)
-{
-	int i, rem, offset, len;
-	struct dlist_entry *entry;
-	struct sock_pe_entry pe_entry;
-	struct sock_rx_entry *rx_buffered, *rx_posted;
-
-	fastlock_acquire(&rx_ctx->lock);
-
-	if (dlist_empty(&rx_ctx->rx_entry_list) ||
-	    dlist_empty(&rx_ctx->rx_buffered_list)) 
-		goto out;
-
-	for (entry = rx_ctx->rx_entry_list.next; 
-	     entry != &rx_ctx->rx_buffered_list;) {
-
-		rx_buffered = container_of(entry, struct sock_rx_entry, entry);
-		entry = entry->next;
-
-		rx_posted = sock_rx_get_entry(rx_ctx, rx_buffered->addr, 
-					      rx_buffered->tag);
-		if (!rx_posted) 
-			continue;
-
-		rx_ctx->buffered_len -= rem;
-		SOCK_LOG_INFO("Consuming buffered entry: %p, ctx: %p\n", 
-			      rx_buffered, rx_ctx);
-		SOCK_LOG_INFO("Consuming posted entry: %p, ctx: %p\n", 
-			      rx_posted, rx_ctx);
-
-		offset = 0;
-		rem = rx_buffered->iov[0].iov.len;
-		for (i = 0; i < rx_posted->rx_op.dest_iov_len && rem > 0; i++) {
-			len = MIN(rx_posted->iov[i].iov.len, rem);
-			memcpy((void*)rx_posted->iov[i].iov.addr,
-			       (char*)rx_buffered->iov[0].iov.addr + offset, len);
-			offset += len;
-			rem -= len;
-		}
-		
-		pe_entry.done_len = offset;
-		pe_entry.flags = rx_posted->flags;
-		pe_entry.data = rx_buffered->data;
-		pe_entry.tag = rx_posted->tag;
-		pe_entry.context = (uint64_t)rx_posted->context;
-		pe_entry.rx.rx_iov[0].iov.addr = rx_posted->iov[0].iov.addr;
-		pe_entry.type = SOCK_PE_RX;
-
-		if (rem) {
-			SOCK_LOG_INFO("Not enough space in posted recv buffer\n");
-			if (rx_ctx->recv_cntr)
-				sock_cntr_err_inc(rx_ctx->recv_cntr);
-			if (rx_ctx->recv_cq)
-				sock_cq_report_error(rx_ctx->recv_cq, 
-						     &pe_entry, rem,
-						     -FI_ENOSPC, -FI_ENOSPC, 
-						     NULL);
-			goto out;
-		} else 
-			sock_pe_report_rx_completion(&pe_entry, rx_ctx);
-
-		dlist_remove(&rx_buffered->entry);
-		sock_rx_release_entry(rx_buffered);
-		sock_rx_release_entry(rx_posted);
-	}
-	
-out:
-	fastlock_release(&rx_ctx->lock);
-	return 0;
-}
-
 int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 {
 	int i, ret = 0, data_avail;
@@ -1333,7 +1394,9 @@ int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx)
 	fastlock_acquire(&pe->lock);
 
 	/* progress buffered recvs */
+	fastlock_acquire(&rx_ctx->lock);
 	sock_pe_progress_buffered_rx(rx_ctx);
+	fastlock_release(&rx_ctx->lock);
 
 	/* check for incoming data */
 	for (entry = rx_ctx->ep_list.next;

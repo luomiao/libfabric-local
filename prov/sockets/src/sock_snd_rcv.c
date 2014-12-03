@@ -57,53 +57,6 @@
 #include "sock.h"
 #include "sock_util.h"
 
-static ssize_t sock_handle_buffered_recv(struct sock_rx_ctx *rx_ctx, 
-					     const struct fi_msg *msg,
-					     uint64_t flags,
-					     struct sock_rx_entry *rx_entry)
-{
-	int offset, len, rem, i, ret;
-	struct sock_pe_entry pe_entry;
-
-	offset = 0;
-	rem = rx_entry->iov[0].iov.len;
-
-	fastlock_acquire(&rx_ctx->lock);
-	rx_ctx->buffered_len -= rem;
-	fastlock_release(&rx_ctx->lock);
-
-	SOCK_LOG_INFO("Consuming buffered entry: %p, ctx: %p\n", rx_entry, rx_ctx);
-
-	for (i=0; i< msg->iov_count && rem > 0; i++) {
-		len = MIN(msg->msg_iov[i].iov_len, rem);
-		memcpy(msg->msg_iov[i].iov_base, 
-		       (char*) rx_entry->iov[0].iov.addr + offset, len);
-		offset += len;
-		rem -= len;
-	}
-	
-	pe_entry.done_len = offset;
-	pe_entry.flags = flags;
-	pe_entry.data = msg->data;
-	pe_entry.tag = 0;
-	pe_entry.context = (uint64_t)msg->context;
-	pe_entry.rx.rx_iov[0].iov.addr = (uint64_t)msg->msg_iov[0].iov_base;
-	pe_entry.type = SOCK_PE_RX;
-
-	if (rem) {
-		SOCK_LOG_INFO("Not enough space in posted recv buffer\n");
-		if (rx_ctx->recv_cntr)
-			sock_cntr_err_inc(rx_ctx->recv_cntr);
-		if (rx_ctx->recv_cq)
-			ret = sock_cq_report_error(rx_ctx->recv_cq, &pe_entry, rem,
-						   -FI_ENOSPC, -FI_ENOSPC, NULL);
-		return 0;
-	} else 
-		sock_pe_report_rx_completion(&pe_entry, rx_ctx);
-	sock_rx_release_entry(rx_entry);
-	return 0;
-}
-
 ssize_t sock_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		   uint64_t flags)
 {
@@ -113,10 +66,6 @@ ssize_t sock_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 
 	rx_ctx = container_of(ep, struct sock_rx_ctx, ctx);
 	assert(rx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
-
-	rx_entry = sock_rx_check_buffered_list(rx_ctx, msg, flags);
-	if (rx_entry)
-		return sock_handle_buffered_recv(rx_ctx, msg, flags, rx_entry);
 
 	rx_entry = sock_rx_new_entry(rx_ctx);
 	if (!rx_entry)
@@ -234,6 +183,8 @@ ssize_t sock_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	sock_tx_ctx_write(tx_ctx, &msg->context, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->msg_iov[0].iov_base, sizeof(uint64_t));
+
 	if (flags & FI_REMOTE_CQ_DATA) {
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
 	}
@@ -358,53 +309,6 @@ struct fi_ops_msg sock_ctx_msg_ops = {
 	.senddatato = sock_ctx_senddatato,
 };
 
-static ssize_t sock_handle_buffered_trecv(struct sock_rx_ctx *rx_ctx, 
-					      const struct fi_msg_tagged *msg, 
-					      uint64_t flags, 
-					      struct sock_rx_entry *rx_entry)
-{
-	int offset, len, rem, i, ret;
-	struct sock_pe_entry pe_entry;
-	
-	offset = 0;
-	rem = rx_entry->iov[0].iov.len;
-
-	fastlock_acquire(&rx_ctx->lock);
-	rx_ctx->buffered_len -= rem;
-	fastlock_release(&rx_ctx->lock);
-
-	SOCK_LOG_INFO("Consuming buffered entry: %p, ctx: %p\n", rx_entry, rx_ctx);
-
-	for (i=0; i< msg->iov_count && rem > 0; i++) {
-		len = MIN(msg->msg_iov[i].iov_len, rem);
-		memcpy(msg->msg_iov[i].iov_base, 
-		       (char*) rx_entry->iov[0].iov.addr + offset, len);
-		offset += len;
-		rem -= len;
-	}
-	
-	pe_entry.done_len = offset;
-	pe_entry.flags = flags;
-	pe_entry.data = msg->data;
-	pe_entry.tag = msg->tag;
-	pe_entry.context = (uint64_t)msg->context;
-	pe_entry.rx.rx_iov[0].iov.addr = (uint64_t)msg->msg_iov[0].iov_base;
-	pe_entry.type = SOCK_PE_RX;
-
-	if (rem) {
-		SOCK_LOG_INFO("Not enough space in posted recv buffer\n");
-		if (rx_ctx->recv_cntr)
-			sock_cntr_err_inc(rx_ctx->recv_cntr);
-		if (rx_ctx->recv_cq)
-			ret = sock_cq_report_error(rx_ctx->recv_cq, &pe_entry, rem,
-						   -FI_ENOSPC, -FI_ENOSPC, NULL);
-		return 0;
-	} else 
-		sock_pe_report_rx_completion(&pe_entry, rx_ctx);
-	sock_rx_release_entry(rx_entry);
-	return 0;
-}
-
 ssize_t sock_ctx_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 		   uint64_t flags)
 {
@@ -414,10 +318,6 @@ ssize_t sock_ctx_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 
 	rx_ctx = container_of(ep, struct sock_rx_ctx, ctx);
 	assert(rx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
-
-	rx_entry = sock_rx_check_buffered_tlist(rx_ctx, msg, flags);
-	if (rx_entry)
-		return sock_handle_buffered_trecv(rx_ctx, msg, flags, rx_entry);
 
 	rx_entry = sock_rx_new_entry(rx_ctx);
 	if (!rx_entry)
@@ -534,6 +434,8 @@ ssize_t sock_ctx_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 	sock_tx_ctx_write(tx_ctx, &msg->context, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->msg_iov[0].iov_base, sizeof(uint64_t));
+
 	if (flags & FI_REMOTE_CQ_DATA) {
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
 	}

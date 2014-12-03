@@ -56,6 +56,7 @@ _sockets_files = \
 	prov/sockets/src/sock_comm.c \
 	prov/sockets/src/sock_snd_rcv.c \
 	prov/sockets/src/sock_rma.c \
+	prov/sockets/src/sock_atomic.c \
 	prov/sockets/src/sock_util.c \
 	prov/sockets/src/sock_util.h \
 	prov/sockets/src/indexer.c \

@@ -356,7 +356,8 @@ int sock_rdm_connect_conn_map(struct sock_conn_map *map, void *addr, int count,
 		}
 		return _connect_conn_map_in(map, addr, count, key_table, port);
 	default:
-		sock_log(SOCK_ERROR, "inserted address not supported\n");
+		sock_log(SOCK_ERROR, "inserted address not supported: %d\n",
+			 (struct sockaddr *)(addr)->sa_family);
 		return -EINVAL;
 
 	}
