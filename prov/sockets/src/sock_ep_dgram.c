@@ -568,11 +568,20 @@ int sock_dgram_ctx_enable(struct fid_ep *ep)
 }
 
 int sock_dgram_ctx_getopt(fid_t fid, int level, int optname,
-			void *optval, size_t *optlen)
+		       void *optval, size_t *optlen)
 {
-	switch (level) {
-	case FI_OPT_ENDPOINT:
-		return -FI_ENOPROTOOPT;
+	struct sock_rx_ctx *rx_ctx;
+	rx_ctx = container_of(fid, struct sock_rx_ctx, ctx.fid);
+
+	if (level != FI_OPT_ENDPOINT)
+		return -ENOPROTOOPT;
+
+	switch (optname) {
+	case FI_OPT_MIN_MULTI_RECV:
+		*(size_t *)optval = rx_ctx->min_multi_recv;
+		*optlen = sizeof(size_t);
+		break;
+
 	default:
 		return -FI_ENOPROTOOPT;
 	}
@@ -580,13 +589,21 @@ int sock_dgram_ctx_getopt(fid_t fid, int level, int optname,
 }
 
 int sock_dgram_ctx_setopt(fid_t fid, int level, int optname,
-			const void *optval, size_t optlen)
+		       const void *optval, size_t optlen)
 {
-	switch (level) {
-	case FI_OPT_ENDPOINT:
-		return -FI_ENOPROTOOPT;
+	struct sock_rx_ctx *rx_ctx;
+	rx_ctx = container_of(fid, struct sock_rx_ctx, ctx.fid);
+
+	if (level != FI_OPT_ENDPOINT)
+		return -ENOPROTOOPT;
+
+	switch (optname) {
+	case FI_OPT_MIN_MULTI_RECV:
+		rx_ctx->min_multi_recv = *(size_t *)optval;
+		break;
+		
 	default:
-		return -FI_ENOPROTOOPT;
+		return -ENOPROTOOPT;
 	}
 	return 0;
 }
@@ -795,9 +812,18 @@ int sock_dgram_ep_enable(struct fid_ep *ep)
 int sock_dgram_ep_getopt(fid_t fid, int level, int optname,
 		       void *optval, size_t *optlen)
 {
-	switch (level) {
-	case FI_OPT_ENDPOINT:
-		return -FI_ENOPROTOOPT;
+	struct sock_ep *sock_ep;
+	sock_ep = container_of(fid, struct sock_ep, ep.fid);
+
+	if (level != FI_OPT_ENDPOINT)
+		return -ENOPROTOOPT;
+
+	switch (optname) {
+	case FI_OPT_MIN_MULTI_RECV:
+		*(size_t *)optval = sock_ep->min_multi_recv;
+		*optlen = sizeof(size_t);
+		break;
+
 	default:
 		return -FI_ENOPROTOOPT;
 	}
@@ -807,11 +833,26 @@ int sock_dgram_ep_getopt(fid_t fid, int level, int optname,
 int sock_dgram_ep_setopt(fid_t fid, int level, int optname,
 		       const void *optval, size_t optlen)
 {
-	switch (level) {
-	case FI_OPT_ENDPOINT:
-		return -FI_ENOPROTOOPT;
+	int i;
+	struct sock_ep *sock_ep;
+	sock_ep = container_of(fid, struct sock_ep, ep.fid);
+
+	if (level != FI_OPT_ENDPOINT)
+		return -ENOPROTOOPT;
+
+	switch (optname) {
+	case FI_OPT_MIN_MULTI_RECV:
+		sock_ep->min_multi_recv = *(size_t *)optval;
+		for (i = 0; i < sock_ep->ep_attr.rx_ctx_cnt + 1; i ++) {
+			if (sock_ep->rx_array[i] != NULL) {
+				sock_ep->rx_array[i]->min_multi_recv = 
+					sock_ep->min_multi_recv;
+			}
+		}
+		break;
+		
 	default:
-		return -FI_ENOPROTOOPT;
+		return -ENOPROTOOPT;
 	}
 	return 0;
 }

@@ -72,8 +72,7 @@ struct sock_rx_entry *sock_rx_new_buffered_entry(struct sock_rx_ctx *rx_ctx,
 
 	if (rx_ctx->buffered_len + len >= rx_ctx->attr.total_buffered_recv) {
 		SOCK_LOG_ERROR("Reached max buffered recv limit\n");
-		rx_entry = NULL;
-		goto out;
+		return NULL;
 	}
 
 	/* FIXME: pool of rx_entry */
@@ -93,8 +92,6 @@ struct sock_rx_entry *sock_rx_new_buffered_entry(struct sock_rx_ctx *rx_ctx,
 		rx_ctx->buffered_len += len;
 		dlist_insert_tail(&rx_entry->entry, &rx_ctx->rx_buffered_list);
 	}
-
-out:
 	return rx_entry;
 }
 
@@ -119,19 +116,19 @@ struct sock_rx_entry *sock_rx_get_entry(struct sock_rx_ctx *rx_ctx,
 	    entry != &rx_ctx->rx_entry_list; entry = entry->next) {
 
 		rx_entry = container_of(entry, struct sock_rx_entry, entry);
+		if (rx_entry->is_busy)
+			continue;
+
 		if (((rx_entry->tag & ~rx_entry->ignore) == 
 		     (tag & ~rx_entry->ignore)) &&
 		    (rx_entry->addr == FI_ADDR_UNSPEC ||
 		     rx_entry->addr == addr)) {
-			if (rx_entry->is_busy)
-				rx_entry = NULL;
-			goto out;
+			break;
 		}
 	}
 
 	if (entry == &rx_ctx->rx_entry_list)
 		rx_entry = NULL;
-	
-out:
+
 	return rx_entry;
 }

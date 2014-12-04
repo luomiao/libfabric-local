@@ -555,7 +555,40 @@ ssize_t sock_ctx_tsearch(struct fid_ep *ep, uint64_t *tag, uint64_t ignore,
 			     uint64_t flags, fi_addr_t *src_addr, size_t *len, 
 			     void *context)
 {
-	return -FI_ENOSYS;
+	ssize_t ret;
+	struct dlist_entry *entry;
+	struct sock_rx_ctx *rx_ctx;
+	struct sock_rx_entry *rx_entry;
+	rx_ctx = container_of(ep, struct sock_rx_ctx, ctx);
+
+	fastlock_acquire(&rx_ctx->lock);
+	for (entry = rx_ctx->rx_buffered_list.next;
+	     entry != &rx_ctx->rx_buffered_list; entry = entry->next) {
+
+		rx_entry = container_of(entry, struct sock_rx_entry, entry);
+		if (rx_entry->is_busy || rx_entry->is_claimed)
+			continue;
+
+		if (((rx_entry->tag & ~rx_entry->ignore) == 
+		     (*tag & ~rx_entry->ignore)) &&
+		    (rx_entry->addr == FI_ADDR_UNSPEC ||
+		     rx_entry->addr == *src_addr)) {
+
+			if (flags & FI_CLAIM)
+				rx_entry->is_claimed = 1;
+			*tag = rx_entry->tag;
+			*src_addr = rx_entry->addr;
+			*len = rx_entry->used;
+			ret = 1;
+			break;
+		}
+	}
+
+	if (entry == &rx_ctx->rx_entry_list)
+		ret = -FI_ENOENT;
+
+	fastlock_release(&rx_ctx->lock);
+	return ret;
 }
 
 
@@ -814,7 +847,9 @@ ssize_t sock_ep_tsearch(struct fid_ep *ep, uint64_t *tag, uint64_t ignore,
 			     uint64_t flags, fi_addr_t *src_addr, size_t *len, 
 			     void *context)
 {
-	return -FI_ENOSYS;
+	struct sock_ep *sock_ep;
+	sock_ep = container_of(ep, struct sock_ep, ep);
+	return sock_ctx_tsearch(ep, tag, ignore, flags, src_addr, len, context);
 }
 
 
