@@ -212,7 +212,7 @@ static void sock_pe_progress_pending_ack(struct sock_pe *pe,
 		ret = sock_comm_send(conn, 
 				     (char*)&pe_entry->rx.response + offset,
 				     sizeof(struct sock_msg_response) - offset);
-		if (ret < 0) 
+		if (ret <= 0) 
 			return;
 		pe_entry->done_len += ret;
 		if (pe_entry->done_len != len)
@@ -236,7 +236,7 @@ static void sock_pe_progress_pending_ack(struct sock_pe *pe,
 			ret = sock_comm_send(conn, 
 					     (char*)pe_entry->rx.rx_iov[i].iov.addr 
 					     + offset, data_len);
-			if (ret < 0)
+			if (ret <= 0)
 				return;
 			done_data = 0;
 			pe_entry->done_len += ret;
@@ -319,7 +319,7 @@ static int sock_pe_handle_ack(struct sock_pe *pe, struct sock_pe_entry *pe_entry
 	ret = sock_comm_recv(pe_entry->conn,
 			     (char*)&response.pe_entry_id + offset, 
 			     sizeof(uint64_t) - offset);
-	if (ret < 0)
+	if (ret <= 0)
 		return ret;
 	
 	pe_entry->done_len += ret;
@@ -354,7 +354,7 @@ static int sock_pe_handle_read_complete(struct sock_pe *pe,
 		ret = sock_comm_recv(pe_entry->conn,
 				     (char*)&response.pe_entry_id + offset, 
 				     sizeof(uint64_t) - offset);
-		if (ret < 0)
+		if (ret <= 0)
 			return ret;
 	
 		pe_entry->done_len += ret;
@@ -385,7 +385,7 @@ static int sock_pe_handle_read_complete(struct sock_pe *pe,
 		ret = sock_comm_recv(pe_entry->conn, 
 				     (char*)waiting_entry->tx.tx_iov[i].dst.iov.addr + 
 				     offset, data_len);
-		if (ret < 0) 
+		if (ret <= 0) 
 			return 0;
 			
 		done_data = 0;
@@ -418,7 +418,7 @@ static int sock_pe_process_rx_read(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		ret = sock_comm_recv(pe_entry->conn,
 				     (char *)&pe_entry->rx.rx_iov[0] + offset,
 				     entry_len - offset);
-		if (ret < 0)
+		if (ret <= 0)
 			return ret;
 		pe_entry->done_len += ret;
 		if (ret != entry_len - offset) {
@@ -475,7 +475,7 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 			ret = sock_comm_recv(pe_entry->conn, 
 					   (char*)&pe_entry->data + offset, 
 					   sizeof(uint64_t) - offset);
-			if (ret < 0)
+			if (ret <= 0)
 				return ret;
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len != len)
@@ -491,7 +491,7 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 		ret = sock_comm_recv(pe_entry->conn,
 				   (char *)&pe_entry->rx.rx_iov[0] + offset,
 				   entry_len - offset);
-		if (ret < 0)
+		if (ret <= 0)
 			return ret;
 		pe_entry->done_len += ret;
 		if (ret != entry_len - offset) {
@@ -530,7 +530,7 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 		ret = sock_comm_recv(pe_entry->conn,
 				     (char*)pe_entry->rx.rx_iov[i].iov.addr + offset,
 				     data_len);
-		if (ret < 0)
+		if (ret <= 0)
 			return ret;
 
 		done_data = 0;
@@ -654,9 +654,9 @@ out:
 static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 				   struct sock_pe_entry *pe_entry)
 {
-	int i, ret;
+	ssize_t i, ret;
 	struct sock_rx_entry *rx_entry;
-	uint64_t len, rem, offset, data_len, done_data, used, iov_len;
+	uint64_t len, rem, offset, data_len, done_data, used;
 
 	offset = 0;
 	len = sizeof(struct sock_msg_hdr);
@@ -668,7 +668,7 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 			ret = sock_comm_recv(pe_entry->conn, 
 					   (char*)&pe_entry->tag + offset, 
 					   sizeof(uint64_t) - offset);
-			if (ret < 0)
+			if (ret <= 0)
 				return ret;
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len != len)
@@ -682,7 +682,7 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		if (pe_entry->done_len < len) {
 			sock_comm_recv(pe_entry->conn, (char*)&pe_entry->data 
 				     + offset, sizeof(uint64_t) - offset);
-			if (ret < 0)
+			if (ret <= 0)
 				return ret;
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len != len)
@@ -693,9 +693,6 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 	if (pe_entry->done_len == len && !pe_entry->rx.rx_entry) {
 
 		data_len = pe_entry->msg_hdr.msg_len - len;
-		rx_ctx = pe_entry->ep->rx_array[pe_entry->msg_hdr.rx_id];
-		assert(rx_ctx != NULL);
-
 		fastlock_acquire(&rx_ctx->lock);
 
 		/* progress buffered recvs, if any  */
@@ -734,17 +731,8 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 			continue;
 		}
 
-		iov_len = rx_entry->iov[i].iov.len - used;
-		used = 0;
-
-		/* skip done_data */
-		if (done_data >= iov_len) {
-			done_data -= iov_len;
-			continue;
-		}
-
-		data_len = MIN(iov_len - done_data, rem);
-		offset = done_data;
+		offset = used;
+		data_len = MIN(rx_entry->iov[i].iov.len - used, rem);
 		ret = sock_comm_recv(pe_entry->conn, 
 				     (char *)rx_entry->iov[i].iov.addr + offset, 
 				     data_len);
@@ -755,7 +743,7 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 			pe_entry->buf = (uint64_t)
 				((char *)rx_entry->iov[i].iov.addr + offset);
 		rem -= ret;
-		done_data = 0;
+		used = 0;
 		pe_entry->done_len += ret;
 		rx_entry->used += ret;
 		if (ret != data_len)
@@ -877,7 +865,7 @@ static int sock_pe_read_hdr(struct sock_pe *pe,
 				     (char*)msg_hdr + pe_entry->done_len, 
 				     sizeof(struct sock_msg_hdr) -
 				     pe_entry->done_len);
-		if (ret < 0) 
+		if (ret <= 0) 
 			return ret;
 		
 		pe_entry->done_len += ret;
@@ -917,7 +905,7 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->data + offset,
 					   sizeof(uint64_t) - offset);
-			if (ret < 0)
+			if (ret <= 0)
 				return ret;
 			pe_entry->done_len += ret;
 			if (pe_entry->done_len != len)
@@ -940,7 +928,7 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 		ret = sock_comm_send(conn,
 				   (char*)&dest_iov[0] + offset, 
 				   dest_iov_len - offset);
-		if (ret < 0)
+		if (ret <= 0)
 			return ret;
 		pe_entry->done_len += ret;
 		if (pe_entry->done_len != len)
@@ -956,7 +944,7 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->tx.inject_data + offset,
 					   pe_entry->tx.tx_op.src_iov_len - offset);
-			if (ret < 0)
+			if (ret <= 0)
 				return ret;
 			
 			pe_entry->done_len += ret;
@@ -979,7 +967,7 @@ static int sock_pe_progress_tx_write(struct sock_pe *pe,
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
 					   offset, data_len);
-			if (ret < 0)
+			if (ret <= 0)
 				return ret;
 
 			done_data = 0;
@@ -1025,7 +1013,7 @@ static int sock_pe_progress_tx_read(struct sock_pe *pe,
 		ret = sock_comm_send(conn,
 				     (char*)&src_iov[0] + offset, 
 				     src_iov_len - offset);
-		if (ret < 0)
+		if (ret <= 0)
 			return ret;
 		pe_entry->done_len += ret;
 		if (pe_entry->done_len != len)
@@ -1063,7 +1051,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			ret = sock_comm_send(conn, 
 					   (char*)&pe_entry->tag + offset,
 					   sizeof(uint64_t) - offset);
-			if (ret < 0) 
+			if (ret <= 0) 
 				return ret;
 
 			pe_entry->done_len += ret;
@@ -1080,7 +1068,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->data + offset,
 					   sizeof(uint64_t) - offset);
-			if (ret < 0) 
+			if (ret <= 0) 
 				return ret;
 
 			pe_entry->done_len += ret;
@@ -1099,7 +1087,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->tx.inject_data + offset,
 					   pe_entry->tx.tx_op.src_iov_len - offset);
-			if (ret < 0) 
+			if (ret <= 0) 
 				return ret;
 			
 			pe_entry->done_len += ret;
@@ -1122,7 +1110,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 			ret = sock_comm_send(conn, 
 					   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
 					   offset, data_len);
-			if (ret < 0) 
+			if (ret <= 0) 
 				return ret;
 			
 			done_data = 0;
@@ -1170,7 +1158,7 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 		ret = sock_comm_send(conn, 
 				   (char*)&pe_entry->msg_hdr + pe_entry->done_len,
 				   sizeof(struct sock_msg_hdr) - pe_entry->done_len);
-		if (ret < 0) 
+		if (ret <= 0) 
 			return ret;
 		
 		pe_entry->done_len += ret;

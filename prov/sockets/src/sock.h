@@ -56,9 +56,9 @@
 #ifndef _SOCK_H_
 #define _SOCK_H_
 
-#define SOCK_EP_MAX_MSG_SZ (1<<22)
+#define SOCK_EP_MAX_MSG_SZ (1<<23)
 #define SOCK_EP_MAX_INJECT_SZ (1<<12)
-#define SOCK_EP_MAX_BUFF_RECV (1<<20)
+#define SOCK_EP_MAX_BUFF_RECV (1<<23)
 #define SOCK_EP_MAX_ORDER_RAW_SZ (0)
 #define SOCK_EP_MAX_ORDER_WAR_SZ (0)
 #define SOCK_EP_MAX_ORDER_WAW_SZ (0)
@@ -552,7 +552,6 @@ struct sock_rx_pe_entry{
 	uint8_t header_read;
 	uint8_t pending_send;
 	uint8_t reserved[7];
-	void *raw_data;
 	struct sock_rx_entry *rx_entry;
 	struct sock_msg_response response;
 	union sock_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];

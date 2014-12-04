@@ -63,12 +63,9 @@ ssize_t sock_comm_send_socket(struct sock_conn *conn, const void *buf, size_t le
 
 	while(rem > 0) {
 		len = MIN(rem, SOCK_COMM_BUF_SZ);
-
 		ret = send(conn->sock_fd, buf + offset, len, 0);
-		if (ret <= 0) {
-			SOCK_LOG_INFO("WROTE %lu on wire\n", done_len);
+		if (ret <= 0) 
 			break;
-		}
 		
 		done_len += ret;
 		rem -= ret;
@@ -80,7 +77,7 @@ ssize_t sock_comm_send_socket(struct sock_conn *conn, const void *buf, size_t le
 
 ssize_t sock_comm_flush(struct sock_conn *conn)
 {
-	ssize_t ret1, ret2;
+	ssize_t ret1, ret2 = 0;
 	size_t endlen, len, xfer_len;
 
 	len = rbused(&conn->outbuf);
@@ -97,7 +94,7 @@ ssize_t sock_comm_flush(struct sock_conn *conn)
 		ret2 = sock_comm_send_socket(conn, conn->outbuf.buf +
 					     (conn->outbuf.rcnt & conn->outbuf.size_mask), 
 					     len - xfer_len);
-		if (ret2 >0)
+		if (ret2 > 0)
 			conn->outbuf.rcnt += ret2;
 		else
 			ret2 = 0;
@@ -128,7 +125,7 @@ ssize_t sock_comm_recv_socket(struct sock_conn *conn, void *buf, size_t len)
 	ssize_t ret;
 
 	ret = recv(conn->sock_fd, buf, len, 0);
-	if (ret < 0)
+	if (ret <= 0)
 		return 0;
 
 	SOCK_LOG_INFO("READ from wire: %lu\n", ret);
@@ -139,10 +136,10 @@ ssize_t sock_comm_recv_buffer(struct sock_conn *conn)
 {
 	int ret;
 	size_t endlen;
-	endlen = conn->inbuf.size - (conn->inbuf.wpos & conn->inbuf.size_mask);
+	endlen = conn->inbuf.size - 
+		(conn->inbuf.wpos & conn->inbuf.size_mask);
 
-	if ((ret = sock_comm_recv_socket(conn, 
-					 (char*) conn->inbuf.buf + 
+	if ((ret = sock_comm_recv_socket(conn, (char*) conn->inbuf.buf + 
 					 (conn->inbuf.wpos & conn->inbuf.size_mask), 
 					 endlen)) <= 0)
 		return 0;
@@ -163,8 +160,8 @@ ssize_t sock_comm_recv_buffer(struct sock_conn *conn)
 
 ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len)
 {
-	int ret;
-	ssize_t used;
+	int ret = 0;
+	ssize_t used, read_len;
 
 	used = rbused(&conn->inbuf);
 	if (used == 0) {
@@ -173,18 +170,16 @@ ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len)
 		return ret;
 	}
 
-	if (used >= len) {
-		rbread(&conn->inbuf, buf, len);
-		return len;
+	read_len = MIN(len, used);
+	rbread(&conn->inbuf, buf, read_len);
+	if (len > used) {
+		ret = sock_comm_recv_socket(conn, (char*)buf + used, len - used);
+		if (ret <= 0)
+			ret = 0;
+		sock_comm_recv_buffer(conn);
 	}
-
-	rbread(&conn->inbuf, buf, used);
-	ret = sock_comm_recv_socket(conn, (char*)buf + used, len - used);
-	if (ret < 0)
-		return used;
-
-	sock_comm_recv_buffer(conn);
-	return ret + used;
+	SOCK_LOG_INFO("Read %lu from buffer\n", ret + read_len);
+	return ret + read_len;
 }
 
 int sock_comm_buffer_init(struct sock_conn *conn)
