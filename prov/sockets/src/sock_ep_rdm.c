@@ -84,7 +84,7 @@ const struct fi_ep_attr sock_rdm_ep_attr = {
 	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
 };
 
-const struct fi_tx_ctx_attr sock_rdm_tx_attr = {
+const struct fi_tx_attr sock_rdm_tx_attr = {
 	.caps = SOCK_EP_RDM_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
@@ -93,7 +93,7 @@ const struct fi_tx_ctx_attr sock_rdm_tx_attr = {
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
 };
 
-const struct fi_rx_ctx_attr sock_rdm_rx_attr = {
+const struct fi_rx_attr sock_rdm_rx_attr = {
 	.caps = SOCK_EP_RDM_CAP,
 	.op_flags = SOCK_OPS_CAP,
 	.msg_order = 0,
@@ -102,7 +102,7 @@ const struct fi_rx_ctx_attr sock_rdm_rx_attr = {
 	.iov_limit = SOCK_EP_MAX_IOV_LIMIT,
 };
 
-static int sock_rdm_verify_rx_attr(const struct fi_rx_ctx_attr *attr)
+static int sock_rdm_verify_rx_attr(const struct fi_rx_attr *attr)
 {
 	if (!attr)
 		return 0;
@@ -129,7 +129,7 @@ static int sock_rdm_verify_rx_attr(const struct fi_rx_ctx_attr *attr)
 	return 0;
 }
 
-static int sock_rdm_verify_tx_attr(const struct fi_tx_ctx_attr *attr)
+static int sock_rdm_verify_tx_attr(const struct fi_tx_attr *attr)
 {
 	if (!attr)
 		return 0;
@@ -157,8 +157,8 @@ static int sock_rdm_verify_tx_attr(const struct fi_tx_ctx_attr *attr)
 }
 
 int sock_rdm_verify_ep_attr(struct fi_ep_attr *ep_attr,
-			    struct fi_tx_ctx_attr *tx_attr,
-			    struct fi_rx_ctx_attr *rx_attr)
+			    struct fi_tx_attr *tx_attr,
+			    struct fi_rx_attr *rx_attr)
 {
 	if (ep_attr) {
 		switch (ep_attr->protocol) {
@@ -942,7 +942,7 @@ int sock_rdm_ep_setopt(fid_t fid, int level, int optname,
 	return 0;
 }
 
-int sock_rdm_ep_tx_ctx(struct fid_ep *ep, int index, struct fi_tx_ctx_attr *attr, 
+int sock_rdm_ep_tx_ctx(struct fid_sep *ep, int index, struct fi_tx_attr *attr, 
 		    struct fid_ep **tx_ep, void *context)
 {
 	struct sock_ep *sock_ep;
@@ -975,7 +975,7 @@ int sock_rdm_ep_tx_ctx(struct fid_ep *ep, int index, struct fi_tx_ctx_attr *attr
 	return 0;
 }
 
-int sock_rdm_ep_rx_ctx(struct fid_ep *ep, int index, struct fi_rx_ctx_attr *attr,
+int sock_rdm_ep_rx_ctx(struct fid_sep *ep, int index, struct fi_rx_attr *attr,
 		    struct fid_ep **rx_ep, void *context)
 {
 	struct sock_ep *sock_ep;

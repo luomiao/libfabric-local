@@ -57,7 +57,7 @@
 #include "sock.h"
 #include "sock_util.h"
 
-ssize_t sock_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
+static ssize_t sock_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		   uint64_t flags)
 {
 	int i;
@@ -96,8 +96,8 @@ ssize_t sock_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	return 0;
 }
 
-ssize_t sock_ctx_recvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
-		    fi_addr_t src_addr, void *context)
+static ssize_t sock_ctx_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
+		      fi_addr_t src_addr, void *context)
 {
 	struct fi_msg msg;
 	struct iovec msg_iov;
@@ -114,27 +114,21 @@ ssize_t sock_ctx_recvfrom(struct fid_ep *ep, void *buf, size_t len, void *desc,
 	return sock_ctx_recvmsg(ep, &msg, 0);
 }
 
-ssize_t sock_ctx_recv(struct fid_ep *ep, void *buf, size_t len, void *desc,
-			  void *context)
-{
-	return sock_ctx_recvfrom(ep, buf, len, desc, FI_ADDR_UNSPEC, 
-				     context);
-}
-
-ssize_t sock_ctx_recvv(struct fid_ep *ep, const struct iovec *iov, 
-			   void **desc, size_t count, void *context)
+static ssize_t sock_ctx_recvv(struct fid_ep *ep, const struct iovec *iov, 
+		       void **desc, size_t count, fi_addr_t src_addr, 
+		       void *context)
 {
 	struct fi_msg msg;
 
 	msg.msg_iov = iov;
 	msg.desc = desc;
 	msg.iov_count = count;
-	msg.addr = FI_ADDR_UNSPEC;
+	msg.addr = src_addr;
 	msg.context = context;
 	return sock_ctx_recvmsg(ep, &msg, 0);
 }
 
-ssize_t sock_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
+static ssize_t sock_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		   uint64_t flags)
 {
 	int ret, i;
@@ -210,8 +204,8 @@ err:
 	return ret;
 }
 
-ssize_t sock_ctx_sendto(struct fid_ep *ep, const void *buf, size_t len, 
-			    void *desc, fi_addr_t dest_addr, void *context)
+static ssize_t sock_ctx_send(struct fid_ep *ep, const void *buf, size_t len, 
+		      void *desc, fi_addr_t dest_addr, void *context)
 {
 	struct fi_msg msg;
 	struct iovec msg_iov;
@@ -227,28 +221,22 @@ ssize_t sock_ctx_sendto(struct fid_ep *ep, const void *buf, size_t len,
 	return sock_ctx_sendmsg(ep, &msg, 0);
 }
 
-ssize_t sock_ctx_send(struct fid_ep *ep, const void *buf, size_t len, 
-			  void *desc, void *context)
-{
-	return sock_ctx_sendto(ep, buf, len, desc, FI_ADDR_UNSPEC, context);
-}
-
-ssize_t sock_ctx_sendv(struct fid_ep *ep, const struct iovec *iov, 
-			   void **desc, size_t count, void *context)
+static ssize_t sock_ctx_sendv(struct fid_ep *ep, const struct iovec *iov, 
+		       void **desc, size_t count, fi_addr_t dest_addr, 
+		       void *context)
 {
 	struct fi_msg msg;
 	msg.msg_iov = iov;
 	msg.desc = desc;
 	msg.iov_count = count;
-	msg.addr = FI_ADDR_UNSPEC;
+	msg.addr = dest_addr;
 	msg.context = context;
 	return sock_ctx_sendmsg(ep, &msg, 0);
 }
 
-
-ssize_t sock_ctx_senddatato(struct fid_ep *ep, const void *buf, 
-				size_t len, void *desc, uint64_t data, 
-				fi_addr_t dest_addr, void *context)
+static ssize_t sock_ctx_senddata(struct fid_ep *ep, const void *buf, size_t len, 
+			  void *desc, uint64_t data, fi_addr_t dest_addr, 
+			  void *context)
 {
 	struct fi_msg msg;
 	struct iovec msg_iov;
@@ -266,15 +254,8 @@ ssize_t sock_ctx_senddatato(struct fid_ep *ep, const void *buf,
 	return sock_ctx_sendmsg(ep, &msg, FI_REMOTE_CQ_DATA);
 }
 
-ssize_t sock_ctx_senddata(struct fid_ep *ep, const void *buf, size_t len, 
-			      void *desc, uint64_t data, void *context)
-{
-	return sock_ctx_senddatato(ep, buf, len, desc, data, 
-				       FI_ADDR_UNSPEC, context);
-}
-
-ssize_t sock_ctx_injectto(struct fid_ep *ep, const void *buf, size_t len,
-			      fi_addr_t dest_addr)
+static ssize_t sock_ctx_inject(struct fid_ep *ep, const void *buf, size_t len, 
+			fi_addr_t dest_addr)
 {
 	struct fi_msg msg;
 	struct iovec msg_iov;
@@ -288,28 +269,19 @@ ssize_t sock_ctx_injectto(struct fid_ep *ep, const void *buf, size_t len,
 	return sock_ctx_sendmsg(ep, &msg, FI_INJECT);
 }
 
-ssize_t sock_ctx_inject(struct fid_ep *ep, const void *buf, size_t len)
-{
-	return sock_ctx_injectto(ep, buf, len, FI_ADDR_UNSPEC);
-}
-
 struct fi_ops_msg sock_ctx_msg_ops = {
 	.size = sizeof(struct fi_ops_msg),
 	.recv = sock_ctx_recv,
 	.recvv = sock_ctx_recvv,
-	.recvfrom = sock_ctx_recvfrom,
 	.recvmsg = sock_ctx_recvmsg,
 	.send = sock_ctx_send,
 	.sendv = sock_ctx_sendv,
-	.sendto = sock_ctx_sendto,
 	.sendmsg = sock_ctx_sendmsg,
 	.inject = sock_ctx_inject,
-	.injectto = sock_ctx_injectto,
 	.senddata = sock_ctx_senddata,
-	.senddatato = sock_ctx_senddatato,
 };
 
-ssize_t sock_ctx_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
+static ssize_t sock_ctx_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 		   uint64_t flags)
 {
 	int i;
@@ -345,9 +317,8 @@ ssize_t sock_ctx_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 	return 0;
 }
 
-ssize_t sock_ctx_trecvfrom(struct fid_ep *ep, void *buf, size_t len, 
-			       void *desc, fi_addr_t src_addr, uint64_t tag, 
-			       uint64_t ignore, void *context)
+static ssize_t sock_ctx_trecv(struct fid_ep *ep, void *buf, size_t len, void *desc,
+		       uint64_t tag, uint64_t ignore, fi_addr_t src_addr, void *context)
 {
 	struct fi_msg_tagged msg;
 	struct iovec msg_iov;
@@ -366,31 +337,24 @@ ssize_t sock_ctx_trecvfrom(struct fid_ep *ep, void *buf, size_t len,
 	return sock_ctx_trecvmsg(ep, &msg, 0);
 }
 
-
-ssize_t sock_ctx_trecv(struct fid_ep *ep, void *buf, size_t len, void *desc,
-			   uint64_t tag, uint64_t ignore, void *context)
-{
-	return sock_ctx_trecvfrom(ep, buf, len, desc, FI_ADDR_UNSPEC,
-				      tag, ignore, context);
-}
-ssize_t sock_ctx_trecvv(struct fid_ep *ep, const struct iovec *iov, 
-			    void **desc, size_t count, uint64_t tag, 
-			    uint64_t ignore, void *context)
+static ssize_t sock_ctx_trecvv(struct fid_ep *ep, const struct iovec *iov, 
+			void **desc, size_t count, uint64_t tag, 
+			uint64_t ignore, fi_addr_t src_addr, void *context)
 {
 	struct fi_msg_tagged msg;
 
 	msg.msg_iov = iov;
 	msg.desc = desc;
 	msg.iov_count = count;
-	msg.addr = FI_ADDR_UNSPEC;
+	msg.addr = src_addr;
 	msg.context = context;
 	msg.tag = tag;
 	msg.ignore = ignore;
 	return sock_ctx_trecvmsg(ep, &msg, 0);
 }
 
-ssize_t sock_ctx_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
-		   uint64_t flags)
+static ssize_t sock_ctx_tsendmsg(struct fid_ep *ep, 
+				 const struct fi_msg_tagged *msg, uint64_t flags)
 {
 	int ret, i;
 	uint64_t total_len;
@@ -462,9 +426,8 @@ err:
 	return ret;
 }
 
-ssize_t sock_ctx_tsendto(struct fid_ep *ep, const void *buf, size_t len, 
-			     void *desc, fi_addr_t dest_addr, uint64_t tag, 
-			     void *context)
+static ssize_t sock_ctx_tsend(struct fid_ep *ep, const void *buf, size_t len, 
+			      void *desc, uint64_t tag, fi_addr_t dest_addr, void *context)
 {
 	struct fi_msg_tagged msg;
 	struct iovec msg_iov;
@@ -481,30 +444,23 @@ ssize_t sock_ctx_tsendto(struct fid_ep *ep, const void *buf, size_t len,
 	return sock_ctx_tsendmsg(ep, &msg, 0);
 }
 
-ssize_t sock_ctx_tsend(struct fid_ep *ep, const void *buf, size_t len, 
-			   void *desc, uint64_t tag, void *context)
-{
-	return sock_ctx_tsendto(ep, buf, len, desc, FI_ADDR_UNSPEC, 
-				    tag, context);
-}
-
-ssize_t sock_ctx_tsendv(struct fid_ep *ep, const struct iovec *iov, 
-			    void **desc, size_t count, uint64_t tag, 
-			    void *context)
+static ssize_t sock_ctx_tsendv(struct fid_ep *ep, const struct iovec *iov, 
+			       void **desc, size_t count, uint64_t tag, 
+			       fi_addr_t dest_addr, void *context)
 {
 	struct fi_msg_tagged msg;
 	msg.msg_iov = iov;
 	msg.desc = desc;
 	msg.iov_count = count;
-	msg.addr = FI_ADDR_UNSPEC;
+	msg.addr = dest_addr;
 	msg.context = context;
 	msg.tag = tag;
 	return sock_ctx_tsendmsg(ep, &msg, 0);
 }
 
-ssize_t sock_ctx_tsenddatato(struct fid_ep *ep, const void *buf, size_t len, 
-				 void *desc, uint64_t data, fi_addr_t dest_addr, 
-				 uint64_t tag, void *context)
+static ssize_t sock_ctx_tsenddata(struct fid_ep *ep, const void *buf, size_t len,
+				  void *desc, uint64_t data, uint64_t tag, 
+				  fi_addr_t dest_addr, void *context)
 {
 	struct fi_msg_tagged msg;
 	struct iovec msg_iov;
@@ -522,16 +478,8 @@ ssize_t sock_ctx_tsenddatato(struct fid_ep *ep, const void *buf, size_t len,
 	return sock_ctx_tsendmsg(ep, &msg, FI_REMOTE_CQ_DATA);
 }
 
-ssize_t sock_ctx_tsenddata(struct fid_ep *ep, const void *buf, size_t len,
-				void *desc, uint64_t data, uint64_t tag, 
-			       void *context)
-{
-	return sock_ctx_tsenddatato(ep, buf, len, desc,
-					FI_ADDR_UNSPEC, data, tag, context);
-}
-
-ssize_t sock_ctx_tinjectto(struct fid_ep *ep, const void *buf, size_t len,
-		    fi_addr_t dest_addr, uint64_t tag)
+static ssize_t sock_ctx_tinject(struct fid_ep *ep, const void *buf, size_t len,
+			 uint64_t tag, fi_addr_t dest_addr)
 {
 	struct fi_msg_tagged msg;
 	struct iovec msg_iov;
@@ -545,13 +493,7 @@ ssize_t sock_ctx_tinjectto(struct fid_ep *ep, const void *buf, size_t len,
 	return sock_ctx_tsendmsg(ep, &msg, FI_INJECT);
 }
 
-ssize_t sock_ctx_tinject(struct fid_ep *ep, const void *buf, size_t len,
-		  uint64_t tag)
-{
-	return sock_ctx_tinjectto(ep, buf, len, FI_ADDR_UNSPEC, tag);
-}
-
-ssize_t sock_ctx_tsearch(struct fid_ep *ep, uint64_t *tag, uint64_t ignore,
+static ssize_t sock_ctx_tsearch(struct fid_ep *ep, uint64_t *tag, uint64_t ignore,
 			     uint64_t flags, fi_addr_t *src_addr, size_t *len, 
 			     void *context)
 {
@@ -596,20 +538,16 @@ struct fi_ops_tagged sock_ctx_tagged = {
 	.size = sizeof(struct fi_ops_tagged),
 	.recv = sock_ctx_trecv,
 	.recvv = sock_ctx_trecvv,
-	.recvfrom = sock_ctx_trecvfrom,
 	.recvmsg = sock_ctx_trecvmsg,
 	.send = sock_ctx_tsend,
 	.sendv = sock_ctx_tsendv,
-	.sendto = sock_ctx_tsendto,
 	.sendmsg = sock_ctx_tsendmsg,
 	.inject = sock_ctx_tinject,
-	.injectto = sock_ctx_tinjectto,
 	.senddata = sock_ctx_tsenddata,
-	.senddatato = sock_ctx_tsenddatato,
 	.search = sock_ctx_tsearch,
 };
 
-ssize_t sock_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
+static ssize_t sock_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 				uint64_t flags)
 {
 	struct sock_ep *sock_ep;
@@ -617,119 +555,82 @@ ssize_t sock_ep_msg_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	return sock_ctx_recvmsg(&sock_ep->rx_ctx->ctx,msg, flags);
 }
 
-ssize_t sock_ep_msg_recvfrom(struct fid_ep *ep, void *buf, size_t len, 
-				 void *desc, fi_addr_t src_addr, void *context)
+static ssize_t sock_ep_msg_recv(struct fid_ep *ep, void *buf, size_t len, 
+				void *desc, fi_addr_t src_addr, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_recvfrom(&sock_ep->rx_ctx->ctx, buf, len, desc,
-				     src_addr, context);
+	return sock_ctx_recv(&sock_ep->rx_ctx->ctx, buf, len, desc, 
+			     src_addr, context);
 }
 
-ssize_t sock_ep_msg_recv(struct fid_ep *ep, void *buf, size_t len, 
-			     void *desc, void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_recv(&sock_ep->rx_ctx->ctx, buf, len, desc, context);
-}
-
-ssize_t sock_ep_msg_recvv(struct fid_ep *ep, const struct iovec *iov, void **desc,
-			      size_t count, void *context)
+static ssize_t sock_ep_msg_recvv(struct fid_ep *ep, const struct iovec *iov, 
+				 void **desc, size_t count, fi_addr_t src_addr, 
+				 void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_recvv(&sock_ep->rx_ctx->ctx, iov, desc, 
-				  count, context);
+			      count, src_addr, context);
 }
 
-ssize_t sock_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
-				uint64_t flags)
+static ssize_t sock_ep_msg_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
+				   uint64_t flags)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_sendmsg(&sock_ep->tx_ctx->ctx, msg, flags);
 }
 
-ssize_t sock_ep_msg_sendto(struct fid_ep *ep, const void *buf, size_t len, 
-			       void *desc, fi_addr_t dest_addr, void *context)
+static ssize_t sock_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, 
+				void *desc, fi_addr_t dest_addr, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_sendto(&sock_ep->tx_ctx->ctx, buf, len, desc,
-				   dest_addr, context);
+	return sock_ctx_send(&sock_ep->tx_ctx->ctx, buf, len, desc, 
+			     dest_addr, context);
 }
 
-ssize_t sock_ep_msg_send(struct fid_ep *ep, const void *buf, size_t len, 
-			     void *desc, void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_send(&sock_ep->tx_ctx->ctx, buf, len, desc, context);
-}
-
-ssize_t sock_ep_msg_sendv(struct fid_ep *ep, const struct iovec *iov, 
-			      void **desc, size_t count, void *context)
+static ssize_t sock_ep_msg_sendv(struct fid_ep *ep, const struct iovec *iov, 
+			      void **desc, size_t count, fi_addr_t dest_addr, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_sendv(&sock_ep->tx_ctx->ctx, iov, desc,
-				  count, context);
+			      count, dest_addr, context);
 }
 
-
-ssize_t sock_ep_msg_inject(struct fid_ep *ep, const void *buf, size_t len)
+static ssize_t sock_ep_msg_inject(struct fid_ep *ep, const void *buf, size_t len,
+				  fi_addr_t dest_addr)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_inject(&sock_ep->tx_ctx->ctx, buf, len);
+	return sock_ctx_inject(&sock_ep->tx_ctx->ctx, buf, len, dest_addr);
 }
 
-ssize_t sock_ep_msg_injectto(struct fid_ep *ep, const void *buf, size_t len,
-				 fi_addr_t dest_addr)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_injectto(&sock_ep->tx_ctx->ctx, buf, len, dest_addr);
-}
-
-ssize_t sock_ep_msg_senddatato(struct fid_ep *ep, const void *buf, size_t len, 
-				   void *desc, uint64_t data, fi_addr_t dest_addr, 
-				   void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_senddatato(&sock_ep->tx_ctx->ctx, buf, len, 
-				       desc, data, dest_addr, context);
-}
-
-ssize_t sock_ep_msg_senddata(struct fid_ep *ep, const void *buf, size_t len, 
-				 void *desc, uint64_t data, void *context)
+static ssize_t sock_ep_msg_senddata(struct fid_ep *ep, const void *buf, size_t len, 
+				    void *desc, uint64_t data, fi_addr_t dest_addr, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_senddata(&sock_ep->tx_ctx->ctx, buf, len, desc, 
-				     data, context);
+				 data, dest_addr, context);
 }
 
 struct fi_ops_msg sock_ep_msg_ops = {
 	.size = sizeof(struct fi_ops_msg),
 	.recv = sock_ep_msg_recv,
 	.recvv = sock_ep_msg_recvv,
-	.recvfrom = sock_ep_msg_recvfrom,
 	.recvmsg = sock_ep_msg_recvmsg,
 	.send = sock_ep_msg_send,
 	.sendv = sock_ep_msg_sendv,
-	.sendto = sock_ep_msg_sendto,
 	.sendmsg = sock_ep_msg_sendmsg,
 	.inject = sock_ep_msg_inject,
-	.injectto = sock_ep_msg_injectto,
 	.senddata = sock_ep_msg_senddata,
-	.senddatato = sock_ep_msg_senddatato,
 };
 
 
-ssize_t sock_ep_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
+static ssize_t sock_ep_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 		   uint64_t flags)
 {
 	struct sock_ep *sock_ep;
@@ -737,38 +638,28 @@ ssize_t sock_ep_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 	return sock_ctx_trecvmsg(&sock_ep->rx_ctx->ctx, msg, flags);
 }
 
-ssize_t sock_ep_trecvfrom(struct fid_ep *ep, void *buf, size_t len, 
-			       void *desc, fi_addr_t src_addr, uint64_t tag, 
-			       uint64_t ignore, void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_trecvfrom(&sock_ep->rx_ctx->ctx, buf, len, desc,
-				      src_addr, tag, ignore, context);
-}
-
-
-ssize_t sock_ep_trecv(struct fid_ep *ep, void *buf, size_t len, void *desc,
-			   uint64_t tag, uint64_t ignore, void *context)
+static ssize_t sock_ep_trecv(struct fid_ep *ep, void *buf, size_t len, void *desc,
+			     uint64_t tag, uint64_t ignore, fi_addr_t src_addr, 
+			     void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_trecv(&sock_ep->rx_ctx->ctx, buf, len, desc,
-				  tag, ignore, context);
+			      tag, ignore, src_addr, context);
 }
 
-ssize_t sock_ep_trecvv(struct fid_ep *ep, const struct iovec *iov, 
+static ssize_t sock_ep_trecvv(struct fid_ep *ep, const struct iovec *iov, 
 			    void **desc, size_t count, uint64_t tag, 
-			    uint64_t ignore, void *context)
+			      uint64_t ignore, fi_addr_t src_addr, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_trecvv(&sock_ep->rx_ctx->ctx, iov, desc, count,
-				   tag, ignore, context);
+			       tag, ignore, src_addr, context);
 }
 
 
-ssize_t sock_ep_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
+static ssize_t sock_ep_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 		   uint64_t flags)
 {
 	struct sock_ep *sock_ep;
@@ -776,76 +667,47 @@ ssize_t sock_ep_tsendmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 	return sock_ctx_tsendmsg(&sock_ep->tx_ctx->ctx, msg, flags);
 }
 
-ssize_t sock_ep_tsendto(struct fid_ep *ep, const void *buf, size_t len, 
-			     void *desc, fi_addr_t dest_addr, uint64_t tag, 
+static ssize_t sock_ep_tsend(struct fid_ep *ep, const void *buf, size_t len, 
+			     void *desc, uint64_t tag, fi_addr_t dest_addr, 
 			     void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_tsendto(&sock_ep->tx_ctx->ctx, buf, len, desc,
-				    dest_addr, tag, context);
-}
-
-ssize_t sock_ep_tsend(struct fid_ep *ep, const void *buf, size_t len, 
-			   void *desc, uint64_t tag, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_tsend(&sock_ep->tx_ctx->ctx, buf, len, desc,
-				  tag, context);
+			      tag, dest_addr, context);
 }
 
-ssize_t sock_ep_tsendv(struct fid_ep *ep, const struct iovec *iov, 
-			    void **desc, size_t count, uint64_t tag, 
-			    void *context)
+static ssize_t sock_ep_tsendv(struct fid_ep *ep, const struct iovec *iov, 
+			      void **desc, size_t count, uint64_t tag, 
+			      fi_addr_t dest_addr, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_tsendv(&sock_ep->tx_ctx->ctx, iov, desc, count,
-				  tag, context);
+			       tag, dest_addr, context);
 }
 
-ssize_t sock_ep_tsenddatato(struct fid_ep *ep, const void *buf, size_t len, 
-				 void *desc, uint64_t data, fi_addr_t dest_addr, 
-				 uint64_t tag, void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_tsenddatato(&sock_ep->tx_ctx->ctx, buf, len, desc,
-					data, dest_addr, tag, context);
-}
-
-ssize_t sock_ep_tsenddata(struct fid_ep *ep, const void *buf, size_t len,
-				void *desc, uint64_t data, uint64_t tag, 
-			       void *context)
+static ssize_t sock_ep_tsenddata(struct fid_ep *ep, const void *buf, size_t len,
+				 void *desc, uint64_t data, uint64_t tag, 
+				 fi_addr_t dest_addr, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_tsenddata(&sock_ep->tx_ctx->ctx, buf, len, desc,
-				      data, tag, context);
+				  data, tag, dest_addr, context);
 }
 
-
-ssize_t sock_ep_tinjectto(struct fid_ep *ep, const void *buf, size_t len,
-		    fi_addr_t dest_addr, uint64_t tag)
+static ssize_t sock_ep_tinject(struct fid_ep *ep, const void *buf, size_t len,
+			       fi_addr_t dest_addr, uint64_t tag)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_tinjectto(&sock_ep->tx_ctx->ctx, buf, len,
-				      dest_addr, tag);
+	return sock_ctx_tinject(&sock_ep->tx_ctx->ctx, buf, len, dest_addr, tag);
 }
 
-ssize_t sock_ep_tinject(struct fid_ep *ep, const void *buf, size_t len,
-		  uint64_t tag)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_tinject(&sock_ep->tx_ctx->ctx, buf, len, tag);
-}
-
-ssize_t sock_ep_tsearch(struct fid_ep *ep, uint64_t *tag, uint64_t ignore,
-			     uint64_t flags, fi_addr_t *src_addr, size_t *len, 
-			     void *context)
+static ssize_t sock_ep_tsearch(struct fid_ep *ep, uint64_t *tag, uint64_t ignore,
+			       uint64_t flags, fi_addr_t *src_addr, size_t *len, 
+			       void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
@@ -857,16 +719,12 @@ struct fi_ops_tagged sock_ep_tagged = {
 	.size = sizeof(struct fi_ops_tagged),
 	.recv = sock_ep_trecv,
 	.recvv = sock_ep_trecvv,
-	.recvfrom = sock_ep_trecvfrom,
 	.recvmsg = sock_ep_trecvmsg,
 	.send = sock_ep_tsend,
 	.sendv = sock_ep_tsendv,
-	.sendto = sock_ep_tsendto,
 	.sendmsg = sock_ep_tsendmsg,
 	.inject = sock_ep_tinject,
-	.injectto = sock_ep_tinjectto,
 	.senddata = sock_ep_tsenddata,
-	.senddatato = sock_ep_tsenddatato,
 	.search = sock_ep_tsearch,
 };
 
