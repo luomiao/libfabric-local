@@ -998,6 +998,9 @@ int sock_rdm_ep_rx_ctx(struct fid_ep *ep, int index, struct fi_rx_ctx_attr *attr
 	rx_ctx->ctx.msg = &sock_ctx_msg_ops;
 	rx_ctx->ctx.tagged = &sock_ctx_tagged;
 
+	/* default config */
+	rx_ctx->min_multi_recv = SOCK_EP_MIN_MULTI_RECV;
+
 	*rx_ep = &rx_ctx->ctx;
 	sock_ep->rx_array[index] = rx_ctx;
 	atomic_inc(&sock_ep->num_rx_ctx);
@@ -1162,6 +1165,9 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
 	sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt] = rx_ctx;
 	sock_ep->rx_ctx = rx_ctx;
+
+	/* default config */
+	sock_ep->min_multi_recv = SOCK_EP_MIN_MULTI_RECV;
 	
   	sock_ep->domain = sock_dom;
 	atomic_inc(&sock_dom->ref);
