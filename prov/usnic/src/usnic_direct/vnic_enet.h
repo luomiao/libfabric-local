@@ -40,7 +40,6 @@
  *
  *
  */
-#ident "$Id$"
 
 #ifndef _VNIC_ENIC_H_
 #define _VNIC_ENIC_H_

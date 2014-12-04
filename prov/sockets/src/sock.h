@@ -458,7 +458,7 @@ struct sock_tx_ctx {
 	struct dlist_entry ep_list;
 	fastlock_t lock;
 
-	struct fi_tx_ctx_attr attr;
+	struct fi_tx_attr attr;
 };
 
 
@@ -684,7 +684,7 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context);
 int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 		  struct fid_ep **ep, void *context);
-int sock_pendpoint(struct fid_fabric *fabric, struct fi_info *info,
+int sock_passive_ep(struct fid_fabric *fabric, struct fi_info *info,
 		   struct fid_pep **pep, void *context);
 
 

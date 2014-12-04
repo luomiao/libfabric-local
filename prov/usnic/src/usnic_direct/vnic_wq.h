@@ -40,7 +40,6 @@
  *
  *
  */
-#ident "$Id: vnic_wq.h 183023 2014-07-22 23:47:25Z xuywang $"
 
 #ifndef _VNIC_WQ_H_
 #define _VNIC_WQ_H_
@@ -290,6 +289,8 @@ static inline void vnic_wq_service(struct vnic_wq *wq,
 
 void vnic_wq_free(struct vnic_wq *wq);
 int vnic_wq_alloc(struct vnic_dev *vdev, struct vnic_wq *wq, unsigned int index,
+	unsigned int desc_count, unsigned int desc_size);
+int vnic_wq_devcmd2_alloc(struct vnic_dev *vdev, struct vnic_wq *wq,
 	unsigned int desc_count, unsigned int desc_size);
 #ifndef FOR_UPSTREAM_KERNEL
 void vnic_wq_init_start(struct vnic_wq *wq, unsigned int cq_index,

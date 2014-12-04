@@ -40,7 +40,6 @@
  *
  *
  */
-#ident "$Id$"
 
 #ifndef _VNIC_DEVCMD_H_
 #define _VNIC_DEVCMD_H_
