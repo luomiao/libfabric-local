@@ -59,6 +59,7 @@
 static ssize_t sock_ctx_atomic_writemsg(struct fid_ep *ep,
 			const struct fi_msg_atomic *msg, uint64_t flags)
 {
+/*
 	int i, ret;
 	size_t datatype_sz;
 	struct sock_op tx_op;
@@ -135,7 +136,7 @@ static ssize_t sock_ctx_atomic_writemsg(struct fid_ep *ep,
 	}
 
 
-	
+*/	
 
 	return -FI_ENOSYS;
 }

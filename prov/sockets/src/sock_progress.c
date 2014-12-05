@@ -100,7 +100,7 @@ static struct sock_pe_entry *sock_pe_acquire_entry(struct sock_pe *pe)
 static int sock_pe_report_tx_completion(struct sock_pe_entry *pe_entry,
 					struct sock_tx_ctx *tx_ctx)
 {
-	int ret;
+	int ret = 0;
 
 	if (tx_ctx->send_cq_event) {
 		if (pe_entry->msg_hdr.flags & FI_EVENT) {
@@ -144,7 +144,7 @@ static int sock_pe_report_tx_completion(struct sock_pe_entry *pe_entry,
 int sock_pe_report_rx_completion(struct sock_pe_entry *pe_entry,
 				 struct sock_rx_ctx *rx_ctx)
 {
-	int ret;
+	int ret = 0;
 
 	if (rx_ctx->recv_cq_event) {
 		if (pe_entry->msg_hdr.flags & FI_EVENT) {
