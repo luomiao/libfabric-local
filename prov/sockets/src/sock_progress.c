@@ -831,7 +831,7 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 		ret = sock_pe_process_rx_read(pe, rx_ctx, pe_entry);
 		break;
 
-	case SOCK_OP_ATOMIC:
+	case SOCK_OP_ATOMIC_WRITE:
 	default:
 		ret = -FI_ENOSYS;
 		SOCK_LOG_ERROR("Operation not supported\n");
@@ -1190,7 +1190,7 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 		ret = sock_pe_progress_tx_read(pe, pe_entry, conn);
 		break;
 
-	case SOCK_OP_ATOMIC:
+	case SOCK_OP_ATOMIC_WRITE:
 	default:
 		ret = -FI_ENOSYS;
 		SOCK_LOG_ERROR("Operation not supported\n");

@@ -59,7 +59,6 @@
 static ssize_t sock_ctx_atomic_writemsg(struct fid_ep *ep,
 			const struct fi_msg_atomic *msg, uint64_t flags)
 {
-/*
 	int i, ret;
 	size_t datatype_sz;
 	struct sock_op tx_op;
@@ -71,7 +70,7 @@ static ssize_t sock_ctx_atomic_writemsg(struct fid_ep *ep,
 	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
 	assert(tx_ctx->enabled && 
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
-		msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
+	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 	
 	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
 	assert(ret == 0);
@@ -80,10 +79,10 @@ static ssize_t sock_ctx_atomic_writemsg(struct fid_ep *ep,
 	datatype_sz = fi_datatype_size(msg->datatype);
 	if (flags & FI_INJECT) {
 		for (i=0; i< msg->iov_count; i++) {
-			src_len += msg->msg_iov[i].iov_len;
+			src_len += (msg->msg_iov[i].count * datatype_sz);
 		}
 		assert(src_len <= SOCK_EP_MAX_INJECT_SZ);
-		total_len = src_len * datatype_sz;
+		total_len = src_len;
 	} else {
 		total_len = msg->iov_count * sizeof(union sock_iov);
 	}
@@ -100,7 +99,7 @@ static ssize_t sock_ctx_atomic_writemsg(struct fid_ep *ep,
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = SOCK_OP_ATOMIC_WRITE;
 	tx_op.dest_iov_len = msg->rma_iov_count;
-	tx_op.atomic.op = msg->op_type;
+	tx_op.atomic.op = msg->op;
 	tx_op.atomic.datatype = msg->datatype;
 	tx_op.atomic.res_iov_len = 0;
 	if (flags & FI_INJECT)
@@ -113,36 +112,50 @@ static ssize_t sock_ctx_atomic_writemsg(struct fid_ep *ep,
 	sock_tx_ctx_write(tx_ctx, &msg->context, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
-	sock_tx_ctx_write(tx_ctx, &msg->msg_iov[0].iov_base, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &msg->msg_iov[0].addr, sizeof(uint64_t));
 
 	if (flags & FI_REMOTE_CQ_DATA) {
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
 	}
-
+	
 	if (flags & FI_INJECT) {
 		for (i=0; i< msg->iov_count; i++) {
-			sock_tx_ctx_write(tx_ctx, msg->msg_iov[i].iov_base,
-					  msg->msg_iov[i].iov_len);
-			src_len += (tx_iov.iov.len * ;
+			sock_tx_ctx_write(tx_ctx, msg->msg_iov[i].addr,
+					  msg->msg_iov[i].count * datatype_sz);
+			src_len += (msg->msg_iov[i].count * datatype_sz);
 		}
 	} else {
 		for (i = 0; i< msg->iov_count; i++) {
-			tx_iov.iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
-			tx_iov.iov.len = msg->msg_iov[i].iov_len;
-			tx_iov.iov.key = (uint64_t)msg->desc[i];
+			tx_iov.ioc.addr = (uint64_t)msg->msg_iov[i].addr;
+			tx_iov.ioc.count = msg->msg_iov[i].count;
+			tx_iov.ioc.key = (uint64_t)msg->desc[i];
 			sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
-			src_len += tx_iov.iov.len;
+			src_len += (tx_iov.ioc.count * datatype_sz);
 		}
 	}
 
+	dst_len = 0;
+	for (i = 0; i< msg->rma_iov_count; i++) {
+		tx_iov.ioc.addr = msg->rma_iov[i].addr;
+		tx_iov.ioc.key = msg->rma_iov[i].key;
+		tx_iov.ioc.count = msg->rma_iov[i].count;
+		sock_tx_ctx_write(tx_ctx, &tx_iov, sizeof(union sock_iov));
+		dst_len += (tx_iov.ioc.count * datatype_sz);
+	}
+	
+	if (dst_len != src_len) {
+		SOCK_LOG_ERROR("Buffer length mismatch\n");
+		ret = -FI_EINVAL;
+		goto err;
+	}
+	
+	sock_tx_ctx_commit(tx_ctx);
+	return 0;
 
-*/	
-
-	return -FI_ENOSYS;
+err:
+	sock_tx_ctx_abort(tx_ctx);
+	return ret;
 }
-
-
-
 
 static ssize_t sock_ctx_atomic_write(struct fid_ep *ep,
 				     const void *buf, size_t count, void *desc,
@@ -150,7 +163,29 @@ static ssize_t sock_ctx_atomic_write(struct fid_ep *ep,
 				     uint64_t key, enum fi_datatype datatype, 
 				     enum fi_op op, void *context)
 {
-	return -FI_ENOSYS;
+	struct fi_msg_atomic msg;
+	struct fi_ioc msg_iov;
+	struct fi_rma_ioc rma_iov;
+
+	msg_iov.addr = (void *)buf;
+	msg_iov.count = count;
+	msg.msg_iov = &msg_iov;
+	msg.desc = &desc;
+	msg.iov_count = 1;
+	msg.addr = dest_addr;
+
+	rma_iov.addr = addr;
+	rma_iov.key = key;
+	rma_iov.count = count;
+	msg.rma_iov = &rma_iov;
+	msg.rma_iov_count = 1;
+
+	msg.datatype = datatype;
+	msg.op = op;
+	msg.context = context;
+	msg.data = 0;
+
+	return sock_ctx_atomic_writemsg(ep, &msg, 0);
 }
 
 static ssize_t sock_ctx_atomic_writev(struct fid_ep *ep,
@@ -159,14 +194,53 @@ static ssize_t sock_ctx_atomic_writev(struct fid_ep *ep,
 			uint64_t addr, uint64_t key,
 			enum fi_datatype datatype, enum fi_op op, void *context)
 {
-	return -FI_ENOSYS;
+	struct fi_msg_atomic msg;
+	struct fi_rma_ioc rma_iov;
+
+	msg.msg_iov = iov;
+	msg.desc = desc;
+	msg.iov_count = count;
+	msg.addr = dest_addr;
+
+	rma_iov.addr = addr;
+	rma_iov.key = key;
+	rma_iov.count = count;
+	msg.rma_iov = &rma_iov;
+	msg.rma_iov_count = 1;
+
+	msg.datatype = datatype;
+	msg.op = op;
+	msg.context = context;
+	msg.data = 0;
+
+	return sock_ctx_atomic_writemsg(ep, &msg, 0);
 }
 
 static ssize_t sock_ctx_atomic_inject(struct fid_ep *ep, const void *buf, size_t count,
 				      fi_addr_t dest_addr, uint64_t addr, uint64_t key,
 				      enum fi_datatype datatype, enum fi_op op)
 {
-	return -FI_ENOSYS;
+	struct fi_msg_atomic msg;
+	struct fi_ioc msg_iov;
+	struct fi_rma_ioc rma_iov;
+
+	msg_iov.addr = (void *)buf;
+	msg_iov.count = count;
+	msg.msg_iov = &msg_iov;
+	msg.iov_count = 1;
+	msg.addr = dest_addr;
+
+	rma_iov.addr = addr;
+	rma_iov.key = key;
+	rma_iov.count = count;
+	msg.rma_iov = &rma_iov;
+	msg.rma_iov_count = 1;
+
+	msg.datatype = datatype;
+	msg.op = op;
+	msg.data = 0;
+
+	return sock_ctx_atomic_writemsg(ep, &msg, FI_INJECT);
 }
 
 static ssize_t sock_ctx_atomic_readwrite(struct fid_ep *ep,
