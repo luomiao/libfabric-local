@@ -169,7 +169,7 @@ static ssize_t sock_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	}
 
 	memset(&tx_op, 0, sizeof(struct sock_op));
-	tx_op.op = (flags & FI_INJECT) ? SOCK_OP_SEND_INJECT : SOCK_OP_SEND;
+	tx_op.op = SOCK_OP_SEND;
 	tx_op.src_iov_len = msg->iov_count;
 
 	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
@@ -390,7 +390,7 @@ static ssize_t sock_ctx_tsendmsg(struct fid_ep *ep,
 	}
 
 	memset(&tx_op, 0, sizeof(struct sock_op));
-	tx_op.op = (flags & FI_INJECT) ? SOCK_OP_TSEND_INJECT : SOCK_OP_TSEND;
+	tx_op.op = SOCK_OP_TSEND;
 	tx_op.src_iov_len = msg->iov_count;
 
 	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));

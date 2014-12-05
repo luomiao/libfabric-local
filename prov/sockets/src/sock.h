@@ -215,10 +215,6 @@ enum {
 	/* internal */
 	SOCK_OP_RECV,
 	SOCK_OP_TRECV,
-
-	SOCK_OP_SEND_INJECT,
-	SOCK_OP_TSEND_INJECT,
-	SOCK_OP_WRITE_INJECT,
 };
 
 /*
@@ -504,6 +500,11 @@ struct sock_rma_write_req {
 
 struct sock_atomic_req {
 	struct sock_msg_hdr msg_hdr;
+	uint8_t op;
+	uint8_t datatype;
+	uint8_t comp_iov_len;
+	uint8_t reserved[5];
+
 	/* user data */
 	/* dst iov(s)*/
 	/* data */
@@ -538,6 +539,7 @@ struct sock_tx_iov {
 	union sock_iov src;
 	union sock_iov dst;
 	union sock_iov res;
+	union sock_iov comp;
 };
 
 struct sock_tx_pe_entry{
