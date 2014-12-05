@@ -231,7 +231,7 @@ struct fi_provider sock_prov = {
 
 static void __attribute__((constructor)) sock_ini(void)
 {
-	char *tmp = getenv("SFI_SOCK_DEBUG_LEVEL");
+	char *tmp = getenv("SFI_SOCK_LOG_LEVEL");
 	if (tmp) {
 		sock_log_level = atoi(tmp);
 	} else {

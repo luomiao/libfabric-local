@@ -206,8 +206,11 @@ enum {
 	SOCK_OP_READ_ERROR = 8,
 
 	SOCK_OP_ATOMIC_WRITE = 9,
-	SOCK_OP_ATOMIC_COMPLETE = 10,
-	SOCK_OP_ATOMIC_ERROR = 11,
+	SOCK_OP_ATOMIC_READ_WRITE = 10,
+	SOCK_OP_ATOMIC_COMP_WRITE = 11,
+
+	SOCK_OP_ATOMIC_COMPLETE = 12,
+	SOCK_OP_ATOMIC_ERROR = 13,
 
 	/* internal */
 	SOCK_OP_RECV,
@@ -234,6 +237,7 @@ struct sock_op {
 			uint8_t	op;
 			uint8_t	datatype;
 			uint8_t	res_iov_len;
+			uint8_t	comp_iov_len;
 		} atomic;
 		uint8_t		reserved[5];
 	};
