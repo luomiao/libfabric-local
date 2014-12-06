@@ -832,6 +832,8 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 		break;
 
 	case SOCK_OP_ATOMIC_WRITE:
+	case SOCK_OP_ATOMIC_READ_WRITE:
+	case SOCK_OP_ATOMIC_COMP_WRITE:
 	default:
 		ret = -FI_ENOSYS;
 		SOCK_LOG_ERROR("Operation not supported\n");
@@ -889,16 +891,32 @@ static int sock_pe_progress_tx_atomic(struct sock_pe *pe,
 				      struct sock_pe_entry *pe_entry, 
 				      struct sock_conn *conn)
 {
-	int ret;
-	union sock_iov dest_iov[SOCK_EP_MAX_IOV_LIMIT];
-	ssize_t len, i, offset, done_data, data_len, dest_iov_len;
+	int ret, datatype_sz;
+	union sock_iov iov[SOCK_EP_MAX_IOV_LIMIT];
+	ssize_t len, i, offset, done_data, data_len, iov_len;
+	struct sock_atomic_req  req;
 
 	if (pe_entry->tx.send_done)
 		return 0;
 
 	len = sizeof(struct sock_msg_hdr);
-	if (pe_entry->flags & FI_REMOTE_CQ_DATA) {
+	offset = pe_entry->done_len;
+	len = sizeof(struct sock_atomic_req);
+	if (pe_entry->done_len < len) {
+		req.atomic.op = pe_entry->tx.tx_op.atomic.op;
+		req.atomic.datatype = pe_entry->tx.tx_op.atomic.datatype;
+		req.atomic.cmp_iov_len = pe_entry->tx.tx_op.atomic.cmp_iov_len;
 
+		data_len = sizeof(req) - pe_entry->done_len;
+		ret = sock_comm_send(conn, (char*)&req + offset, data_len);
+		if (ret <= 0)
+			return ret;
+		pe_entry->done_len += ret;
+		if (pe_entry->done_len != len)
+			return 0;
+	}
+	
+	if (pe_entry->flags & FI_REMOTE_CQ_DATA) {
 		offset = pe_entry->done_len - len;
 		len += sizeof(uint64_t);
 		if (pe_entry->done_len < len) {
@@ -913,21 +931,41 @@ static int sock_pe_progress_tx_atomic(struct sock_pe *pe,
 		}
 	}
 
-	/* dest iovs */
+	/* dest iocs */
 	offset = pe_entry->done_len - len;
-	dest_iov_len = sizeof(union sock_iov) * pe_entry->tx.tx_op.dest_iov_len;
-	len += dest_iov_len;
+	iov_len = sizeof(union sock_iov) * pe_entry->tx.tx_op.dest_iov_len;
+	len += iov_len;
 		
-	if (pe_entry->done_len < len) {
+	if (pe_entry->done_len < len && iov_len) {
 		for (i=0; i < pe_entry->tx.tx_op.dest_iov_len; i++) {
-			dest_iov[i].iov.addr = pe_entry->tx.tx_iov[i].dst.iov.addr;
-			dest_iov[i].iov.len = pe_entry->tx.tx_iov[i].dst.iov.len;
-			dest_iov[i].iov.key = pe_entry->tx.tx_iov[i].dst.iov.key;
+			iov[i].ioc.addr = pe_entry->tx.tx_iov[i].dst.ioc.addr;
+			iov[i].ioc.count = pe_entry->tx.tx_iov[i].dst.ioc.count;
+			iov[i].ioc.key = pe_entry->tx.tx_iov[i].dst.ioc.key;
 		}
 
 		ret = sock_comm_send(conn,
-				   (char*)&dest_iov[0] + offset, 
-				   dest_iov_len - offset);
+				     (char*)&iov[0] + offset, iov_len - offset);
+		if (ret <= 0)
+			return ret;
+		pe_entry->done_len += ret;
+		if (pe_entry->done_len != len)
+			return 0;
+	}
+	
+	/* cmp iocs */
+	offset = pe_entry->done_len - len;
+	iov_len = sizeof(union sock_iov) * pe_entry->tx.tx_op.atomic.cmp_iov_len;
+	len += iov_len;
+		
+	if (pe_entry->done_len < len && iov_len) {
+		for (i=0; i < pe_entry->tx.tx_op.dest_iov_len; i++) {
+			iov[i].ioc.addr = pe_entry->tx.tx_iov[i].cmp.ioc.addr;
+			iov[i].ioc.count = pe_entry->tx.tx_iov[i].cmp.ioc.count;
+			iov[i].ioc.key = pe_entry->tx.tx_iov[i].cmp.ioc.key;
+		}
+
+		ret = sock_comm_send(conn,
+				     (char*)&iov[0] + offset, iov_len - offset);
 		if (ret <= 0)
 			return ret;
 		pe_entry->done_len += ret;
@@ -952,24 +990,25 @@ static int sock_pe_progress_tx_atomic(struct sock_pe *pe,
 				return 0;
 		}
 	} else {
+		datatype_sz = fi_datatype_size(pe_entry->tx.tx_op.atomic.datatype);
 		done_data = pe_entry->done_len - len;
-
 		for (i=0; i < pe_entry->tx.tx_op.src_iov_len; i++) {
 			
-			if (done_data >= pe_entry->tx.tx_iov[i].src.iov.len) {
-				done_data -= pe_entry->tx.tx_iov[i].src.iov.len;
+			if (done_data >= pe_entry->tx.tx_iov[i].src.ioc.count * datatype_sz) {
+				done_data -= pe_entry->tx.tx_iov[i].src.ioc.count * datatype_sz;
 				continue;
 			}
-
+			
 			offset = done_data;
-			data_len = pe_entry->tx.tx_iov[i].src.iov.len - done_data;
+			data_len = (pe_entry->tx.tx_iov[i].src.ioc.count * 
+				    datatype_sz) - done_data;
 
 			ret = sock_comm_send(conn, 
-					   (char*)pe_entry->tx.tx_iov[i].src.iov.addr + 
-					   offset, data_len);
+					     (char*)pe_entry->tx.tx_iov[i].src.ioc.addr + 
+					     offset, data_len);
 			if (ret <= 0)
 				return ret;
-
+			
 			done_data = 0;
 			pe_entry->done_len += ret;
 			if ( ret != data_len)
@@ -1177,7 +1216,6 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		}
 	}
 
-
 	if (pe_entry->flags & FI_INJECT) {
 		offset = pe_entry->done_len - len;
 		len += pe_entry->tx.tx_op.src_iov_len;
@@ -1224,9 +1262,12 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		pe_entry->conn->tx_pe_entry = NULL;
 		SOCK_LOG_INFO("Send complete\n");
 
-		if (!(pe_entry->flags & FI_REMOTE_COMPLETE)) 
-			pe_entry->tx.ack_done = 1;
+		if (!(pe_entry->flags & FI_REMOTE_COMPLETE)) {
+			sock_pe_report_tx_completion(pe_entry, pe_entry->tx.tx_ctx);
+			pe_entry->is_complete = 1;
+		}
 	}
+
 	sock_comm_flush(pe_entry->conn);
 	return 0;
 }
@@ -1274,11 +1315,6 @@ static int sock_pe_progress_tx_entry(struct sock_pe *pe,
 	case SOCK_OP_SEND:
 	case SOCK_OP_TSEND:
 		ret = sock_pe_progress_tx_send(pe, pe_entry, conn);
-
-		if (pe_entry->tx.ack_done) {
-			sock_pe_report_tx_completion(pe_entry, tx_ctx);
-			pe_entry->is_complete = 1;
-		}
 		break;
 	
 	case SOCK_OP_WRITE:
@@ -1455,7 +1491,7 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 				 pe_entry->tx.tx_op.src_iov_len);
 			msg_hdr->msg_len += pe_entry->tx.tx_op.src_iov_len;
 		} else {
-			/* read src iov(s)*/
+			/* read src ioc(s)*/
 			for (i = 0; i<pe_entry->tx.tx_op.src_iov_len; i++) {
 				rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_iov[i].src, 
 					 sizeof(union sock_iov));
@@ -1464,7 +1500,7 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 			}
 		}
 
-		/* read dst iov(s)*/
+		/* read dst ioc(s)*/
 		for (i = 0; i<pe_entry->tx.tx_op.dest_iov_len; i++) {
 			rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_iov[i].dst, 
 				 sizeof(union sock_iov));
@@ -1472,17 +1508,17 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 		msg_hdr->msg_len += sizeof(union sock_iov) * 
 			pe_entry->tx.tx_op.dest_iov_len;
 
-		/* read result iov(s)*/
+		/* read result ioc(s)*/
 		for (i = 0; i<pe_entry->tx.tx_op.atomic.res_iov_len; i++) {
 			rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_iov[i].res, 
 				 sizeof(union sock_iov));
 		}
 		
-		/* read comp iov(s)*/
-		for (i = 0; i<pe_entry->tx.tx_op.atomic.comp_iov_len; i++) {
-			rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_iov[i].comp, 
+		/* read comp ioc(s)*/
+		for (i = 0; i<pe_entry->tx.tx_op.atomic.cmp_iov_len; i++) {
+			rbfdread(&tx_ctx->rbfd, &pe_entry->tx.tx_iov[i].cmp, 
 				 sizeof(union sock_iov));
-			msg_hdr->msg_len += (pe_entry->tx.tx_iov[i].comp.ioc.count * 
+			msg_hdr->msg_len += (pe_entry->tx.tx_iov[i].cmp.ioc.count * 
 					     datatype_sz);
 		}
 		break;

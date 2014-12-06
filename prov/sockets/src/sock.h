@@ -217,6 +217,7 @@ enum {
 	SOCK_OP_TRECV,
 };
 
+
 /*
  * Transmit context - ring buffer data:
  *    tx_op + flags + context + dest_addr + conn + [data] + [tag] + tx_iov
@@ -233,7 +234,7 @@ struct sock_op {
 			uint8_t	op;
 			uint8_t	datatype;
 			uint8_t	res_iov_len;
-			uint8_t	comp_iov_len;
+			uint8_t	cmp_iov_len;
 		} atomic;
 		uint8_t		reserved[5];
 	};
@@ -500,13 +501,18 @@ struct sock_rma_write_req {
 
 struct sock_atomic_req {
 	struct sock_msg_hdr msg_hdr;
-	uint8_t op;
-	uint8_t datatype;
-	uint8_t comp_iov_len;
-	uint8_t reserved[5];
+	union {
+		struct {
+			uint8_t op;
+			uint8_t datatype;
+			uint8_t cmp_iov_len;
+		}atomic;
+		uint8_t reserved[5];
+	};
 
 	/* user data */
-	/* dst iov(s)*/
+	/* dst ioc(s)*/
+	/* cmp iov(s) */
 	/* data */
 };
 
@@ -539,15 +545,14 @@ struct sock_tx_iov {
 	union sock_iov src;
 	union sock_iov dst;
 	union sock_iov res;
-	union sock_iov comp;
+	union sock_iov cmp;
 };
 
 struct sock_tx_pe_entry{
 	struct sock_op tx_op;	
 	uint8_t header_sent;
 	uint8_t send_done;
-	uint8_t ack_done;
-	uint8_t reserved[5];
+	uint8_t reserved[6];
 
 	struct sock_tx_ctx *tx_ctx;
 	union {

@@ -108,7 +108,7 @@ static ssize_t sock_ctx_tx_atomic(struct fid_ep *ep,
 	tx_op.atomic.op = msg->op;
 	tx_op.atomic.datatype = msg->datatype;
 	tx_op.atomic.res_iov_len = result_count;
-	tx_op.atomic.comp_iov_len = compare_count;
+	tx_op.atomic.cmp_iov_len = compare_count;
 
 	if (flags & FI_INJECT)
 		tx_op.src_iov_len = src_len;
