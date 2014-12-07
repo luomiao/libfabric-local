@@ -105,8 +105,16 @@ ssize_t sock_comm_flush(struct sock_conn *conn)
 
 ssize_t sock_comm_send(struct sock_conn *conn, const void *buf, size_t len)
 {
-	ssize_t ret;
+	ssize_t ret, used;
 
+	if (len >= SOCK_COMM_THRESHOLD) {
+		used = rbused(&conn->outbuf);
+		if (used == sock_comm_flush(conn)) {
+			return sock_comm_send_socket(conn, buf, len);
+		} else 
+			return 0;
+	}
+		
 	if (rbavail(&conn->outbuf) < len) {
 		ret = sock_comm_flush(conn);
 		if (ret <= 0)
