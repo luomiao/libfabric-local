@@ -648,10 +648,14 @@ int sock_verify_domain_attr(struct fi_domain_attr *attr);
 
 
 int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
-		uint64_t flags, struct fi_info *hints, struct fi_info **info);
-int sock_rdm_verify_ep_attr(struct fi_ep_attr *ep_attr, 
-			struct fi_tx_attr *tx_attr,
-			struct fi_rx_attr *rx_attr);
+		     uint64_t flags, struct fi_info *hints, struct fi_info **info);
+int sock_rdm_verify_ep_attr(struct fi_ep_attr *ep_attr, struct fi_tx_attr *tx_attr,
+			    struct fi_rx_attr *rx_attr);
+int sock_dgram_verify_ep_attr(struct fi_ep_attr *ep_attr, struct fi_tx_attr *tx_attr,
+			      struct fi_rx_attr *rx_attr);
+int sock_msg_verify_ep_attr(struct fi_ep_attr *ep_attr, struct fi_tx_attr *tx_attr,
+			    struct fi_rx_attr *rx_attr);
+
 
 
 int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,

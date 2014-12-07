@@ -93,8 +93,9 @@ int sock_verify_info(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 
-	if (!sock_rdm_verify_ep_attr(hints->ep_attr, 
-				    hints->tx_attr, hints->rx_attr))
+	if (!sock_rdm_verify_ep_attr(hints->ep_attr, hints->tx_attr, hints->rx_attr) ||
+	    !sock_dgram_verify_ep_attr(hints->ep_attr, hints->tx_attr, hints->rx_attr) ||
+	    !sock_msg_verify_ep_attr(hints->ep_attr, hints->tx_attr, hints->rx_attr))
 		return 0;
 
 	ret = sock_verify_domain_attr(hints->domain_attr);

@@ -586,7 +586,7 @@ struct fi_ops sock_rdm_ctx_ops = {
 	.control = fi_no_control,
 };
 
-int sock_rdm_ctx_enable(struct fid_ep *ep)
+static int sock_rdm_ctx_enable(struct fid_ep *ep)
 {
 	struct sock_tx_ctx *tx_ctx;
 	struct sock_rx_ctx *rx_ctx;
@@ -609,7 +609,7 @@ int sock_rdm_ctx_enable(struct fid_ep *ep)
 	return -FI_EINVAL;
 }
 
-int sock_rdm_ctx_getopt(fid_t fid, int level, int optname,
+static int sock_rdm_ctx_getopt(fid_t fid, int level, int optname,
 		       void *optval, size_t *optlen)
 {
 	struct sock_rx_ctx *rx_ctx;
@@ -630,7 +630,7 @@ int sock_rdm_ctx_getopt(fid_t fid, int level, int optname,
 	return 0;
 }
 
-int sock_rdm_ctx_setopt(fid_t fid, int level, int optname,
+static int sock_rdm_ctx_setopt(fid_t fid, int level, int optname,
 		       const void *optval, size_t optlen)
 {
 	struct sock_rx_ctx *rx_ctx;
@@ -660,7 +660,7 @@ struct fi_ops_ep sock_rdm_ctx_ep_ops = {
 	.rx_ctx = fi_no_rx_ctx,
 };
 
-int sock_rdm_ep_fi_close(struct fid *fid)
+static int sock_rdm_ep_fi_close(struct fid *fid)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(fid, struct sock_ep, ep.fid);
@@ -684,7 +684,7 @@ int sock_rdm_ep_fi_close(struct fid *fid)
 	return 0;
 }
 
-int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
+static int sock_rdm_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 {
 	int ret, i;
 	struct sock_ep *ep;
@@ -865,7 +865,7 @@ struct fi_ops sock_rdm_ep_fi_ops = {
 	.ops_open = fi_no_ops_open,
 };
 
-int sock_rdm_ep_enable(struct fid_ep *ep)
+static int sock_rdm_ep_enable(struct fid_ep *ep)
 {
 	int i;
 	struct sock_ep *sock_ep;
@@ -893,7 +893,7 @@ int sock_rdm_ep_enable(struct fid_ep *ep)
 	return 0;
 }
 
-int sock_rdm_ep_getopt(fid_t fid, int level, int optname,
+static int sock_rdm_ep_getopt(fid_t fid, int level, int optname,
 		       void *optval, size_t *optlen)
 {
 	struct sock_ep *sock_ep;
@@ -914,7 +914,7 @@ int sock_rdm_ep_getopt(fid_t fid, int level, int optname,
 	return 0;
 }
 
-int sock_rdm_ep_setopt(fid_t fid, int level, int optname,
+static int sock_rdm_ep_setopt(fid_t fid, int level, int optname,
 		       const void *optval, size_t optlen)
 {
 	int i;
@@ -942,7 +942,7 @@ int sock_rdm_ep_setopt(fid_t fid, int level, int optname,
 	return 0;
 }
 
-int sock_rdm_ep_tx_ctx(struct fid_sep *ep, int index, struct fi_tx_attr *attr, 
+static int sock_rdm_ep_tx_ctx(struct fid_sep *ep, int index, struct fi_tx_attr *attr, 
 		    struct fid_ep **tx_ep, void *context)
 {
 	struct sock_ep *sock_ep;
@@ -975,7 +975,7 @@ int sock_rdm_ep_tx_ctx(struct fid_sep *ep, int index, struct fi_tx_attr *attr,
 	return 0;
 }
 
-int sock_rdm_ep_rx_ctx(struct fid_sep *ep, int index, struct fi_rx_attr *attr,
+static int sock_rdm_ep_rx_ctx(struct fid_sep *ep, int index, struct fi_rx_attr *attr,
 		    struct fid_ep **rx_ep, void *context)
 {
 	struct sock_ep *sock_ep;
@@ -1017,7 +1017,7 @@ struct fi_ops_ep sock_rdm_ep_ops ={
 	.rx_ctx = sock_rdm_ep_rx_ctx,
 };
 
-int sock_rdm_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
+static int sock_rdm_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
 {
 	struct sock_ep *sock_ep;
 	if (*addrlen == 0) {
@@ -1031,25 +1031,10 @@ int sock_rdm_ep_cm_getname(fid_t fid, void *addr, size_t *addrlen)
 	return 0;
 }
 
-int sock_rdm_ep_cm_getpeer(struct fid_ep *ep, void *addr, size_t *addrlen)
-{
-	struct sock_ep *sock_ep;
-
-	if (*addrlen == 0) {
-		*addrlen = sizeof(struct sockaddr_in);
-		return -FI_ETOOSMALL;
-	}
-
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	*addrlen = MIN(*addrlen, sizeof(struct sockaddr_in));
-	memcpy(addr, sock_ep->dest_addr, *addrlen);
-	return 0;
-}
-
 struct fi_ops_cm sock_rdm_ep_cm_ops = {
 	.size = sizeof(struct fi_ops_cm),
 	.getname = sock_rdm_ep_cm_getname,
-	.getpeer = sock_rdm_ep_cm_getpeer,
+	.getpeer = fi_no_getpeer,
 	.connect = fi_no_connect,
 	.listen = fi_no_listen,
 	.accept = fi_no_accept,
@@ -1178,8 +1163,3 @@ err:
 	return -FI_EAVAIL;
 }
 
-int sock_rdm_pep(struct fid_fabric *fabric, struct fi_info *info,
-			struct fid_pep **pep, void *context)
-{
-	return -FI_EINVAL;
-}
