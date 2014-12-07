@@ -245,6 +245,21 @@ static void sock_pe_progress_pending_ack(struct sock_pe *pe,
 		}
 		
 		break;
+
+	case SOCK_OP_ATOMIC_COMPLETE:
+
+		offset = pe_entry->done_len - len;
+		data_len = (pe_entry->msg_hdr.msg_len - len) - offset;
+
+		ret = sock_comm_send(conn, 
+				     (char*)&pe_entry->rx.atomic_cmp[0] + offset,
+				     data_len);
+		if (ret <= 0)
+			return;
+		pe_entry->done_len += ret;
+		if (ret != data_len)
+			return;
+		break;
 		
 	default:
 		break;
@@ -286,7 +301,27 @@ static int sock_pe_send_atomic_op_response(struct sock_pe *pe,
 					   struct sock_pe_entry *pe_entry, 
 					   size_t data_len)
 {
+	struct sock_msg_response *response = &pe_entry->rx.response;
+	memset(response, 0, sizeof(struct sock_msg_response));
+
+	response->pe_entry_id = HTON_16(pe_entry->msg_hdr.pe_entry_id);
+	response->msg_hdr.dest_iov_len = 0;
+	response->msg_hdr.flags = 0;
+	response->msg_hdr.msg_len = sizeof(*response) + data_len;
+	response->msg_hdr.version = SOCK_WIRE_PROTO_VERSION;
+	response->msg_hdr.op_type = SOCK_OP_ATOMIC_COMPLETE;
+	response->msg_hdr.msg_len = HTON_64(response->msg_hdr.msg_len);
+	response->msg_hdr.rx_id = HTON_16(pe_entry->msg_hdr.rx_id);
+
+	pe->pe_atomic = NULL;
+	pe_entry->done_len = 0;
+	pe_entry->rx.pending_send = 1;
+	pe_entry->conn->rx_pe_entry = NULL;
+	pe_entry->total_len = sizeof(*response) + data_len;
+
+	sock_pe_progress_pending_ack(pe, pe_entry);
 	return 0;
+
 }
 
 static int sock_pe_send_rma_read_response(struct sock_pe *pe, 
@@ -391,6 +426,70 @@ static int sock_pe_handle_read_complete(struct sock_pe *pe,
 
 		ret = sock_comm_recv(pe_entry->conn, 
 				     (char*)waiting_entry->tx.tx_iov[i].dst.iov.addr + 
+				     offset, data_len);
+		if (ret <= 0) 
+			return 0;
+			
+		done_data = 0;
+		pe_entry->done_len += ret;
+		if ( ret != data_len)
+			return 0;
+	}
+
+	sock_pe_report_tx_completion(waiting_entry, waiting_entry->tx.tx_ctx);
+	waiting_entry->is_complete = 1;
+	pe_entry->is_complete = 1;
+	return 0;
+}
+
+static int sock_pe_handle_atomic_complete(struct sock_pe *pe, 
+					  struct sock_pe_entry *pe_entry)
+{
+	size_t datatype_sz;
+	struct sock_pe_entry *waiting_entry;
+	struct sock_msg_response response;
+	int ret, len, offset, done_data, i, data_len;
+
+	len = sizeof(struct sock_msg_hdr);
+	offset = pe_entry->done_len - len;
+	len += sizeof(uint64_t);
+
+	if (pe_entry->done_len < len) {
+		ret = sock_comm_recv(pe_entry->conn,
+				     (char*)&response.pe_entry_id + offset, 
+				     sizeof(uint64_t) - offset);
+		if (ret <= 0)
+			return ret;
+		
+		pe_entry->done_len += ret;
+		if (pe_entry->done_len != len)
+			return 0;
+		
+		response.pe_entry_id = NTOH_16(response.pe_entry_id);
+		assert(response.pe_entry_id <= SOCK_PE_MAX_ENTRIES);
+		waiting_entry = &pe->pe_table[response.pe_entry_id];
+		SOCK_LOG_INFO("Received read complete for PE entry %p (index: %d)\n", 
+			      waiting_entry, response.pe_entry_id);
+	}
+	
+	waiting_entry = &pe->pe_table[response.pe_entry_id];
+	assert(waiting_entry->type == SOCK_PE_TX);
+	
+	done_data = pe_entry->done_len - len;
+	datatype_sz = fi_datatype_size(waiting_entry->tx.tx_op.atomic.datatype);
+
+	for (i=0; i < waiting_entry->tx.tx_op.atomic.res_iov_len; i++) {
+		if (done_data >= waiting_entry->tx.tx_iov[i].res.ioc.count * 
+		    datatype_sz) {
+			done_data -= waiting_entry->tx.tx_iov[i].res.ioc.count * datatype_sz;
+			continue;
+		}
+		
+		data_len = (waiting_entry->tx.tx_iov[i].res.ioc.count * datatype_sz) -
+			done_data;
+		offset = done_data;
+		ret = sock_comm_recv(pe_entry->conn, 
+				     (char*)waiting_entry->tx.tx_iov[i].res.ioc.addr + 
 				     offset, data_len);
 		if (ret <= 0) 
 			return 0;
@@ -989,17 +1088,6 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 		ret = sock_pe_process_rx_write(pe, rx_ctx, pe_entry);
 		break;
 
-	case SOCK_OP_SEND_COMPLETE:
-	case SOCK_OP_WRITE_COMPLETE:
-	case SOCK_OP_WRITE_ERROR:
-	case SOCK_OP_READ_ERROR:
-		ret = sock_pe_handle_ack(pe, pe_entry);
-		break;
-
-	case SOCK_OP_READ_COMPLETE:
-		ret = sock_pe_handle_read_complete(pe, pe_entry);
-		break;
-
 	case SOCK_OP_READ:
 		ret = sock_pe_process_rx_read(pe, rx_ctx, pe_entry);
 		break;
@@ -1008,6 +1096,22 @@ static int sock_pe_process_recv(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	case SOCK_OP_ATOMIC_READ_WRITE:
 	case SOCK_OP_ATOMIC_COMP_WRITE:
 		ret = sock_pe_process_rx_atomic(pe, rx_ctx, pe_entry);
+		break;
+
+	case SOCK_OP_SEND_COMPLETE:
+	case SOCK_OP_WRITE_COMPLETE:
+	case SOCK_OP_WRITE_ERROR:
+	case SOCK_OP_READ_ERROR:
+	case SOCK_OP_ATOMIC_ERROR:
+		ret = sock_pe_handle_ack(pe, pe_entry);
+		break;
+
+	case SOCK_OP_READ_COMPLETE:
+		ret = sock_pe_handle_read_complete(pe, pe_entry);
+		break;
+
+	case SOCK_OP_ATOMIC_COMPLETE:
+		ret = sock_pe_handle_atomic_complete(pe, pe_entry);
 		break;
 
 	default:
