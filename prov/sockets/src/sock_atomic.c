@@ -141,6 +141,7 @@ static ssize_t sock_ctx_tx_atomic(struct fid_ep *ep,
 			src_len += (tx_iov.ioc.count * datatype_sz);
 		}
 	}
+	assert(src_len <= SOCK_EP_MAX_ATOMIC_SZ);
 
 	dst_len = 0;
 	for (i = 0; i< msg->rma_iov_count; i++) {
@@ -451,7 +452,7 @@ static int sock_ctx_atomic_readwritevalid(struct fid_ep *ep,
 					  enum fi_datatype datatype, enum fi_op op, size_t *count)
 {
 	size_t datatype_sz = fi_datatype_size(datatype);
-	*count = (SOCK_EP_MAX_MSG_SZ/datatype_sz);
+	*count = (SOCK_EP_MAX_ATOMIC_SZ/datatype_sz);
 	return 0;
 }
 
@@ -459,7 +460,7 @@ static int sock_ctx_atomic_compwritevalid(struct fid_ep *ep,
 			  enum fi_datatype datatype, enum fi_op op, size_t *count)
 {
 	size_t datatype_sz = fi_datatype_size(datatype);
-	*count = (SOCK_EP_MAX_MSG_SZ/datatype_sz);
+	*count = (SOCK_EP_MAX_ATOMIC_SZ/datatype_sz);
 	return 0;
 }
 

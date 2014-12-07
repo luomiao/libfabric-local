@@ -70,6 +70,7 @@
 #define SOCK_EP_MAX_IOV_LIMIT (8)
 #define SOCK_EP_MAX_TX_CTX_SZ (1<<12)
 #define SOCK_EP_MIN_MULTI_RECV (64)
+#define SOCK_EP_MAX_ATOMIC_SZ (512)
 
 #define SOCK_PE_POLL_TIMEOUT (100000)
 #define SOCK_PE_MAX_ENTRIES (128)
@@ -501,14 +502,7 @@ struct sock_rma_write_req {
 
 struct sock_atomic_req {
 	struct sock_msg_hdr msg_hdr;
-	union {
-		struct {
-			uint8_t op;
-			uint8_t datatype;
-			uint8_t cmp_iov_len;
-		}atomic;
-		uint8_t reserved[5];
-	};
+	struct sock_op op;
 
 	/* user data */
 	/* dst ioc(s)*/
@@ -565,10 +559,13 @@ struct sock_rx_pe_entry{
 	struct sock_op rx_op;
 	uint8_t header_read;
 	uint8_t pending_send;
+	uint8_t cmp_failed;
 	uint8_t reserved[7];
 	struct sock_rx_entry *rx_entry;
 	struct sock_msg_response response;
 	union sock_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];
+	char atomic_cmp[SOCK_EP_MAX_ATOMIC_SZ];
+	char atomic_src[SOCK_EP_MAX_ATOMIC_SZ];
 };
 
 /* PE entry type */
@@ -619,6 +616,7 @@ struct sock_pe{
 
 	pthread_t progress_thread;
 	volatile int do_progress;
+	struct sock_pe_entry *pe_atomic;
 };
 
 typedef int (*sock_cq_report_fn) (struct sock_cq *cq, fi_addr_t addr,
