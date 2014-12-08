@@ -1219,8 +1219,9 @@ int sock_pe_progress_buffered_rx(struct sock_rx_ctx *rx_ctx)
 						     -FI_ENOSPC, -FI_ENOSPC, 
 						     NULL);
 			goto out;
-		} else 
+		} else {
 			sock_pe_report_rx_completion(&pe_entry, rx_ctx);
+		}
 
 		dlist_remove(&rx_buffered->entry);
 		sock_rx_release_entry(rx_buffered);
@@ -1859,7 +1860,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		}
 	} else {
 		done_data = pe_entry->done_len - len;
-		pe_entry->data_len = pe_entry->msg_hdr.msg_len - len;
+		pe_entry->data_len = pe_entry->total_len - len;
 
 		for (i=0; i < pe_entry->tx.tx_op.src_iov_len; i++) {
 

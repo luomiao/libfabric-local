@@ -80,7 +80,7 @@ static ssize_t sock_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	rx_entry->context = (uint64_t)msg->context;
 	rx_entry->addr = msg->addr;
 	rx_entry->data = msg->data;
-	rx_entry->ignore = 0xFFFF;
+	rx_entry->ignore = 0xFFFFFFFF;
 
 	for (i=0; i< msg->iov_count; i++) {
 		rx_entry->iov[i].iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
