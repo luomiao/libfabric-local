@@ -139,7 +139,7 @@ static int sock_cq_report_msg(struct sock_cq *cq, fi_addr_t addr,
 	struct fi_cq_msg_entry cq_entry;
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
-	cq_entry.len = pe_entry->done_len;
+	cq_entry.len = pe_entry->data_len;
 	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
 }
 
@@ -149,7 +149,7 @@ static int sock_cq_report_data(struct sock_cq *cq, fi_addr_t addr,
 	struct fi_cq_data_entry cq_entry;
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
-	cq_entry.len = pe_entry->done_len;
+	cq_entry.len = pe_entry->data_len;
 	cq_entry.buf = (void*)pe_entry->buf;
 	cq_entry.data = pe_entry->data;
 	return _sock_cq_write(cq, addr, &cq_entry, sizeof(cq_entry));
@@ -161,7 +161,7 @@ static int sock_cq_report_tagged(struct sock_cq *cq, fi_addr_t addr,
 	struct fi_cq_tagged_entry cq_entry;
 	cq_entry.op_context = (void*)pe_entry->context;
 	cq_entry.flags = pe_entry->flags;
-	cq_entry.len = pe_entry->done_len;
+	cq_entry.len = pe_entry->data_len;
 	cq_entry.buf = (void*)pe_entry->buf;
 	cq_entry.data = pe_entry->data;
 	cq_entry.tag = pe_entry->tag;
@@ -460,7 +460,7 @@ int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
 	err_entry.err = err;
 	err_entry.olen = olen;
 	err_entry.err_data = err_data;
-	err_entry.len = entry->done_len;
+	err_entry.len = entry->data_len;
 	err_entry.prov_errno = prov_errno;
 	err_entry.flags = entry->flags;
 	err_entry.data = entry->data;

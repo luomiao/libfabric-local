@@ -609,6 +609,7 @@ struct sock_pe_entry{
 
 	uint64_t done_len;
 	uint64_t total_len;
+	uint64_t data_len;
 	struct sock_ep *ep;
 	struct sock_conn *conn;
 
