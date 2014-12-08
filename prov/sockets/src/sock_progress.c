@@ -1351,7 +1351,20 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 
 	/* report error, if any */
 	if (rem) {
-		SOCK_LOG_INFO("Not enough space in posted recv buffer\n");
+		SOCK_LOG_ERROR("Not enough space in posted recv buffer\n");
+		
+		/* read out remaining */
+		while (pe_entry->msg_hdr.msg_len != pe_entry->done_len) {
+			data_len = MIN (rem, SOCK_EP_MAX_ATOMIC_SZ);
+			ret = sock_comm_recv(pe_entry->conn, 
+					     &pe_entry->rx.atomic_src[0], data_len);
+			if (ret <= 0)
+				continue;
+
+			rem -= ret;
+			pe_entry->done_len -= ret;
+		}
+
 		if (rx_ctx->recv_cntr)
 			sock_cntr_err_inc(rx_ctx->recv_cntr);
 		if (rx_ctx->recv_cq)

@@ -103,7 +103,7 @@ size_t sock_rx_avail_len(struct sock_rx_entry *rx_entry)
 	for (i = 0; i < rx_entry->rx_op.dest_iov_len; i++) {
 		avail += rx_entry->iov[i].iov.len;
 	}
-	return avail;
+	return avail - rx_entry->used;
 }
 
 struct sock_rx_entry *sock_rx_get_entry(struct sock_rx_ctx *rx_ctx, 
