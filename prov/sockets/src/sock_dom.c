@@ -114,13 +114,17 @@ int sock_verify_domain_attr(struct fi_domain_attr *attr)
 static int sock_dom_close(struct fid *fid)
 {
 	struct sock_domain *dom;
+	void *res;
 
 	dom = container_of(fid, struct sock_domain, dom_fid.fid);
 	if (atomic_get(&dom->ref))
 		return -FI_EBUSY;
 
 	dom->listening = 0;
-	pthread_cancel(dom->listen_thread);
+	if (pthread_join(dom->listen_thread, &res)) {
+		SOCK_LOG_ERROR("could not join listener thread, errno = %d\n", errno);
+		return -FI_EBUSY;
+	}
 
 	if (dom->u_cmap.size)
 		sock_conn_map_destroy(&dom->u_cmap);
