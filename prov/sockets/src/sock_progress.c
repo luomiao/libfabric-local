@@ -667,6 +667,312 @@ out:
 	return ret;
 }
 
+#define SOCK_ATOMIC_UPDATE_INT(_cmp, _src, _dst, _tmp) do {		\
+        _cmp = cmp, _dst = dst, _src = src;			        \
+	switch (op) {							\
+	case FI_MIN:							\
+		*_cmp = *_dst;						\
+		if (*_src < *_dst)					\
+			*_dst = *_src;					\
+		break;							\
+									\
+	case FI_MAX:							\
+		*_cmp = *_dst;						\
+		if (*_src > *_dst)					\
+			*_dst = *_src;					\
+		break;							\
+									\
+	case FI_SUM:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst + *_src;					\
+		break;							\
+									\
+	case FI_PROD:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst * *_src;					\
+		break;							\
+									\
+	case FI_LOR:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst || *_src;					\
+		break;							\
+									\
+	case FI_LAND:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst && *_src;					\
+		break;							\
+									\
+	case FI_BOR:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst | *_src;					\
+		break;							\
+									\
+	case FI_BAND:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst & *_src;					\
+		break;							\
+									\
+	case FI_LXOR:							\
+		*_cmp = *_dst;						\
+									\
+		*_dst = ((*_dst && !*_src) || (!*_dst && *_src));	\
+		break;							\
+									\
+	case FI_BXOR:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst ^ *_src;					\
+		break;							\
+									\
+	case FI_ATOMIC_READ:						\
+		*_cmp = *_dst;						\
+		break;							\
+									\
+	case FI_ATOMIC_WRITE:						\
+		*_cmp = *_dst;						\
+		*_dst = *_src;						\
+		break;							\
+									\
+	case FI_CSWAP:							\
+		if (*_cmp == *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_CSWAP_NE:						\
+		if (*_cmp != *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_CSWAP_LE:						\
+		if (*_cmp <= *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_CSWAP_LT:						\
+		if (*_cmp < *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_CSWAP_GE:						\
+		if (*_cmp >= *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_CSWAP_GT:						\
+		if (*_cmp > *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_MSWAP:							\
+		_tmp = *_dst;						\
+		*_dst = (*_src & *_cmp) | (*_dst & ~(*_cmp));		\
+		*_cmp = _tmp;						\
+		break;							\
+									\
+	default:							\
+		SOCK_LOG_ERROR("Atomic operation type not supported\n"); \
+		break;							\
+	}								\
+	}while(0)								
+
+#define SOCK_ATOMIC_UPDATE_FLOAT(_cmp, _src, _dst) do {			\
+        _cmp = cmp, _dst = dst, _src = src;			        \
+	switch (op) {							\
+	case FI_MIN:							\
+		*_cmp = *_dst;						\
+		if (*_src < *_dst)					\
+			*_dst = *_src;					\
+		break;							\
+									\
+	case FI_MAX:							\
+		*_cmp = *_dst;						\
+		if (*_src > *_dst)					\
+			*_dst = *_src;					\
+		break;							\
+									\
+	case FI_SUM:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst + *_src;					\
+		break;							\
+									\
+	case FI_PROD:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst * *_src;					\
+		break;							\
+									\
+	case FI_LOR:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst || *_src;					\
+		break;							\
+									\
+	case FI_LAND:							\
+		*_cmp = *_dst;						\
+		*_dst = *_dst && *_src;					\
+		break;							\
+									\
+	case FI_ATOMIC_READ:						\
+		*_cmp = *_dst;						\
+		break;							\
+									\
+	case FI_ATOMIC_WRITE:						\
+		*_cmp = *_dst;						\
+		*_dst = *_src;						\
+		break;							\
+									\
+	case FI_CSWAP:							\
+		if (*_cmp == *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_CSWAP_NE:						\
+		if (*_cmp != *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_CSWAP_LE:						\
+		if (*_cmp <= *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_CSWAP_LT:						\
+		if (*_cmp < *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_CSWAP_GE:						\
+		if (*_cmp >= *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	case FI_CSWAP_GT:						\
+		if (*_cmp > *_dst)					\
+			*_dst = *_src;					\
+		else							\
+			*_cmp = *_dst;					\
+		break;							\
+									\
+	default:							\
+		SOCK_LOG_ERROR("Atomic operation type not supported\n"); \
+		break;							\
+	}								\
+	}while(0)								
+
+
+static int sock_pe_update_atomic(void *cmp, void *dst, void *src,
+				 enum fi_datatype datatype, enum fi_op op)
+{
+	
+
+	switch (datatype) {
+	case FI_INT8:
+	{
+		int8_t *_cmp, *_dst, *_src, _tmp;
+		_cmp = cmp, _src = src, _dst = dst;
+		SOCK_ATOMIC_UPDATE_INT(_cmp, _src, _dst, _tmp);
+		break;		
+	}
+
+	case FI_UINT8:
+	{
+		uint8_t *_cmp, *_dst, *_src, _tmp;
+		_cmp = cmp, _src = src, _dst = dst;
+		SOCK_ATOMIC_UPDATE_INT(_cmp, _src, _dst, _tmp);
+		break;
+	}
+
+	case FI_INT16:
+	{
+		int16_t *_cmp, *_dst, *_src, _tmp;
+		_cmp = cmp, _src = src, _dst = dst;
+		SOCK_ATOMIC_UPDATE_INT(_cmp, _src, _dst, _tmp);
+		break;
+	}
+
+	case FI_UINT16:
+	{
+		uint16_t *_cmp, *_dst, *_src, _tmp;
+		_cmp = cmp, _src = src, _dst = dst;
+		SOCK_ATOMIC_UPDATE_INT(_cmp, _src, _dst, _tmp);
+		break;
+	}
+
+	case FI_INT32:
+	{
+		int32_t *_cmp, *_dst, *_src, _tmp;
+		_cmp = cmp, _src = src, _dst = dst;
+		SOCK_ATOMIC_UPDATE_INT(_cmp, _src, _dst, _tmp);
+		break;
+	}
+
+	case FI_UINT32:
+	{
+		uint32_t *_cmp, *_dst, *_src, _tmp;
+		_cmp = cmp, _src = src, _dst = dst;
+		SOCK_ATOMIC_UPDATE_INT(_cmp, _src, _dst, _tmp);
+		break;
+	}
+
+	case FI_INT64:
+	{
+		int64_t *_cmp, *_dst, *_src, _tmp;
+		_cmp = cmp, _src = src, _dst = dst;
+		SOCK_ATOMIC_UPDATE_INT(_cmp, _src, _dst, _tmp);
+		break;
+	}
+
+	case FI_UINT64:
+	{
+		uint64_t *_cmp, *_dst, *_src, _tmp;
+		_cmp = cmp, _src = src, _dst = dst;
+		SOCK_ATOMIC_UPDATE_INT(_cmp, _src, _dst, _tmp);
+		break;
+	}
+
+	case FI_FLOAT:
+	{
+		float *_cmp, *_dst, *_src;
+		_cmp = cmp, _src = src, _dst = dst;
+		SOCK_ATOMIC_UPDATE_FLOAT(_cmp, _src, _dst);
+		break;
+	}
+
+	case FI_DOUBLE:
+	{
+		double *_cmp, *_dst, *_src;
+		_cmp = cmp, _src = src, _dst = dst;
+		SOCK_ATOMIC_UPDATE_FLOAT(_cmp, _src, _dst);
+		break;
+	}
+
+	default:
+		SOCK_LOG_ERROR("Atomic datatype not supported\n");
+		break;
+	}
+	return 0;
+}
+
+
 static int sock_pe_process_rx_atomic(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 				     struct sock_pe_entry *pe_entry)
 {
@@ -774,16 +1080,6 @@ static int sock_pe_process_rx_atomic(struct sock_pe *pe, struct sock_rx_ctx *rx_
 				sock_pe_send_response(pe, pe_entry, SOCK_OP_ATOMIC_ERROR);
 				goto err;
 			}
-
-			ret = memcmp((void*)pe_entry->rx.rx_iov[i].ioc.addr,
-				     (char *)&pe_entry->rx.atomic_cmp[0] + offset,
-				     pe_entry->rx.rx_iov[i].ioc.count * datatype_sz);
-			if (ret)
-				pe_entry->rx.cmp_failed = 1;
-			memcpy((char *)&pe_entry->rx.atomic_cmp[0] + offset,
-			       (void *)pe_entry->rx.rx_iov[i].ioc.addr,
-			       pe_entry->rx.rx_iov[i].ioc.count * datatype_sz);
-			offset += pe_entry->rx.rx_iov[i].ioc.count * datatype_sz;
 		}
 	}
 
@@ -804,17 +1100,16 @@ static int sock_pe_process_rx_atomic(struct sock_pe *pe, struct sock_rx_ctx *rx_
 			SOCK_LOG_INFO("Incomplete Recv: %d\n", ret);
 			return 0;
 		}
+	}
 
-		if (!pe_entry->rx.cmp_failed) {
-			offset = 0;
-			for (i = 0; i < pe_entry->rx.rx_op.dest_iov_len; i++) {
-				memcpy((char *)&pe_entry->rx.atomic_src[0] + offset,
-				       (void *)pe_entry->rx.rx_iov[i].ioc.addr,
-				       pe_entry->rx.rx_iov[i].ioc.count * datatype_sz);
-				offset += pe_entry->rx.rx_iov[i].ioc.count * 
-					datatype_sz;
-			}
-		}
+	offset = 0;
+	for (i = 0; i < pe_entry->rx.rx_op.dest_iov_len; i++) {
+		sock_pe_update_atomic((char*)&pe_entry->rx.atomic_cmp[0] + offset,
+				      (void *)pe_entry->rx.rx_iov[i].ioc.addr,
+				      (char*)&pe_entry->rx.atomic_src[0] + offset,
+				      pe_entry->rx.rx_op.atomic.datatype,
+				      pe_entry->rx.rx_op.atomic.op);
+		offset += pe_entry->rx.rx_iov[i].ioc.count * datatype_sz;
 	}
 
 	pe_entry->buf = pe_entry->rx.rx_iov[0].iov.addr;

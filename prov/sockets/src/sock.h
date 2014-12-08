@@ -183,14 +183,28 @@ struct sock_av {
 	struct sock_conn_map	*cmap;
 };
 
+struct sock_poll_list {
+	struct dlist_entry		entry;
+	struct fid			*fid;
+};
+
 struct sock_poll {
 	struct fid_poll		poll_fid;
-	struct sock_domain	*dom;
+	struct sock_domain	*domain;
+	struct dlist_entry	head;
 };
 
 struct sock_wait {
 	struct fid_wait wait_fid;
-	struct sock_domain *dom;
+	struct sock_domain *domain;
+	int				type;
+	union {
+		int			fd[2];
+		struct {
+			pthread_mutex_t	mutex;
+			pthread_cond_t	cond;
+		};
+	};
 };
 
 enum {
@@ -560,8 +574,7 @@ struct sock_rx_pe_entry{
 	struct sock_op rx_op;
 	uint8_t header_read;
 	uint8_t pending_send;
-	uint8_t cmp_failed;
-	uint8_t reserved[7];
+	uint8_t reserved[6];
 	struct sock_rx_entry *rx_entry;
 	struct sock_msg_response response;
 	union sock_iov rx_iov[SOCK_EP_MAX_IOV_LIMIT];

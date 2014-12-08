@@ -451,7 +451,19 @@ static int sock_ctx_atomic_writevalid(struct fid_ep *ep,
 static int sock_ctx_atomic_readwritevalid(struct fid_ep *ep,
 					  enum fi_datatype datatype, enum fi_op op, size_t *count)
 {
-	size_t datatype_sz = fi_datatype_size(datatype);
+	size_t datatype_sz;
+
+	switch(datatype){
+	case FI_FLOAT_COMPLEX:
+	case FI_DOUBLE_COMPLEX:
+	case FI_LONG_DOUBLE:
+	case FI_LONG_DOUBLE_COMPLEX:
+		return -FI_ENOENT;
+	default:
+		break;
+	}
+
+	datatype_sz = fi_datatype_size(datatype);
 	*count = (SOCK_EP_MAX_ATOMIC_SZ/datatype_sz);
 	return 0;
 }
@@ -459,7 +471,19 @@ static int sock_ctx_atomic_readwritevalid(struct fid_ep *ep,
 static int sock_ctx_atomic_compwritevalid(struct fid_ep *ep,
 			  enum fi_datatype datatype, enum fi_op op, size_t *count)
 {
-	size_t datatype_sz = fi_datatype_size(datatype);
+	size_t datatype_sz;
+
+	switch(datatype){
+	case FI_FLOAT_COMPLEX:
+	case FI_DOUBLE_COMPLEX:
+	case FI_LONG_DOUBLE:
+	case FI_LONG_DOUBLE_COMPLEX:
+		return -FI_ENOENT;
+	default:
+		break;
+	}
+
+	datatype_sz = fi_datatype_size(datatype);
 	*count = (SOCK_EP_MAX_ATOMIC_SZ/datatype_sz);
 	return 0;
 }
