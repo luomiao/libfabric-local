@@ -454,6 +454,13 @@ static int sock_ctx_atomic_readwritevalid(struct fid_ep *ep,
 	size_t datatype_sz;
 
 	switch(datatype){
+	case FI_FLOAT:
+	case FI_DOUBLE:
+		if (op == FI_BOR || op == FI_BAND ||
+		    op == FI_BXOR || op == FI_MSWAP)
+			return -FI_ENOENT;
+		break;
+
 	case FI_FLOAT_COMPLEX:
 	case FI_DOUBLE_COMPLEX:
 	case FI_LONG_DOUBLE:
@@ -474,6 +481,13 @@ static int sock_ctx_atomic_compwritevalid(struct fid_ep *ep,
 	size_t datatype_sz;
 
 	switch(datatype){
+	case FI_FLOAT:
+	case FI_DOUBLE:
+		if (op == FI_BOR || op == FI_BAND ||
+		    op == FI_BXOR || op == FI_MSWAP)
+			return -FI_ENOENT;
+		break;
+		
 	case FI_FLOAT_COMPLEX:
 	case FI_DOUBLE_COMPLEX:
 	case FI_LONG_DOUBLE:
