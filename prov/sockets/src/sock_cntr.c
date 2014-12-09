@@ -144,12 +144,38 @@ static struct fi_ops sock_cntr_fi_ops = {
 	.close = sock_cntr_close,
 };
 
+static int sock_cntr_verify_attr(struct fi_cntr_attr *attr)
+{
+	switch (attr->events) {
+	case FI_CNTR_EVENTS_COMP:
+		break;
+	default:
+		return -FI_ENOSYS;
+	}
+
+	switch (attr->wait_obj) {
+	case FI_WAIT_NONE:
+	case FI_WAIT_UNSPEC:
+	case FI_WAIT_MUT_COND:
+		break;
+	case FI_WAIT_SET:
+	case FI_WAIT_FD:
+		return -FI_ENOSYS;
+	}
+	if (attr->flags)
+		return -FI_ENOSYS;
+	return 0;
+}
+
 int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 		   struct fid_cntr **cntr, void *context)
 {
 	struct sock_domain *dom;
 	struct sock_cntr *_cntr;
 	int ret;
+	
+	if (attr && sock_cntr_verify_attr(attr))
+		return -FI_ENOSYS;
 
 	if ((attr->events != FI_CNTR_EVENTS_COMP) ||
 	    (attr->wait_obj != FI_WAIT_MUT_COND) || attr->flags)
