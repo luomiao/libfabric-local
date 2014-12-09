@@ -1303,6 +1303,7 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		fastlock_release(&rx_ctx->lock);
 	}
 	
+	rx_entry = pe_entry->rx.rx_entry;
 	done_data = pe_entry->done_len - len;
 	pe_entry->data_len = pe_entry->msg_hdr.msg_len - len;
 	rem = pe_entry->msg_hdr.msg_len - (len + done_data);
