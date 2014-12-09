@@ -114,13 +114,17 @@ int sock_verify_domain_attr(struct fi_domain_attr *attr)
 static int sock_dom_close(struct fid *fid)
 {
 	struct sock_domain *dom;
+	void *res;
 
 	dom = container_of(fid, struct sock_domain, dom_fid.fid);
 	if (atomic_get(&dom->ref))
 		return -FI_EBUSY;
 
 	dom->listening = 0;
-	pthread_cancel(dom->listen_thread);
+	if (pthread_join(dom->listen_thread, &res)) {
+		SOCK_LOG_ERROR("could not join listener thread, errno = %d\n", errno);
+		return -FI_EBUSY;
+	}
 
 	if (dom->u_cmap.size)
 		sock_conn_map_destroy(&dom->u_cmap);
@@ -357,8 +361,35 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 	fastlock_init(&sock_domain->lock);
 	atomic_init(&sock_domain->ref, 0);
 
-	if(info)
+	if(info) {
+		struct sockaddr *dest_addr = (struct sockaddr *)info->dest_addr;
+		struct sockaddr *src_addr = (struct sockaddr *)info->src_addr;
+		if (!dest_addr || !src_addr) {
+			SOCK_LOG_ERROR("invalid dest_addr or src_addr\n");
+			goto err;
+		}
+
+		if (!dest_addr->sa_family) {
+			if(getnameinfo(src_addr, sizeof(*src_addr), NULL, 0,
+						sock_domain->service, sizeof(sock_domain->service),
+					NI_NUMERICSERV)) {
+				SOCK_LOG_ERROR("could not resolve src_addr\n");
+				goto err;
+			}
+		} else {
+			if(getnameinfo(dest_addr, sizeof(*dest_addr), NULL, 0,
+						sock_domain->service, sizeof(sock_domain->service),
+					NI_NUMERICSERV)) {
+				SOCK_LOG_ERROR("could not resolve dest_addr\n");
+				goto err;
+			}
+		}
+//		sock_domain->port = strtol(sock_domain->service, NULL, 0);
 		sock_domain->info = *info;
+	} else {
+		SOCK_LOG_ERROR("invalid fi_info\n");
+		goto err;
+	}
 
 	sock_domain->dom_fid.fid.fclass = FI_CLASS_DOMAIN;
 	sock_domain->dom_fid.fid.context = context;
@@ -371,6 +402,9 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		SOCK_LOG_ERROR("Failed to init PE\n");
 		goto err;
 	}
+
+	sock_domain->r_cmap.dom = sock_domain;
+	sock_domain->u_cmap.dom = sock_domain;
 
 	sock_conn_listen(sock_domain);
 

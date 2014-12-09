@@ -141,8 +141,8 @@ static ssize_t sock_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
-	assert(ret == 0);
+	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
+	assert(conn);
 
 	SOCK_LOG_INFO("New sendmsg on TX: %p using conn: %p\n", 
 		      tx_ctx, conn);
@@ -366,8 +366,8 @@ static ssize_t sock_ctx_tsendmsg(struct fid_ep *ep,
 	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
-	assert(ret == 0);
+	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
+	assert(conn);
 
 	total_len = 0;
 	if (flags & FI_INJECT) {

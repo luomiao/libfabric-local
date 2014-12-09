@@ -45,79 +45,59 @@
 #include "sock.h"
 #include "sock_util.h"
 
-int sock_av_lookup_addr(struct sock_av *av, 
-		fi_addr_t addr, struct sock_conn **entry)
+struct sock_conn *sock_av_lookup_addr(struct sock_av *av, 
+		fi_addr_t addr)
 {
 	int index = ((uint64_t)addr & av->mask);
-	uint16_t key;
+	struct sock_av_addr *av_addr;
 
 	if (index >= av->stored || index < 0) {
 		SOCK_LOG_ERROR("requested rank is larger than av table\n");
-		return -EINVAL;
+		errno = EINVAL;
+		return NULL;
 	}
 
 	if (!av->cmap) {
 		SOCK_LOG_ERROR("EP with no AV bound\n");
-		return -EINVAL;
+		errno = EINVAL;
+		return NULL;
 	}
 
-	key = av->key_table[index];
-
-	if (!key) {
-		if(sock_conn_map_set_key(av->cmap, &key, &av->addr_table[index])) {
-			SOCK_LOG_ERROR("failed to set key\n");
-			return -EINVAL;
+	av_addr = idm_lookup(&av->addr_idm, index);
+	if (!av_addr->key) {
+		av_addr->key = sock_conn_map_match_or_connect(av->cmap, 
+				(struct sockaddr_in*)&av_addr->addr);
+		if (!av_addr->key) {
+			SOCK_LOG_ERROR("failed to match or connect to addr %lu\n", addr);
+			errno = EINVAL;
+			return NULL;
 		}
-		av->key_table[index] = key;
 	}
-	sock_conn_map_lookup_key(av->cmap, key, entry);
-
-	return 0;
+	return sock_conn_map_lookup_key(av->cmap, av_addr->key);
 }
 
-static inline int check_table_in(struct sock_av *_av, struct sockaddr_in *addr,
+static int sock_check_table_in(struct sock_av *_av, struct sockaddr_in *addr,
 		int count)
 {
 	int i;
+	struct sock_av_addr *av_addr;
+	av_addr = calloc(count, sizeof(struct sock_av_addr));
+	if (!av_addr)
+		return -ENOMEM;
 
-	if (!_av->count) {
-		_av->key_table = (uint16_t*)calloc(count, sizeof(uint16_t));
-		_av->addr_table = (struct sockaddr_storage*)calloc(count, sizeof(struct
-					sockaddr_storage));
-		if (!_av->key_table || !_av->addr_table) {
-			return -ENOMEM;
-		}
+	for (i=0; i<count; i++) {
+		memcpy(&av_addr[i].addr, &addr[i], sizeof(struct sockaddr_in));
+		if (idm_set(&_av->addr_idm, _av->stored, &av_addr[i]) < 0)
+			goto err;
 
-		for (i=0; i<count; i++) {
-			memcpy(&_av->addr_table[i], &addr[i], sizeof(struct sockaddr_in));
-		}
-		_av->count = _av->stored = count;
-	} else {
-		if (_av->stored + count > _av->count) {
-			int new_size;
-			new_size = MAX(_av->count, count) * 2;
-			_av->key_table = (uint16_t*)realloc(_av->key_table, 
-					new_size * sizeof(uint16_t));
-			_av->addr_table = (struct sockaddr_storage*)realloc(_av->addr_table,
-					new_size * sizeof(struct sockaddr_storage));
-			if (!_av->key_table || !_av->addr_table) {
-				return -ENOMEM;
-			}
-
-			/* init new allocated key_table */
-			memset(&_av->key_table[_av->count], 0, (new_size -
-						_av->count)*sizeof(uint16_t));
-
-			_av->count = new_size;
-		}
-
-		for (i=0; i<count; i++) {
-			memcpy(&_av->addr_table[_av->stored+i], &addr[i], sizeof(struct
-						sockaddr_in));
-		}
+		_av->stored++;
 	}
 
 	return 0;
+
+err:
+	free(av_addr);
+	return -errno;
 }
 
 static int sock_at_insert(struct fid_av *av, const void *addr, size_t count,
@@ -128,15 +108,11 @@ static int sock_at_insert(struct fid_av *av, const void *addr, size_t count,
 	_av = container_of(av, struct sock_av, av_fid);
 
 	switch(((struct sockaddr *)addr)->sa_family) {
-		case AF_INET:
-			if (_av->addrlen != sizeof(struct sockaddr_in)) {
-				SOCK_LOG_ERROR("Invalid address type\n");
-				return -EINVAL;
-			}
-			return check_table_in(_av, (struct sockaddr_in *)addr, count);
-		default:
-			SOCK_LOG_ERROR("inserted address not supported\n");
-			return -EINVAL;
+	case AF_INET:
+		return sock_check_table_in(_av, (struct sockaddr_in *)addr, count);
+	default:
+		SOCK_LOG_ERROR("invalid address type inserted: only IPv4 supported\n");
+		return -EINVAL;
 	}
 }
 
@@ -150,18 +126,18 @@ static int sock_at_lookup(struct fid_av *av, fi_addr_t fi_addr, void *addr,
 			  size_t *addrlen)
 {
 	int index;
-	struct sock_conn *entry;
 	struct sock_av *_av;
+	struct sock_av_addr *av_addr;
 
 	_av = container_of(av, struct sock_av, av_fid);
 	index = ((uint64_t)fi_addr & _av->mask);
-	if (index >= _av->count || index < 0) {
-		SOCK_LOG_ERROR("requested rank is larger than av table\n");
+	if (index >= _av->stored || index < 0) {
+		SOCK_LOG_ERROR("requested address not inserted\n");
 		return -EINVAL;
 	}
 
-	sock_conn_map_lookup_key(_av->cmap, _av->key_table[index], &entry);
-	addr = &entry->addr;
+	av_addr = idm_lookup(&_av->addr_idm, index);
+	addr = &av_addr->addr;
 	*addrlen = _av->addrlen;
 	return 0;
 }
@@ -175,20 +151,6 @@ static const char * sock_at_straddr(struct fid_av *av, const void *addr,
 static int sock_am_insert(struct fid_av *av, const void *addr, size_t count,
 			  fi_addr_t *fi_addr, uint64_t flags, void *context)
 {
-#if 0
-	const struct sockaddr_in *sin;
-	struct sockaddr_in *fin;
-
-	if (flags)
-		return -FI_EBADFLAGS;
-	if (sizeof(void *) != sizeof(*sin))
-		return -FI_ENOSYS;
-
-	sin = addr;
-	fin = (struct sockaddr_in *) fi_addr;
-	for (i = 0; i < count; i++)
-		memcpy(&fin[i], &sin[i], sizeof(*sin));
-#endif
 	int i;
 	sock_at_insert(av, addr, count, fi_addr, flags, context);
 	for (i = 0; i < count; i++)
@@ -233,10 +195,18 @@ static int sock_av_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 static int sock_av_close(struct fid *fid)
 {
 	struct sock_av *av;
+	void *addr;
+	int i;
 
 	av = container_of(fid, struct sock_av, av_fid.fid);
 	if (atomic_get(&av->ref))
 		return -FI_EBUSY;
+
+	for (i=0; i<av->stored; i++) {
+		addr = idm_clear(&av->addr_idm , i);
+		if (addr)
+			free(addr);
+	}
 
 	atomic_dec(&av->dom->ref);
 	free(av);
@@ -304,6 +274,11 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 	if (attr->flags)
 		return -FI_ENOSYS;
 
+	if (attr->rx_ctx_bits > 63) {
+		SOCK_LOG_ERROR("Invalid rx_ctx_bits\n");
+		return -EINVAL;
+	}
+
 	dom = container_of(domain, struct sock_domain, dom_fid);
 
 	_av = calloc(1, sizeof(*_av));
@@ -323,33 +298,26 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		_av->av_fid.ops = &sock_at_ops;
 		break;
 	default:
-		return -FI_ENOSYS;
+		goto err;
 	}
 
 	atomic_init(&_av->ref, 0);
 	atomic_inc(&dom->ref);
 	_av->dom = dom;
 	switch (dom->info.addr_format) {
-	case FI_SOCKADDR:
-		_av->addrlen = sizeof(struct sockaddr);
-		break;
 	case FI_SOCKADDR_IN:
 		_av->addrlen = sizeof(struct sockaddr_in);
 		break;
-	case FI_SOCKADDR_IN6:
-		_av->addrlen = sizeof(struct sockaddr_in6);
-		break;
 	default:
-		SOCK_LOG_ERROR("Invalid address format\n");
-		return -EINVAL;
-	}
-	if (attr->rx_ctx_bits > 63) {
-		SOCK_LOG_ERROR("Invalid rx_ctx_bits\n");
-		return -EINVAL;
+		SOCK_LOG_ERROR("Invalid address format: only IPv4 supported\n");
+		goto err;
 	}
 	_av->rx_ctx_bits = attr->rx_ctx_bits;
 	_av->mask = ((uint64_t)1<<(64 - attr->rx_ctx_bits + 1))-1;
 	_av->attr = *attr;
 	*av = &_av->av_fid;
 	return 0;
+err:
+	free(_av);
+	return -EINVAL;
 }

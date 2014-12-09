@@ -77,8 +77,8 @@ static ssize_t sock_ctx_tx_atomic(struct fid_ep *ep,
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 	
-	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
-	assert(ret == 0);
+	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
+	assert(conn);
 
 	src_len = 0;
 	datatype_sz = fi_datatype_size(msg->datatype);

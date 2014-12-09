@@ -73,8 +73,8 @@ static ssize_t sock_ctx_rma_readmsg(struct fid_ep *ep,
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
-	assert(ret == 0);
+	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
+	assert(conn);
 
 	total_len = sizeof(struct sock_op_send);
 	total_len += (msg->iov_count * sizeof(union sock_iov));
@@ -197,8 +197,8 @@ static ssize_t sock_ctx_rma_writemsg(struct fid_ep *ep,
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
-	ret = sock_av_lookup_addr(tx_ctx->av, msg->addr, &conn);
-	assert(ret == 0);
+	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
+	assert(conn);
 	
 	total_len = 0;
 	if (flags & FI_INJECT) {
