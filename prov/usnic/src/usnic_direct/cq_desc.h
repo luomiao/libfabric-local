@@ -40,7 +40,6 @@
  *
  *
  */
-#ident "$Id$"
 
 #ifndef _CQ_DESC_H_
 #define _CQ_DESC_H_

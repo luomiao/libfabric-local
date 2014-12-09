@@ -41,7 +41,7 @@
 #include "sock_util.h"
 
 
-struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_ctx_attr *attr, void *context)
+struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_attr *attr, void *context)
 {
 	struct sock_rx_ctx *rx_ctx;
 	rx_ctx = calloc(1, sizeof(*rx_ctx));
@@ -78,7 +78,7 @@ void sock_rx_ctx_free(struct sock_rx_ctx *rx_ctx)
 	free(rx_ctx);
 }
 
-struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_ctx_attr *attr, void *context)
+struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_attr *attr, void *context)
 {
 	struct sock_tx_ctx *tx_ctx;
 
@@ -162,56 +162,3 @@ int sock_tx_ctx_read(struct sock_tx_ctx *tx_ctx, void *buf, size_t len)
 	return ret;
 }
 
-struct sock_rx_entry *sock_ep_get_rx_entry(struct sock_ep *ep, 
-					   struct sock_pe_entry *pe_entry)
-{
-	struct dlist_entry *entry;
-	struct sock_rx_ctx *rx_ctx;
-	struct sock_rx_entry *rx_entry;
-
-	rx_ctx = ep->rx_array[pe_entry->msg_hdr.rx_id];
-	if (!rx_ctx)
-		return NULL;
-
-	fastlock_acquire(&rx_ctx->lock);
-
-	for (entry = rx_ctx->rx_entry_list.next;
-	    entry != &rx_ctx->rx_entry_list; entry = entry->next) {
-		rx_entry = container_of(entry, struct sock_rx_entry, entry);
-
-		switch (pe_entry->msg_hdr.op_type) {
-		case SOCK_OP_SEND:
-		case SOCK_OP_SEND_INJECT:
-
-			if (rx_entry->addr == FI_ADDR_UNSPEC ||
-			   rx_entry->addr == pe_entry->addr) {
-				dlist_remove(&rx_entry->entry);
-				goto out;
-			}
-			break;
-
-		case SOCK_OP_TSEND:
-		case SOCK_OP_TSEND_INJECT:
-
-			if (((rx_entry->tag & ~rx_entry->ignore) == 
-			   (pe_entry->tag & ~rx_entry->ignore)) &&
-				(rx_entry->addr == FI_ADDR_UNSPEC ||
-				 rx_entry->addr == pe_entry->addr)) {
-				dlist_remove(&rx_entry->entry);
-				goto out;
-			}
-			break;
-
-		default:
-			SOCK_LOG_ERROR("Invalid op type\n");
-			break;
-		}
-	}
-
-	if (entry == &rx_ctx->rx_entry_list)
-		rx_entry = NULL;
-	
-out:
-	fastlock_release(&rx_ctx->lock);
-	return rx_entry;
-}

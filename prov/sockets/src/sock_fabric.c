@@ -93,8 +93,9 @@ int sock_verify_info(struct fi_info *hints)
 		return -FI_ENODATA;
 	}
 
-	if (!sock_rdm_verify_ep_attr(hints->ep_attr, 
-				    hints->tx_attr, hints->rx_attr))
+	if (!sock_rdm_verify_ep_attr(hints->ep_attr, hints->tx_attr, hints->rx_attr) ||
+	    !sock_dgram_verify_ep_attr(hints->ep_attr, hints->tx_attr, hints->rx_attr) ||
+	    !sock_msg_verify_ep_attr(hints->ep_attr, hints->tx_attr, hints->rx_attr))
 		return 0;
 
 	ret = sock_verify_domain_attr(hints->domain_attr);
@@ -111,7 +112,7 @@ int sock_verify_info(struct fi_info *hints)
 static struct fi_ops_fabric sock_fab_ops = {
 	.size = sizeof(struct fi_ops_fabric),
 	.domain = sock_domain,
-	.endpoint = sock_pendpoint,
+	.passive_ep = sock_passive_ep,
 	.eq_open = sock_eq_open,
 };
 
@@ -231,7 +232,7 @@ struct fi_provider sock_prov = {
 
 static void __attribute__((constructor)) sock_ini(void)
 {
-	char *tmp = getenv("SFI_SOCK_DEBUG_LEVEL");
+	char *tmp = getenv("SFI_SOCK_LOG_LEVEL");
 	if (tmp) {
 		sock_log_level = atoi(tmp);
 	} else {

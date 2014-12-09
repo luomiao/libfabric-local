@@ -40,7 +40,6 @@
  *
  *
  */
-#ident "$Id: vnic_wq.c 183023 2014-07-22 23:47:25Z xuywang $"
 
 #ifndef ENIC_PMD
 #include <linux/kernel.h>
@@ -179,6 +178,27 @@ int vnic_wq_alloc(struct vnic_dev *vdev, struct vnic_wq *wq, unsigned int index,
 		return err;
 	}
 
+	return 0;
+}
+
+int vnic_wq_devcmd2_alloc(struct vnic_dev *vdev, struct vnic_wq *wq,
+	unsigned int desc_count, unsigned int desc_size)
+{
+	int err;
+	
+	wq->index = 0;
+	wq->vdev = vdev;
+	
+	err = vnic_wq_get_ctrl(vdev, wq, 0, RES_TYPE_DEVCMD2);
+	if (err) {
+		pr_err("Failed to get devcmd2 resource\n");
+		return err;
+	}
+	vnic_wq_disable(wq);
+	
+	err = vnic_wq_alloc_ring(vdev, wq, desc_count, desc_size);
+	if (err)
+		return err;
 	return 0;
 }
 

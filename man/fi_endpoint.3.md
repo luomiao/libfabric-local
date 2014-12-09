@@ -9,12 +9,15 @@ tagline: Libfabric Programmer's Manual
 
 fi_endpoint \- Fabric endpoint operations
 
-fi_endpoint / fi_pendpoint / fi_close
+fi_endpoint / fi_scalable_ep / fi_passive_ep / fi_close
 :   Allocate or close an endpoint.
 
 fi_ep_bind
 :   Associate an endpoint with an event queue, completion queue, address
     vector, or memory region
+
+fi_scalable_ep_bind
+:   Associate a scalable endpoint with an address vector
 
 fi_enable
 :   Transitions an endpoint into an active state.
@@ -47,28 +50,30 @@ int fi_endpoint(struct fid_domain *domain, struct fi_info *info,
 int fi_scalable_ep(struct fid_domain *domain, struct fi_info *info,
     struct fid_sep **ep, void *context);
 
-int fi_pendpoint(struct fi_fabric *fabric, struct fi_info *info,
+int fi_passive_ep(struct fi_fabric *fabric, struct fi_info *info,
     struct fid_pep **pep, void *context);
 
 int fi_tx_context(struct fid_ep *ep, int index,
-    struct fi_tx_ctx_attr *attr, struct fid_ep **tx_ep,
+    struct fi_tx_attr *attr, struct fid_ep **tx_ep,
     void *context);
 
 int fi_rx_context(struct fid_ep *ep, int index,
-    struct fi_rx_ctx_attr *attr, struct fid_ep **rx_ep,
+    struct fi_rx_attr *attr, struct fid_ep **rx_ep,
     void *context);
 
 int fi_stx_context(struct fid_domain *domain,
-    struct fi_tx_ctx_attr *attr, struct fid_stx **stx,
+    struct fi_tx_attr *attr, struct fid_stx **stx,
     void *context);
 
 int fi_srx_context(struct fid_domain *domain,
-    struct fi_rx_ctx_attr *attr, struct fid_ep **rx_ep,
+    struct fi_rx_attr *attr, struct fid_ep **rx_ep,
     void *context);
 
 int fi_close(struct fid *ep);
 
 int fi_ep_bind(struct fid_ep *ep, struct fid *fid, uint64_t flags);
+
+int fi_scalable_ep_bind(struct fid_sep *sep, struct fid *fid, uint64_t flags);
 
 int fi_enable(struct fid_ep *ep);
 
@@ -164,9 +169,9 @@ data and protocol options.  This allows the underlying provider to
 redirect function calls to implementations optimized to meet the
 desired application behavior.
 
-## fi_endpoint / fi_pendpoint / fi_scalable_ep
+## fi_endpoint / fi_passive_ep / fi_scalable_ep
 
-fi_endpoint allocates a new active endpoint.  fi_pendpoint allocates a
+fi_endpoint allocates a new active endpoint.  fi_passive_ep allocates a
 new passive endpoint.  fi_scalable_ep allocates a scalable endpoint.
 The properties and behavior of the endpoint are defined based on the
 provided struct fi_info.  See fi_getinfo for additional details on
@@ -258,6 +263,16 @@ binding an endpoint to a counter, the following flags may be specified.
   the given endpoint.
 
 Connectionless endpoints must be bound to a single address vector.
+
+## fi_scalable_ep_bind
+
+fi_scalable_ep_bind is used to associate a scalable endpoint with an
+address vector. See section on SCALABLE ENDPOINTS.  A scalable
+endpoint has a single transport level address and can support multiple
+transmit and receive contexts. The transmit and receive contexts share
+the transport-level address. Address vectors that are bound to
+scalable endpoints are implicitly bound to any transmit or receive
+contexts created using the scalable endpoint.
 
 ## fi_enable
 
@@ -626,7 +641,7 @@ not guaranteed.  Providers will return the actual attributes assigned
 to the context through the attr parameter, if provided.
 
 {% highlight c %}
-struct fi_tx_ctx_attr {
+struct fi_tx_attr {
 	uint64_t  caps;
 	uint64_t  mode;
 	uint64_t  op_flags;
@@ -703,7 +718,7 @@ not guaranteed.  Providers will return the actual attributes assigned
 to the context through the attr parameter, if provided.
 
 {% highlight c %}
-struct fi_rx_ctx_attr {
+struct fi_rx_attr {
 	uint64_t  caps;
 	uint64_t  mode;
 	uint64_t  op_flags;

@@ -40,19 +40,23 @@ if HAVE_SOCKETS
 _sockets_files = \
 	prov/sockets/src/sock.h \
 	prov/sockets/src/sock_av.c \
-	prov/sockets/src/sock_dgram.c \
 	prov/sockets/src/sock_dom.c \
 	prov/sockets/src/sock_eq.c \
 	prov/sockets/src/sock_cq.c \
 	prov/sockets/src/sock_cntr.c \
 	prov/sockets/src/sock_poll.c \
-	prov/sockets/src/sock_rdm.c \
+	prov/sockets/src/sock_ep_rdm.c \
+	prov/sockets/src/sock_ep_dgram.c \
+	prov/sockets/src/sock_ep_msg.c \
 	prov/sockets/src/sock_fabric.c \
 	prov/sockets/src/sock_ep.c \
 	prov/sockets/src/sock_ctx.c \
 	prov/sockets/src/sock_rx_entry.c \
 	prov/sockets/src/sock_progress.c \
 	prov/sockets/src/sock_comm.c \
+	prov/sockets/src/sock_snd_rcv.c \
+	prov/sockets/src/sock_rma.c \
+	prov/sockets/src/sock_atomic.c \
 	prov/sockets/src/sock_util.c \
 	prov/sockets/src/sock_util.h \
 	prov/sockets/src/indexer.c \
@@ -277,7 +281,6 @@ dummy_man_pages = \
         man/fi_alias.3 \
         man/fi_atomic_valid.3 \
         man/fi_atomicmsg.3 \
-        man/fi_atomicto.3 \
         man/fi_atomicv.3 \
         man/fi_av_bind.3 \
         man/fi_av_insert.3 \
@@ -296,7 +299,6 @@ dummy_man_pages = \
         man/fi_compare_atomic.3 \
         man/fi_compare_atomic_valid.3 \
         man/fi_compare_atomicmsg.3 \
-        man/fi_compare_atomicto.3 \
         man/fi_compare_atomicv.3 \
         man/fi_connect.3 \
         man/fi_cq_open.3 \
@@ -321,14 +323,15 @@ dummy_man_pages = \
         man/fi_fetch_atomic.3 \
         man/fi_fetch_atomic_valid.3 \
         man/fi_fetch_atomicmsg.3 \
-        man/fi_fetch_atomicto.3 \
         man/fi_fetch_atomicv.3 \
         man/fi_freeinfo.3 \
         man/fi_getname.3 \
         man/fi_getopt.3 \
         man/fi_getpeer.3 \
         man/fi_inject.3 \
-        man/fi_injectto.3 \
+        man/fi_injectdata.3 \
+        man/fi_inject_atomic.3 \
+        man/fi_inject_writedata.3 \
         man/fi_join.3 \
         man/fi_leave.3 \
         man/fi_listen.3 \
@@ -339,38 +342,32 @@ dummy_man_pages = \
         man/fi_mr_regattr.3 \
         man/fi_mr_regv.3 \
         man/fi_open.3 \
-        man/fi_pendpoint.3 \
+        man/fi_passive_ep.3 \
         man/fi_poll_add.3 \
         man/fi_poll_del.3 \
         man/fi_poll_open.3 \
         man/fi_recv.3 \
-        man/fi_recvfrom.3 \
         man/fi_recvmsg.3 \
         man/fi_recvv.3 \
         man/fi_reject.3 \
         man/fi_rx_addr.3 \
         man/fi_send.3 \
         man/fi_senddata.3 \
-        man/fi_senddatato.3 \
         man/fi_sendmsg.3 \
-        man/fi_sendto.3 \
         man/fi_sendv.3 \
         man/fi_setopt.3 \
         man/fi_shutdown.3 \
         man/fi_strerror.3 \
         man/fi_tinject.3 \
-        man/fi_tinjectto.3 \
+        man/fi_tinjectdata.3 \
         man/fi_tostr.3 \
         man/fi_trecv.3 \
-        man/fi_trecvfrom.3 \
         man/fi_trecvmsg.3 \
         man/fi_trecvv.3 \
         man/fi_tsearch.3 \
         man/fi_tsend.3 \
         man/fi_tsenddata.3 \
-        man/fi_tsenddatato.3 \
         man/fi_tsendmsg.3 \
-        man/fi_tsendto.3 \
         man/fi_tsendv.3 \
         man/fi_wait.3 \
         man/fi_wait_open.3

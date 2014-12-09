@@ -109,6 +109,7 @@ uint16_t sock_conn_map_match_or_connect(struct sock_conn_map *map, struct
 	struct addrinfo hints;
 	struct timeval tv;
 	fd_set fds;
+	struct sock_conn *conn;
 
 	memcpy(sa_ip, inet_ntoa(addr->sin_addr), INET_ADDRSTRLEN);
 	/* match */
@@ -169,6 +170,8 @@ uint16_t sock_conn_map_match_or_connect(struct sock_conn_map *map, struct
 
 	memcpy(&map->table[map->used].addr, c_res->ai_addr, c_res->ai_addrlen);
 	map->table[map->used].sock_fd = conn_fd;
+	conn = &map->table[map->used];
+	sock_comm_buffer_init(conn);
 	map->used++;
 	return map->used;
 
@@ -184,6 +187,7 @@ static void * _sock_conn_listen(void *arg)
 	int listen_fd, conn_fd;
 	struct sockaddr_in remote;
 	socklen_t addr_size;
+	struct sock_conn *conn;
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
@@ -236,6 +240,10 @@ static void * _sock_conn_listen(void *arg)
 		}
 		memcpy(&map->table[map->used].addr, &remote, addr_size);
 		map->table[map->used].sock_fd = conn_fd;
+
+		conn = &map->table[map->used];
+		conn->sock_fd = conn_fd;
+		sock_comm_buffer_init(conn);
 		map->used++;
 	}
 

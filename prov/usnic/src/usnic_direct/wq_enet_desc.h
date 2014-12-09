@@ -40,7 +40,6 @@
  *
  *
  */
-#ident "$Id$"
 
 #ifndef _WQ_ENET_DESC_H_
 #define _WQ_ENET_DESC_H_
