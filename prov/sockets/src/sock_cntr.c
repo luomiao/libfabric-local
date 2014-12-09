@@ -105,7 +105,7 @@ static int sock_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout
 		ret = fi_wait_cond(&_cntr->cond, &_cntr->mut, timeout);
 	_cntr->threshold = ~0;
 	pthread_mutex_unlock(&_cntr->mut);
-	return ret;
+	return -ret;
 }
 
 static int sock_cntr_close(struct fid *fid)
@@ -175,10 +175,6 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 	int ret;
 	
 	if (attr && sock_cntr_verify_attr(attr))
-		return -FI_ENOSYS;
-
-	if ((attr->events != FI_CNTR_EVENTS_COMP) ||
-	    (attr->wait_obj != FI_WAIT_MUT_COND) || attr->flags)
 		return -FI_ENOSYS;
 
 	_cntr = calloc(1, sizeof(*_cntr));
