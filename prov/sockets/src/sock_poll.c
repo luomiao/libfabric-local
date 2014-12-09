@@ -44,12 +44,36 @@
 int sock_poll_add(struct fid_poll *pollset, struct fid *event_fid, 
 			 uint64_t flags)
 {
+	struct sock_poll *poll;
+	struct sock_poll_list *list_item;
+
+	poll = container_of(pollset, struct sock_poll, poll_fid.fid);
+	list_item = calloc(1, sizeof(*list_item));
+	if (!list_item)
+		return -FI_ENOMEM;
+
+	list_item->fid = event_fid;
+	dlist_insert_after(&list_item->entry, &poll->head);
 	return 0;
 }
 
 int sock_poll_del(struct fid_poll *pollset, struct fid *event_fid, 
 			 uint64_t flags)
 {
+	struct sock_poll *poll;
+	struct sock_poll_list *list_item;
+	struct dlist_entry *p, *head;
+
+	poll = container_of(pollset, struct sock_poll, poll_fid.fid);
+	head = &poll->head;
+	for (p = head->next; p != head; p = p->next) {
+		list_item = container_of(p, struct sock_poll_list, entry);
+		if (list_item->fid == event_fid) {
+			dlist_remove(p);
+			free(list_item);
+			break;
+		}
+	}
 	return 0;
 }
 
@@ -60,6 +84,21 @@ static int sock_poll_poll(struct fid_poll *pollset, void **context, int count)
 
 static int sock_poll_close(fid_t fid)
 {
+	struct sock_poll *poll;
+	struct sock_poll_list *list_item;
+	struct dlist_entry *p, *head;
+
+	poll = container_of(fid, struct sock_poll, poll_fid.fid);
+
+	head = &poll->head;
+	while (!dlist_empty(head)) {
+		p = head->next;
+		list_item = container_of(p, struct sock_poll_list, entry);
+		dlist_remove(p);
+		free(list_item);
+	}
+
+	free(poll);
 	return 0;
 }
 
@@ -90,14 +129,24 @@ static struct fi_ops_poll sock_poll_ops = {
 	.poll = sock_poll_poll,
 };
 
+static int sock_poll_verify_attr(struct fi_poll_attr *attr)
+{
+	if (attr->flags != 0)
+		return -FI_ENODATA;
+
+	return 0;
+}
+
 int sock_poll_open(struct fid_domain *domain, struct fi_poll_attr *attr,
 		   struct fid_poll **pollset)
 {
 	struct sock_domain *dom;
 	struct sock_poll *poll;
 
-	dom = container_of(domain, struct sock_domain, dom_fid);
+	if (attr && sock_poll_verify_attr(attr))
+		return -FI_EINVAL;
 
+	dom = container_of(domain, struct sock_domain, dom_fid);
 	poll = calloc(1, sizeof(*poll));
 	if (!poll)
 		return -FI_ENOMEM;

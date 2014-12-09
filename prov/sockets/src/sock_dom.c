@@ -48,8 +48,8 @@ const struct fi_domain_attr sock_domain_attr = {
 	.mr_key_size = 0,
 	.cq_data_size = sizeof(uint64_t),
 	.ep_cnt = SOCK_EP_MAX_EP_CNT,
-	.tx_ctx_cnt = 0,
-	.rx_ctx_cnt = 0,
+	.tx_ctx_cnt = SOCK_EP_MAX_TX_CNT,
+	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
 	.max_ep_tx_ctx = SOCK_EP_MAX_TX_CNT,
 	.max_ep_rx_ctx = SOCK_EP_MAX_RX_CNT,
 };
