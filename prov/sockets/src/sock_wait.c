@@ -45,7 +45,7 @@ enum {
 	WAIT_WRITE_FD,
 };
 
-static int sock_wait_get_obj(struct sock_wait *wait, void *arg)
+int sock_wait_get_obj(struct fid_wait *fid, void *arg)
 {
 	void *obj_ptr;
 	int obj_size;
@@ -55,7 +55,9 @@ static int sock_wait_get_obj(struct sock_wait *wait, void *arg)
 		pthread_mutex_t *mutex;
 		pthread_cond_t *cond;
 	} mutex_cond;
+	struct sock_wait *wait;
 
+	wait = container_of(fid, struct sock_wait, wait_fid.fid);
 	wait_obj_set = (struct fi_wait_obj_set*)arg;
 
 	if (!arg)
@@ -70,6 +72,7 @@ static int sock_wait_get_obj(struct sock_wait *wait, void *arg)
 			break;
 			
 		case FI_WAIT_MUT_COND:
+			/* FIXME: new structure needs to be defined */
 			mutex_cond.mutex = &wait->mutex;
 			mutex_cond.cond = &wait->cond;
 			obj_size = sizeof(mutex_cond);
@@ -153,7 +156,7 @@ static int sock_wait_wait(struct fid_wait *wait_fid, int timeout)
 void sock_wait_signal(struct fid_wait *wait_fid)
 {
 	struct sock_wait *wait;
-	static char c = 'x';
+	static char c = 'a';
 
 	wait = container_of(wait_fid, struct sock_wait, wait_fid);
 
@@ -184,7 +187,7 @@ static int sock_wait_control(struct fid *fid, int command, void *arg)
 	wait = container_of(fid, struct sock_wait, wait_fid.fid);
 	switch (command) {
 	case FI_GETWAIT:
-		ret = sock_wait_get_obj(wait, arg);
+		ret = sock_wait_get_obj(&wait->wait_fid, arg);
 		break;
 	default:
 		ret = -FI_EINVAL;

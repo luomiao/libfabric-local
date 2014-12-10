@@ -227,11 +227,11 @@ int sock_eq_fi_close(struct fid *fid)
 
 int sock_eq_control(struct fid *fid, int command, void *arg)
 {
-	struct sock_eq *eq;
 	int ret = 0;
+	struct sock_eq *eq;
+	struct fi_wait_obj_set waitobj;
 
-	eq = container_of(fid, struct sock_eq, eq.fid);
-	
+	eq = container_of(fid, struct sock_eq, eq.fid);	
 	switch (command) {
 	case FI_GETWAIT:
 		switch (eq->attr.wait_obj) {
@@ -243,7 +243,8 @@ int sock_eq_control(struct fid *fid, int command, void *arg)
 
 		case FI_WAIT_SET:
 		case FI_WAIT_MUT_COND:
-			/* TODO */
+			waitobj.obj = arg;
+			sock_wait_get_obj(eq->waitset, &waitobj);
 			break;
 		
 		default:

@@ -199,6 +199,10 @@ static ssize_t sock_ctx_rma_writemsg(struct fid_ep *ep,
 
 	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
 	assert(conn);
+
+	memset(&tx_op, 0, sizeof(struct sock_op));
+	tx_op.op = SOCK_OP_WRITE;
+	tx_op.dest_iov_len = msg->rma_iov_count;
 	
 	total_len = 0;
 	if (flags & FI_INJECT) {
@@ -206,8 +210,10 @@ static ssize_t sock_ctx_rma_writemsg(struct fid_ep *ep,
 			total_len += msg->msg_iov[i].iov_len;
 		}
 		assert(total_len <= SOCK_EP_MAX_INJECT_SZ);
+		tx_op.src_iov_len = total_len;
 	} else {
 		total_len += msg->iov_count * sizeof(union sock_iov);
+		tx_op.src_iov_len = msg->iov_count;
 	}
 
 	total_len += sizeof(struct sock_op_send);
@@ -219,11 +225,6 @@ static ssize_t sock_ctx_rma_writemsg(struct fid_ep *ep,
 		goto err;
 	}
 	
-	memset(&tx_op, 0, sizeof(struct sock_op));
-	tx_op.op = SOCK_OP_WRITE;
-	tx_op.src_iov_len = msg->iov_count;
-	tx_op.dest_iov_len = msg->rma_iov_count;
-
 	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
 	sock_tx_ctx_write(tx_ctx, &flags, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->context, sizeof(uint64_t));

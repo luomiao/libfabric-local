@@ -59,7 +59,7 @@
 #define _SOCK_H_
 
 #define SOCK_EP_MAX_MSG_SZ (1<<23)
-#define SOCK_EP_MAX_INJECT_SZ (1<<12)
+#define SOCK_EP_MAX_INJECT_SZ ((1<<8) - 1)
 #define SOCK_EP_MAX_BUFF_RECV (1<<23)
 #define SOCK_EP_MAX_ORDER_RAW_SZ (0)
 #define SOCK_EP_MAX_ORDER_WAR_SZ (0)
@@ -803,6 +803,7 @@ ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len);
 int sock_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
 		   struct fid_wait **waitset);
 void sock_wait_signal(struct fid_wait *wait_fid);
+int sock_wait_get_obj(struct fid_wait *fid, void *arg);
 int sock_wait_close(fid_t fid);
 
 void free_fi_info(struct fi_info *info);

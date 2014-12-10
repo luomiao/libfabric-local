@@ -346,9 +346,9 @@ static int sock_cq_control(struct fid *fid, int command, void *arg)
 {
 	struct sock_cq *cq;
 	int ret = 0;
+	struct fi_wait_obj_set waitobj;
 	
 	cq = container_of(fid, struct sock_cq, cq_fid);
-
 	switch (command) {
 	case FI_GETWAIT:
 		switch (cq->attr.wait_obj) {
@@ -360,7 +360,8 @@ static int sock_cq_control(struct fid *fid, int command, void *arg)
 
 		case FI_WAIT_SET:
 		case FI_WAIT_MUT_COND:
-			/* TODO */
+			waitobj.obj = arg;
+			sock_wait_get_obj(cq->waitset, &waitobj);
 			break;
 
 		default:

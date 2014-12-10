@@ -147,13 +147,18 @@ static ssize_t sock_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	SOCK_LOG_INFO("New sendmsg on TX: %p using conn: %p\n", 
 		      tx_ctx, conn);
 
+	memset(&tx_op, 0, sizeof(struct sock_op));
+	tx_op.op = SOCK_OP_SEND;
+
 	total_len = 0;
 	if (flags & FI_INJECT) {
 		for (i=0; i< msg->iov_count; i++) {
 			total_len += msg->msg_iov[i].iov_len;
 		}
 		assert(total_len <= SOCK_EP_MAX_INJECT_SZ);
+		tx_op.src_iov_len = total_len;
 	} else {
+		tx_op.src_iov_len = msg->iov_count;
 		total_len = msg->iov_count * sizeof(union sock_iov);
 	}
 
@@ -167,10 +172,6 @@ static ssize_t sock_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		ret = -FI_EAGAIN;
 		goto err;
 	}
-
-	memset(&tx_op, 0, sizeof(struct sock_op));
-	tx_op.op = SOCK_OP_SEND;
-	tx_op.src_iov_len = msg->iov_count;
 
 	sock_tx_ctx_write(tx_ctx, &tx_op, sizeof(struct sock_op));
 	sock_tx_ctx_write(tx_ctx, &flags, sizeof(uint64_t));

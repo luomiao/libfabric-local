@@ -117,8 +117,9 @@ static int sock_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout
 
 int sock_cntr_control(struct fid *fid, int command, void *arg)
 {
-	struct sock_cntr *cntr;
 	int ret = 0;
+	struct sock_cntr *cntr;
+	struct fi_wait_obj_set waitobj;
 	
 	cntr = container_of(fid, struct sock_cntr, cntr_fid);
 	
@@ -135,7 +136,8 @@ int sock_cntr_control(struct fid *fid, int command, void *arg)
 			
 		case FI_WAIT_SET:
 		case FI_WAIT_FD:
-			/* TODO */
+			waitobj.obj = arg;
+			sock_wait_get_obj(cntr->waitset, &waitobj);
 			break;
 		
 		default:
