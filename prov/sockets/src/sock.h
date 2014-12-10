@@ -155,6 +155,9 @@ struct sock_cntr {
 	atomic_t err_cnt;
 	pthread_cond_t		cond;
 	pthread_mutex_t		mut;
+	struct fi_cntr_attr attr;
+
+	struct fid_wait *waitset;
 	int signal;
 };
 

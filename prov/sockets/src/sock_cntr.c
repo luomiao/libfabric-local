@@ -43,6 +43,13 @@
 
 #include "sock.h"
 
+const struct fi_cntr_attr sock_cntr_attr = {
+	.events = FI_CNTR_EVENTS_COMP,
+	.wait_obj = FI_WAIT_MUT_COND,
+	.wait_set = NULL,
+	.flags = 0,
+};
+
 static uint64_t sock_cntr_read(struct fid_cntr *cntr)
 {
 	struct sock_cntr *_cntr;
@@ -115,6 +122,9 @@ static int sock_cntr_close(struct fid *fid)
 	cntr = container_of(fid, struct sock_cntr, cntr_fid.fid);
 	if (atomic_get(&cntr->ref))
 		return -FI_EBUSY;
+
+	if (cntr->signal && cntr->attr.wait_obj == FI_WAIT_FD)
+		sock_wait_close(&cntr->waitset->fid);
 	
 	fastlock_destroy(&cntr->mut);
 	pthread_cond_destroy(&cntr->cond);
@@ -157,9 +167,10 @@ static int sock_cntr_verify_attr(struct fi_cntr_attr *attr)
 	case FI_WAIT_NONE:
 	case FI_WAIT_UNSPEC:
 	case FI_WAIT_MUT_COND:
-		break;
 	case FI_WAIT_SET:
 	case FI_WAIT_FD:
+		break;
+	default:
 		return -FI_ENOSYS;
 	}
 	if (attr->flags)
@@ -170,9 +181,10 @@ static int sock_cntr_verify_attr(struct fi_cntr_attr *attr)
 int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 		   struct fid_cntr **cntr, void *context)
 {
+	int ret;
 	struct sock_domain *dom;
 	struct sock_cntr *_cntr;
-	int ret;
+	struct fi_wait_attr wait_attr;
 	
 	if (attr && sock_cntr_verify_attr(attr))
 		return -FI_ENOSYS;
@@ -184,6 +196,37 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 	ret = pthread_cond_init(&_cntr->cond, NULL);
 	if (ret)
 		goto err1;
+
+	if(attr == NULL)
+		memcpy(&_cntr->attr, &sock_cntr_add, sizeof(sock_cntr_attr));
+	else 
+		memcpy(&_cntr->attr, attr, sizeof(sock_cntr_attr));
+	
+	switch (_cntr->attr.wait_obj) {
+
+	case FI_WAIT_NONE:
+	case FI_WAIT_UNSPEC:
+	case FI_WAIT_MUT_COND:
+		_cntr->signal = 0;
+		break;
+
+	case FI_WAIT_FD:
+		wait_attr.flags = 0;
+		wait_attr.wait_obj = FI_WAIT_FD;
+		ret = sock_wait_open(domain, &wait_attr, &_cntr->waitset);
+		if (ret)
+			goto err1;
+		_cntr->signal = 1;
+		break;
+		
+	case FI_WAIT_SET:
+		_cntr->waitset = attr->wait_set;
+		_cntr->signal = 1;
+		break;
+		
+	default:
+		break;
+	}
 
 	fastlock_init(&_cntr->mut);
 	atomic_init(&_cntr->ref, 0);
