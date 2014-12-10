@@ -199,7 +199,7 @@ struct sock_poll {
 struct sock_wait {
 	struct fid_wait wait_fid;
 	struct sock_domain *domain;
-	int				type;
+	enum fi_wait_obj type;
 	union {
 		int			fd[2];
 		struct {

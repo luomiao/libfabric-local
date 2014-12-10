@@ -88,8 +88,8 @@ static int sock_poll_poll(struct fid_poll *pollset, void **context, int count)
 	int ret_count = 0;
 	
 	poll = container_of(pollset, struct sock_poll, poll_fid.fid);
-
 	head = &poll->head;
+
 	for (p = head->next; p != head && ret_count < count; p = p->next) {
 		list_item = container_of(p, struct sock_poll_list, entry);
 		switch (list_item->fid->fclass) {
