@@ -98,6 +98,8 @@ static ssize_t _sock_cq_write(struct sock_cq *cq, fi_addr_t addr,
 	rbwrite(&cq->addr_rb, &addr, sizeof(fi_addr_t));
 	rbcommit(&cq->addr_rb);
 
+	if (cq->signal) 
+		sock_wait_signal(cq->waitset);
 out:
 	fastlock_release(&cq->lock);
 	return ret;
@@ -119,6 +121,8 @@ static ssize_t _sock_cq_writeerr(struct sock_cq *cq,
 	rbcommit(&cq->cqerr_rb);
 	ret = len;
 
+	if (cq->signal) 
+		sock_wait_signal(cq->waitset);
 out:
 	fastlock_release(&cq->lock);
 	return ret;
@@ -313,6 +317,9 @@ int sock_cq_close(struct fid *fid)
 	if (atomic_get(&cq->ref))
 		return -FI_EBUSY;
 
+	if (cq->signal && cq->attr.wait_obj == FI_WAIT_MUT_COND)
+		sock_wait_close(&cq->waitset->fid);
+
 	rbfree(&cq->addr_rb);
 	rbfree(&cq->cqerr_rb);
 	rbfdfree(&cq->cq_rbfd);
@@ -358,6 +365,8 @@ static int sock_cq_verify_attr(struct fi_cq_attr *attr)
 	switch (attr->wait_obj) {
 	case FI_WAIT_NONE:
 	case FI_WAIT_FD:
+	case FI_WAIT_SET:
+	case FI_WAIT_MUT_COND:
 		break;
 	case FI_WAIT_UNSPEC:
 		attr->wait_obj = FI_WAIT_FD;
@@ -384,6 +393,7 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 {
 	struct sock_domain *sock_dom;
 	struct sock_cq *sock_cq;
+	struct fi_wait_attr wait_attr;
 	int ret;
 
 	sock_dom = container_of(domain, struct sock_domain, dom_fid);
@@ -432,10 +442,34 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 
 	fastlock_init(&sock_cq->lock);
 
+	switch (sock_cq->attr.wait_obj) {
+	case FI_WAIT_NONE:
+	case FI_WAIT_UNSPEC:
+	case FI_WAIT_FD:
+		break;
+
+	case FI_WAIT_MUT_COND:
+		wait_attr.flags = 0;
+		wait_attr.wait_obj = FI_WAIT_MUT_COND;
+		ret = sock_wait_open(&sock_dom->dom_fid, &wait_attr, 
+				     &sock_cq->waitset);
+		if (ret)
+			goto err3;
+		sock_cq->signal = 1;
+		break;
+
+	case FI_WAIT_SET:
+		sock_cq->waitset = attr->wait_set;
+		sock_cq->signal = 1;
+		break;
+	default:
+		break;
+	}
+	
 	*cq = &sock_cq->cq_fid;
 	atomic_inc(&sock_dom->ref);
 	return 0;
-
+	
 err3:
 	rbfree(&sock_cq->addr_rb);
 err2:

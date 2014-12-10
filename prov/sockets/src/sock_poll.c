@@ -147,6 +147,7 @@ static int sock_poll_close(fid_t fid)
 		free(list_item);
 	}
 
+	atomic_dec(&poll->domain->ref);
 	free(poll);
 	return 0;
 }
@@ -168,9 +169,8 @@ static struct fi_ops_poll sock_poll_ops = {
 
 static int sock_poll_verify_attr(struct fi_poll_attr *attr)
 {
-	if (attr->flags != 0)
+	if (attr->flags)
 		return -FI_ENODATA;
-
 	return 0;
 }
 

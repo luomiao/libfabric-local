@@ -155,6 +155,7 @@ struct sock_cntr {
 	atomic_t err_cnt;
 	pthread_cond_t		cond;
 	pthread_mutex_t		mut;
+	int signal;
 };
 
 struct sock_mr {
@@ -304,6 +305,7 @@ struct sock_eq{
 	struct dlistfd_head list;
 	struct dlistfd_head err_list;
 	fastlock_t lock;
+	int signal;
 };
 
 struct sock_ep {
@@ -651,6 +653,9 @@ struct sock_cq {
 	struct ringbuf cqerr_rb;
 	fastlock_t lock;
 
+	struct fid_wait *waitset;
+	int signal;
+
 	struct dlist_entry ep_list;
 	struct dlist_entry rx_list;
 	struct dlist_entry tx_list;
@@ -790,9 +795,11 @@ ssize_t sock_comm_send(struct sock_conn *conn, const void *buf, size_t len);
 ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len);
 
 
+int sock_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
+		   struct fid_wait **waitset);
 int sock_wait_wait(struct fid_wait *wait_fid, int timeout);
 void sock_wait_signal(struct fid_wait *wait_fid);
-
+int sock_wait_close(fid_t fid);
 
 void free_fi_info(struct fi_info *info);
 

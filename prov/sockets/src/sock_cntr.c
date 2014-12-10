@@ -163,7 +163,7 @@ static int sock_cntr_verify_attr(struct fi_cntr_attr *attr)
 		return -FI_ENOSYS;
 	}
 	if (attr->flags)
-		return -FI_ENOSYS;
+		return -FI_EINVAL;
 	return 0;
 }
 

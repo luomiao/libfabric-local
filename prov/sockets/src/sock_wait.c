@@ -62,9 +62,9 @@ int sock_wait_get_obj(struct sock_wait *wait, void *arg)
 	if (wait) {
 		switch (wait->type) {
 		case FI_WAIT_FD:
-			obj_size = sizeof(wait->fd[0]);
+			obj_size = sizeof(wait->fd[READ_FD]);
 			obj_type = wait->type;
-			obj_ptr = &wait->fd[0];
+			obj_ptr = &wait->fd[READ_FD];
 			break;
 			
 		case FI_WAIT_MUT_COND:
@@ -93,18 +93,18 @@ int sock_wait_get_obj(struct sock_wait *wait, void *arg)
 
 static int sock_verify_wait_attr(struct fi_wait_attr *attr)
 {
-	if (attr) {
-		switch (attr->wait_obj) {
-		case FI_WAIT_UNSPEC:
-		case FI_WAIT_FD:
-		case FI_WAIT_MUT_COND:
-			break;
-	 
-		default:
-			SOCK_LOG_ERROR("Invalid wait object type\n");
-			return -FI_EINVAL;
-		}
+	switch (attr->wait_obj) {
+	case FI_WAIT_UNSPEC:
+	case FI_WAIT_FD:
+	case FI_WAIT_MUT_COND:
+		break;
+		
+	default:
+		SOCK_LOG_ERROR("Invalid wait object type\n");
+		return -FI_EINVAL;
 	}
+	if (attr->flags)
+		return -FI_EINVAL;
 	return 0;
 }
 
@@ -114,7 +114,6 @@ static int sock_wait_init(struct sock_wait *wait, enum fi_wait_obj type)
 	wait->type = type;
 	
 	switch (type) {
-	case FI_WAIT_UNSPEC:
 	case FI_WAIT_FD:
 		if (socketpair(AF_UNIX, SOCK_STREAM, 0, wait->fd))
 			return -errno;
@@ -192,15 +191,17 @@ static struct fi_ops_wait sock_wait_ops = {
 	.wait = sock_wait_wait,
 };
 
-static int sock_wait_close(fid_t fid)
+int sock_wait_close(fid_t fid)
 {
 	struct sock_wait *wait;
 
-	wait = container_of(fid, struct sock_wait, wait_fid);
+	wait = container_of(fid, struct sock_wait, wait_fid.fid);
 	if (wait->type == FI_WAIT_FD) {
 		close(wait->fd[READ_FD]);
 		close(wait->fd[WRITE_FD]);
 	}
+
+	atomic_dec(&wait->domain->ref);
 	free(wait);
 	return 0;
 }
@@ -245,6 +246,7 @@ int sock_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
 	wait->wait_fid.ops = &sock_wait_ops;
 	wait->domain = dom;
 	wait->type = wait_obj_type;
+	atomic_inc(&dom->ref);
 
 	*waitset = &wait->wait_fid;
 	return 0;
