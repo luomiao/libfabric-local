@@ -45,6 +45,7 @@ _sockets_files = \
 	prov/sockets/src/sock_cq.c \
 	prov/sockets/src/sock_cntr.c \
 	prov/sockets/src/sock_poll.c \
+	prov/sockets/src/sock_wait.c \
 	prov/sockets/src/sock_ep_rdm.c \
 	prov/sockets/src/sock_ep_dgram.c \
 	prov/sockets/src/sock_ep_msg.c \

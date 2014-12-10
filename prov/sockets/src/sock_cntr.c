@@ -52,11 +52,11 @@ static uint64_t sock_cntr_read(struct fid_cntr *cntr)
 
 int sock_cntr_inc(struct sock_cntr *cntr)
 {
-	pthread_mutex_lock(&cntr->mut);
+	fastlock_acquire(&cntr->mut);
 	cntr->value += 1;
 	if (cntr->value >= cntr->threshold)
 		pthread_cond_signal(&cntr->cond);
-	pthread_mutex_unlock(&cntr->mut);
+	fastlock_release(&cntr->mut);
 	return 0;
 }
 
@@ -72,11 +72,11 @@ static int sock_cntr_add(struct fid_cntr *cntr, uint64_t value)
 	struct sock_cntr *_cntr;
 
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
-	pthread_mutex_lock(&_cntr->mut);
+	fastlock_acquire(&_cntr->mut);
 	_cntr->value += value;
 	if (_cntr->value >= _cntr->threshold)
 		pthread_cond_signal(&_cntr->cond);
-	pthread_mutex_unlock(&_cntr->mut);
+	fastlock_release(&_cntr->mut);
 	return 0;
 }
 
@@ -85,11 +85,11 @@ static int sock_cntr_set(struct fid_cntr *cntr, uint64_t value)
 	struct sock_cntr *_cntr;
 
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
-	pthread_mutex_lock(&_cntr->mut);
+	fastlock_acquire(&_cntr->mut);
 	_cntr->value = value;
 	if (_cntr->value >= _cntr->threshold)
 		pthread_cond_signal(&_cntr->cond);
-	pthread_mutex_unlock(&_cntr->mut);
+	fastlock_release(&_cntr->mut);
 	return 0;
 }
 
@@ -99,12 +99,12 @@ static int sock_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout
 	int ret = 0;
 
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
-	pthread_mutex_lock(&_cntr->mut);
+	fastlock_acquire(&_cntr->mut);
 	_cntr->threshold = threshold;
 	while (_cntr->value < _cntr->threshold && !ret)
 		ret = fi_wait_cond(&_cntr->cond, &_cntr->mut, timeout);
 	_cntr->threshold = ~0;
-	pthread_mutex_unlock(&_cntr->mut);
+	fastlock_release(&_cntr->mut);
 	return -ret;
 }
 
@@ -116,7 +116,7 @@ static int sock_cntr_close(struct fid *fid)
 	if (atomic_get(&cntr->ref))
 		return -FI_EBUSY;
 	
-	pthread_mutex_destroy(&cntr->mut);
+	fastlock_destroy(&cntr->mut);
 	pthread_cond_destroy(&cntr->cond);
 	atomic_dec(&cntr->dom->ref);
 	free(cntr);
@@ -185,10 +185,7 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 	if (ret)
 		goto err1;
 
-	ret = pthread_mutex_init(&_cntr->mut, NULL);
-	if (ret)
-		goto err2;
-
+	fastlock_init(&_cntr->mut);
 	atomic_init(&_cntr->ref, 0);
 	atomic_init(&_cntr->err_cnt, 0);
 
@@ -204,8 +201,6 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 	*cntr = &_cntr->cntr_fid;
 	return 0;
 
-err2:
-	pthread_cond_destroy(&_cntr->cond);
 err1:
 	free(_cntr);
 	return -ret;

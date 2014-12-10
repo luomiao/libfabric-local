@@ -79,7 +79,56 @@ int sock_poll_del(struct fid_poll *pollset, struct fid *event_fid,
 
 static int sock_poll_poll(struct fid_poll *pollset, void **context, int count)
 {
-	return 0;
+	struct sock_poll *poll;
+	struct sock_cq *cq;
+	struct sock_eq *eq;
+	struct sock_cntr *cntr;
+	struct sock_poll_list *list_item;
+	struct dlist_entry *p, *head;
+	int ret_count = 0;
+	
+	poll = container_of(pollset, struct sock_poll, poll_fid.fid);
+
+	head = &poll->head;
+	for (p = head->next; p != head && ret_count < count; p = p->next) {
+		list_item = container_of(p, struct sock_poll_list, entry);
+		switch (list_item->fid->fclass) {
+		case FI_CLASS_CQ:
+			cq = container_of(list_item->fid, struct sock_cq, cq_fid);
+			fastlock_acquire(&cq->lock);
+			if (rbfdused(&cq->cq_rbfd)) {
+				*context++ = cq->cq_fid.fid.context;
+				ret_count++;
+			}
+			fastlock_release(&cq->lock);
+			break;
+
+		case FI_CLASS_CNTR:
+			cntr = container_of(list_item->fid, struct sock_cntr, cntr_fid);
+			fastlock_acquire(&cntr->mut);
+			if (cntr->value >= cntr->threshold) {
+				*context++ = cntr->cntr_fid.fid.context;
+				ret_count++;
+			}
+			fastlock_release(&cntr->mut);
+			break;
+
+		case FI_CLASS_EQ:
+			eq = container_of(list_item->fid, struct sock_eq, eq);
+			fastlock_acquire(&eq->lock);
+			if (!dlistfd_empty(&eq->list)) {
+				*context++ = eq->eq.fid.context;
+				ret_count++;
+			}
+			fastlock_release(&eq->lock);
+			break;
+
+		default:
+			break;
+		}
+	}
+
+	return ret_count;
 }
 
 static int sock_poll_close(fid_t fid)
@@ -102,11 +151,6 @@ static int sock_poll_close(fid_t fid)
 	return 0;
 }
 
-static int sock_wait_close(fid_t fid)
-{
-	return 0;
-}
-
 static struct fi_ops sock_poll_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_poll_close,
@@ -115,18 +159,11 @@ static struct fi_ops sock_poll_fi_ops = {
 	.ops_open = fi_no_ops_open,
 };
 
-static struct fi_ops sock_wait_fi_ops = {
-	.size = sizeof(struct fi_ops),
-	.close = sock_wait_close,
-	.bind = fi_no_bind,
-	.control = fi_no_control,
-	.ops_open = fi_no_ops_open,
-};
-
-
 static struct fi_ops_poll sock_poll_ops = {
 	.size = sizeof(struct fi_ops_poll),
 	.poll = sock_poll_poll,
+	.poll_add = sock_poll_add,
+	.poll_del = sock_poll_del,
 };
 
 static int sock_poll_verify_attr(struct fi_poll_attr *attr)
@@ -161,10 +198,4 @@ int sock_poll_open(struct fid_domain *domain, struct fi_poll_attr *attr,
 
 	*pollset = &poll->poll_fid;
 	return 0;
-}
-
-int sock_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
-		   struct fid_wait **waitset)
-{
-	return -FI_ENOSYS; /* TODO */
 }
