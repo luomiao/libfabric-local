@@ -77,9 +77,9 @@ int sock_verify_domain_attr(struct fi_domain_attr *attr)
 	switch (attr->control_progress){
 	case FI_PROGRESS_UNSPEC:
 	case FI_PROGRESS_AUTO:
+	case FI_PROGRESS_MANUAL:
 		break;
 
-	case FI_PROGRESS_MANUAL:
 	default:
 		SOCK_LOG_INFO("Control progress mode not supported!\n");
 		return -FI_ENODATA;
@@ -88,9 +88,9 @@ int sock_verify_domain_attr(struct fi_domain_attr *attr)
 	switch (attr->data_progress){
 	case FI_PROGRESS_UNSPEC:
 	case FI_PROGRESS_AUTO:
+	case FI_PROGRESS_MANUAL:
 		break;
 
-	case FI_PROGRESS_MANUAL:
 	default:
 		SOCK_LOG_INFO("Data progress mode not supported!\n");
 		return -FI_ENODATA;
@@ -312,6 +312,8 @@ int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
 		return sock_rdm_ep(domain, info, ep, context);
 	case FI_EP_DGRAM:
 		return sock_dgram_ep(domain, info, ep, context);
+	case FI_EP_MSG:
+		return sock_msg_ep(domain, info, ep, context);
 	default:
 		return -FI_ENOPROTOOPT;
 	}
@@ -384,7 +386,6 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 				goto err;
 			}
 		}
-//		sock_domain->port = strtol(sock_domain->service, NULL, 0);
 		sock_domain->info = *info;
 	} else {
 		SOCK_LOG_ERROR("invalid fi_info\n");

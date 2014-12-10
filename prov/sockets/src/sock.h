@@ -721,6 +721,8 @@ int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context);
 int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 		  struct fid_ep **ep, void *context);
+int sock_msg_ep(struct fid_domain *domain, struct fi_info *info,
+		  struct fid_ep **ep, void *context);
 int sock_passive_ep(struct fid_fabric *fabric, struct fi_info *info,
 		   struct fid_pep **pep, void *context);
 
@@ -729,10 +731,6 @@ int sock_mr_verify_key(struct sock_domain *domain, uint16_t key,
 		       void *buf, size_t len, uint64_t access);
 int sock_mr_verify_desc(struct sock_domain *domain, void *desc, 
 			void *buf, size_t len, uint64_t access);
-
-
-int sock_ep_connect(struct fid_ep *ep, const void *addr,
-		    const void *param, size_t paramlen);
 
 
 struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_attr *attr, 
