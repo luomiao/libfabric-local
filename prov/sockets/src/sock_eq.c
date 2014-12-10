@@ -143,8 +143,11 @@ ssize_t sock_eq_report_event(struct sock_eq *sock_eq, uint32_t event,
 	entry->len = len;
 	entry->flags = flags;
 	memcpy(entry->event, buf, len);
-
 	dlistfd_insert_tail(&entry->entry, &sock_eq->list);
+
+	if (sock_eq->signal) 
+		sock_wait_signal(sock_eq->waitset);
+
 	fastlock_release(&sock_eq->lock);
 	return 0;
 }
@@ -167,8 +170,11 @@ ssize_t sock_eq_report_error(struct sock_eq *sock_eq, fid_t fid, void *context,
 	err_entry->prov_errno = prov_errno;
 	err_entry->err_data = err_data;	
 	entry->len = sizeof(struct fi_eq_err_entry);
-
 	dlistfd_insert_tail(&entry->entry, &sock_eq->err_list);
+
+	if (sock_eq->signal) 
+		sock_wait_signal(sock_eq->waitset);
+
 	fastlock_release(&sock_eq->lock);
 	return 0;
 }
@@ -212,6 +218,9 @@ int sock_eq_fi_close(struct fid *fid)
 	fastlock_destroy(&sock_eq->lock);
 	atomic_dec(&sock_eq->sock_fab->ref);
 
+	if (sock_eq->signal && sock_eq->attr.wait_obj == FI_WAIT_MUT_COND)
+		sock_wait_close(&sock_eq->waitset->fid);
+	
 	free(sock_eq);
 	return 0;
 }
@@ -251,6 +260,8 @@ static int _sock_eq_verify_attr(struct fi_eq_attr *attr)
 	switch (attr->wait_obj) {
 	case FI_WAIT_NONE:
 	case FI_WAIT_FD:
+	case FI_WAIT_SET:
+	case FI_WAIT_MUT_COND:
 		break;
 	case FI_WAIT_UNSPEC:
 		attr->wait_obj = FI_WAIT_FD;
@@ -275,6 +286,7 @@ int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 {
 	int ret;
 	struct sock_eq *sock_eq;
+	struct fi_wait_attr wait_attr;
 
 	ret = _sock_eq_verify_attr(attr);
 	if (ret)
@@ -307,6 +319,32 @@ int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 	
 	fastlock_init(&sock_eq->lock);
 	atomic_inc(&sock_eq->sock_fab->ref);
+
+	switch (sock_eq->attr.wait_obj) {
+
+	case FI_WAIT_NONE:
+	case FI_WAIT_UNSPEC:
+	case FI_WAIT_FD:
+		sock_eq->signal = 0;
+		break;
+
+	case FI_WAIT_MUT_COND:
+		wait_attr.flags = 0;
+		wait_attr.wait_obj = FI_WAIT_MUT_COND;
+		ret = sock_wait_open(NULL, &wait_attr, &sock_eq->waitset);
+		if (ret)
+			goto err2;
+		sock_eq->signal = 1;
+		break;
+
+	case FI_WAIT_SET:
+		sock_eq->waitset = attr->wait_set;
+		sock_eq->signal = 1;
+		break;
+
+	default:
+		break;
+	}
 	return 0;
 
 err2:

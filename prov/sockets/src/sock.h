@@ -305,6 +305,8 @@ struct sock_eq{
 	struct dlistfd_head list;
 	struct dlistfd_head err_list;
 	fastlock_t lock;
+
+	struct fid_wait *waitset;
 	int signal;
 };
 
