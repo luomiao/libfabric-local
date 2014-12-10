@@ -40,8 +40,8 @@
 #include <stdio.h>
 
 #define SOCK_ERROR (1)
-#define SOCK_WARN  (2)
-#define SOCK_INFO  (3)
+#define SOCK_WARN (2)
+#define SOCK_INFO (3)
 
 extern int sock_log_level;
 

@@ -236,7 +236,7 @@ static void __attribute__((constructor)) sock_ini(void)
 	if (tmp) {
 		sock_log_level = atoi(tmp);
 	} else {
-		sock_log_level = SOCK_INFO;
+		sock_log_level = SOCK_ERROR;
 	}
 
 	(void) fi_register(&sock_prov);
