@@ -135,8 +135,8 @@ err:
 }
 
 static ssize_t sock_ctx_rma_read(struct fid_ep *ep, void *buf, size_t len,
-				 void *desc, uint64_t addr, uint64_t key, 
-				 fi_addr_t src_addr, void *context)
+				 void *desc, fi_addr_t src_addr, uint64_t addr, 
+				 uint64_t key, void *context)
 {
 	struct fi_msg_rma msg;
 	struct iovec msg_iov;
@@ -161,8 +161,8 @@ static ssize_t sock_ctx_rma_read(struct fid_ep *ep, void *buf, size_t len,
 }
 
 static ssize_t sock_ctx_rma_readv(struct fid_ep *ep, const struct iovec *iov,
-				  void **desc, size_t count, uint64_t addr,
-				  uint64_t key, fi_addr_t src_addr, void *context)
+				  void **desc, size_t count, fi_addr_t src_addr, 
+				  uint64_t addr, uint64_t key, void *context)
 {
 	struct fi_msg_rma msg;
 	struct fi_rma_iov rma_iov;
@@ -277,8 +277,8 @@ err:
 }
 
 static ssize_t sock_ctx_rma_write(struct fid_ep *ep, const void *buf, 
-				  size_t len, void *desc, uint64_t addr, 
-				  uint64_t key, fi_addr_t dest_addr, void *context)
+				  size_t len, void *desc, fi_addr_t dest_addr, 
+				  uint64_t addr, uint64_t key, void *context)
 {
 	struct fi_msg_rma msg;
 	struct iovec msg_iov;
@@ -306,8 +306,8 @@ static ssize_t sock_ctx_rma_write(struct fid_ep *ep, const void *buf,
 
 static ssize_t sock_ctx_rma_writev(struct fid_ep *ep, 
 				   const struct iovec *iov, void **desc,
-				   size_t count, uint64_t addr, uint64_t key, 
-				   fi_addr_t dest_addr, void *context)
+				   size_t count, fi_addr_t dest_addr, uint64_t addr, 
+				   uint64_t key, void *context)
 {
 	struct fi_msg_rma msg;
 	struct fi_rma_iov rma_iov;
@@ -328,8 +328,8 @@ static ssize_t sock_ctx_rma_writev(struct fid_ep *ep,
 
 static ssize_t sock_ctx_rma_writedata(struct fid_ep *ep, const void *buf, 
 				      size_t len, void *desc, uint64_t data, 
-				      uint64_t addr, uint64_t key, 
-				      fi_addr_t dest_addr, void *context)
+				      fi_addr_t dest_addr, uint64_t addr, 
+				      uint64_t key, void *context)
 {
 	struct fi_msg_rma msg;
 	struct iovec msg_iov;
@@ -352,7 +352,7 @@ static ssize_t sock_ctx_rma_writedata(struct fid_ep *ep, const void *buf,
 }
 
 static ssize_t sock_ctx_rma_inject(struct fid_ep *ep, const void *buf, 
-				   size_t len, uint64_t addr, fi_addr_t dest_addr, 
+				   size_t len, fi_addr_t dest_addr, uint64_t addr, 
 				   uint64_t key)
 {
 	struct fi_msg_rma msg;
@@ -372,6 +372,28 @@ static ssize_t sock_ctx_rma_inject(struct fid_ep *ep, const void *buf,
 	return sock_ctx_rma_writemsg(ep, &msg, FI_INJECT);
 }
 
+static ssize_t sock_ctx_rma_injectdata(struct fid_ep *ep, const void *buf, 
+				       size_t len, uint64_t data, fi_addr_t dest_addr, 
+				       uint64_t addr, uint64_t key)
+{
+	struct fi_msg_rma msg;
+	struct iovec msg_iov;
+	struct fi_rma_iov rma_iov;
+
+	msg_iov.iov_base = (void*)buf;
+	msg_iov.iov_len = len;
+	msg.msg_iov = &msg_iov;
+	msg.iov_count = 1;
+
+	rma_iov.addr = addr;
+	rma_iov.key = key;
+	rma_iov.len = 1;
+	msg.addr = dest_addr;
+	msg.data = data;
+	return sock_ctx_rma_writemsg(ep, &msg, FI_INJECT|FI_REMOTE_CQ_DATA);
+}
+
+
 struct fi_ops_rma sock_ctx_rma = {
 	.size  = sizeof(struct fi_ops_rma),
 	.read = sock_ctx_rma_read,
@@ -381,6 +403,7 @@ struct fi_ops_rma sock_ctx_rma = {
 	.writev = sock_ctx_rma_writev,
 	.writemsg = sock_ctx_rma_writemsg,
 	.inject = sock_ctx_rma_inject,
+	.injectdata = sock_ctx_rma_injectdata,
 	.writedata = sock_ctx_rma_writedata,
 };
 
@@ -394,23 +417,23 @@ static ssize_t sock_ep_rma_readmsg(struct fid_ep *ep,
 }
 
 static ssize_t sock_ep_rma_read(struct fid_ep *ep, void *buf, size_t len,
-				void *desc, uint64_t addr, uint64_t key, 
-				fi_addr_t src_addr, void *context)
+				void *desc, fi_addr_t src_addr, uint64_t addr, 
+				uint64_t key, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_rma_read(&sock_ep->tx_ctx->ctx, buf, len,
-				 desc, addr, key, src_addr, context);
+				 desc, src_addr, addr, key, context);
 }
 
 static ssize_t sock_ep_rma_readv(struct fid_ep *ep, const struct iovec *iov,
-				 void **desc, size_t count, uint64_t addr,
-				 uint64_t key, fi_addr_t src_addr, void *context)
+				 void **desc, size_t count, fi_addr_t src_addr, 
+				 uint64_t addr, uint64_t key, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_rma_readv(&sock_ep->tx_ctx->ctx, iov, desc, count,
-				  addr, key, src_addr, context);
+				  src_addr, addr, key, context);
 }
 
 static ssize_t sock_ep_rma_writemsg(struct fid_ep *ep, 
@@ -423,45 +446,55 @@ static ssize_t sock_ep_rma_writemsg(struct fid_ep *ep,
 }
 
 static ssize_t sock_ep_rma_write(struct fid_ep *ep, const void *buf, 
-				 size_t len, void *desc, uint64_t addr, 
-				 uint64_t key, fi_addr_t dest_addr, void *context)
+				 size_t len, void *desc, fi_addr_t dest_addr, 
+				 uint64_t addr, uint64_t key, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_rma_write(&sock_ep->tx_ctx->ctx, buf, len, desc,
-				  addr, key, dest_addr, context);
+				  dest_addr, addr, key, context);
 }
 
 static ssize_t sock_ep_rma_writev(struct fid_ep *ep, 
 				  const struct iovec *iov, void **desc,
-				  size_t count, uint64_t addr, uint64_t key, 
-				  fi_addr_t dest_addr, void *context)
+				  size_t count, fi_addr_t dest_addr, 
+				  uint64_t addr, uint64_t key, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_rma_writev(&sock_ep->tx_ctx->ctx, iov, desc, count,
-				   addr, key, dest_addr, context);
+				   dest_addr, addr, key, context);
 }
 
 static ssize_t sock_ep_rma_writedata(struct fid_ep *ep, const void *buf, 
-				     size_t len, void *desc,
-				     uint64_t data, uint64_t addr, 
-				     uint64_t key, fi_addr_t dest_addr, void *context)
+				     size_t len, void *desc, uint64_t data, 
+				     fi_addr_t dest_addr, uint64_t addr, 
+				     uint64_t key, void *context)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_rma_writedata(&sock_ep->tx_ctx->ctx, buf, len,
-				      desc, data,addr, key, dest_addr, context);
+				      desc, data, dest_addr, addr, key, context);
 }
 
 static ssize_t sock_ep_rma_inject(struct fid_ep *ep, const void *buf, 
-				  size_t len, uint64_t addr, fi_addr_t dest_addr, 
+				  size_t len, fi_addr_t dest_addr, uint64_t addr, 
 				  uint64_t key)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
 	return sock_ctx_rma_inject(&sock_ep->tx_ctx->ctx, buf, len,
-				   addr, dest_addr, key);
+				   dest_addr, addr, key);
+}
+
+static ssize_t sock_ep_rma_injectdata(struct fid_ep *ep, const void *buf, 
+				      size_t len, uint64_t data, fi_addr_t dest_addr, 
+				      uint64_t addr, uint64_t key)
+{
+	struct sock_ep *sock_ep;
+	sock_ep = container_of(ep, struct sock_ep, ep);
+	return sock_ctx_rma_inject(&sock_ep->tx_ctx->ctx, buf, len,
+				   dest_addr, addr, key);
 }
 
 struct fi_ops_rma sock_ep_rma = {
@@ -474,6 +507,7 @@ struct fi_ops_rma sock_ep_rma = {
 	.writemsg = sock_ep_rma_writemsg,
 	.inject = sock_ep_rma_inject,
 	.writedata = sock_ep_rma_writedata,
+	.injectdata = sock_ep_rma_injectdata,
 };
 
 
