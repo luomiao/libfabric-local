@@ -802,7 +802,6 @@ ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len);
 
 int sock_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
 		   struct fid_wait **waitset);
-int sock_wait_wait(struct fid_wait *wait_fid, int timeout);
 void sock_wait_signal(struct fid_wait *wait_fid);
 int sock_wait_close(fid_t fid);
 

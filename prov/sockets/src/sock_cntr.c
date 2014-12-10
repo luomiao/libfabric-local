@@ -115,6 +115,50 @@ static int sock_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout
 	return -ret;
 }
 
+int sock_cntr_control(struct fid *fid, int command, void *arg)
+{
+	struct sock_cntr *cntr;
+	int ret = 0;
+	
+	cntr = container_of(fid, struct sock_cntr, cntr_fid);
+	
+	switch (command) {
+	case FI_GETWAIT:
+		switch (cntr->attr.wait_obj) {
+		case FI_WAIT_NONE:
+		case FI_WAIT_UNSPEC:
+		case FI_WAIT_MUT_COND:
+			memcpy(arg, &cntr->mut, sizeof(cntr->mut));
+			memcpy((char*)arg + sizeof(cntr->mut), &cntr->cond, 
+			       sizeof(cntr->cond));
+			break;
+			
+		case FI_WAIT_SET:
+		case FI_WAIT_FD:
+			/* TODO */
+			break;
+		
+		default:
+			ret = -FI_EINVAL;
+			break;
+		}
+		break;
+
+	case FI_GETOPSFLAG:
+		memcpy(arg, &cntr->attr.flags, sizeof(uint64_t));
+		break;
+
+	case FI_SETOPSFLAG:
+		memcpy(&cntr->attr.flags, arg, sizeof(uint64_t));
+		break;
+
+	default:
+		ret = -FI_EINVAL;
+		break;
+	}
+	return ret;
+}
+
 static int sock_cntr_close(struct fid *fid)
 {
 	struct sock_cntr *cntr;
@@ -151,6 +195,7 @@ static struct fi_ops_cntr sock_cntr_ops = {
 
 static struct fi_ops sock_cntr_fi_ops = {
 	.size = sizeof(struct fi_ops),
+	.control = sock_cntr_control,
 	.close = sock_cntr_close,
 };
 

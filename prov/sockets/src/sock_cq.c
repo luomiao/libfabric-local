@@ -342,8 +342,44 @@ struct fi_ops_cq sock_cq_ops = {
 	.strerror = sock_cq_strerror,
 };
 
+static int sock_cq_control(struct fid *fid, int command, void *arg)
+{
+	struct sock_cq *cq;
+	int ret = 0;
+	
+	cq = container_of(fid, struct sock_cq, cq_fid);
+
+	switch (command) {
+	case FI_GETWAIT:
+		switch (cq->attr.wait_obj) {
+		case FI_WAIT_NONE:
+		case FI_WAIT_FD:
+		case FI_WAIT_UNSPEC:
+			memcpy(arg, &cq->cq_rbfd.fd[RB_READ_FD], sizeof(int));
+			break;
+
+		case FI_WAIT_SET:
+		case FI_WAIT_MUT_COND:
+			/* TODO */
+			break;
+
+		default:
+			ret = -FI_EINVAL;
+			break;
+		}
+		break;
+
+	default:
+		ret =  -FI_EINVAL;
+		break;
+	}
+	
+	return ret;
+}
+
 struct fi_ops sock_cq_fi_ops = {
 	.size = sizeof(struct fi_ops),
+	.control = sock_cq_control,
 	.close = sock_cq_close,
 };
 

@@ -225,7 +225,7 @@ int sock_eq_fi_close(struct fid *fid)
 	return 0;
 }
 
-int sock_eq_fi_control(struct fid *fid, int command, void *arg)
+int sock_eq_control(struct fid *fid, int command, void *arg)
 {
 	struct sock_eq *eq;
 	int ret = 0;
@@ -234,13 +234,28 @@ int sock_eq_fi_control(struct fid *fid, int command, void *arg)
 	
 	switch (command) {
 	case FI_GETWAIT:
-		*(void **) arg = &eq->list.fd[LIST_READ_FD];
+		switch (eq->attr.wait_obj) {
+		case FI_WAIT_NONE:
+		case FI_WAIT_UNSPEC:
+		case FI_WAIT_FD:
+			memcpy(arg, &eq->list.fd[LIST_READ_FD], sizeof(int));
+			break;
+
+		case FI_WAIT_SET:
+		case FI_WAIT_MUT_COND:
+			/* TODO */
+			break;
+		
+		default:
+			ret = -FI_EINVAL;
+			break;
+		}
 		break;
+
 	default:
-		ret = -FI_ENOSYS;
+		ret = -FI_EINVAL;
 		break;
 	}
-
 	return ret;
 }
 
@@ -248,7 +263,7 @@ static struct fi_ops sock_eq_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_eq_fi_close,
 	.bind = fi_no_bind,
-	.control = sock_eq_fi_control,
+	.control = sock_eq_control,
 	.ops_open = fi_no_ops_open,
 };
 
@@ -331,6 +346,8 @@ int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 	case FI_WAIT_MUT_COND:
 		wait_attr.flags = 0;
 		wait_attr.wait_obj = FI_WAIT_MUT_COND;
+		/* FIXME: waitset is a domain object, but not EQ. This needs to be 
+		 updated based on #394 */
 		ret = sock_wait_open(NULL, &wait_attr, &sock_eq->waitset);
 		if (ret)
 			goto err2;
