@@ -790,6 +790,10 @@ ssize_t sock_comm_send(struct sock_conn *conn, const void *buf, size_t len);
 ssize_t sock_comm_recv(struct sock_conn *conn, void *buf, size_t len);
 
 
+int sock_wait_wait(struct fid_wait *wait_fid, int timeout);
+void sock_wait_signal(struct fid_wait *wait_fid);
+
+
 void free_fi_info(struct fi_info *info);
 
 #endif
