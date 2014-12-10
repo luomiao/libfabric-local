@@ -224,7 +224,6 @@ static void * _sock_conn_listen(void *arg)
 		goto err;
 	}
  
-	_init_map(&domain->r_cmap, 128); /* TODO: init cmap size */
 	while(domain->listening) {
 		addr_size = sizeof(struct sockaddr_in);
 		conn_fd = accept(listen_fd, (struct sockaddr *)&remote, &addr_size);
@@ -258,6 +257,7 @@ err:
 
 int sock_conn_listen(struct sock_domain *domain)
 {
+	_init_map(&domain->r_cmap, 128); /* TODO: init cmap size */
 	domain->listening = 1;
 	pthread_create(&domain->listen_thread, 0, _sock_conn_listen, domain);
 	return 0;
