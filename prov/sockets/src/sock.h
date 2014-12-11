@@ -318,7 +318,12 @@ struct sock_eq{
 };
 
 struct sock_ep {
-	struct fid_ep ep;
+	union{
+		struct fid_ep ep;
+		struct fid_sep sep;
+		struct fid_pep pep;
+	};
+	size_t fclass;
 
 	uint8_t enabled;
 	uint8_t connected;
@@ -453,7 +458,11 @@ struct sock_rx_ctx {
 };
 
 struct sock_tx_ctx {
-	struct fid_ep ctx;
+	union {
+		struct fid_ep ctx;
+		struct fid_stx stx;
+	};
+	size_t fclass;
 
 	struct ringbuffd	rbfd;
 	fastlock_t		wlock;
@@ -725,14 +734,24 @@ int sock_cntr_inc(struct sock_cntr *cntr);
 int sock_cntr_err_inc(struct sock_cntr *cntr);
 int sock_cntr_progress(struct sock_cntr *cntr);
 
+int sock_alloc_endpoint(struct fid_domain *domain, struct fi_info *info,
+		  struct sock_ep **ep, void *context, size_t fclass);
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context);
+int sock_rdm_sep(struct fid_domain *domain, struct fi_info *info,
+		 struct fid_sep **sep, void *context);
+
 int sock_dgram_ep(struct fid_domain *domain, struct fi_info *info,
 		  struct fid_ep **ep, void *context);
+int sock_dgram_sep(struct fid_domain *domain, struct fi_info *info,
+		 struct fid_sep **sep, void *context);
+
 int sock_msg_ep(struct fid_domain *domain, struct fi_info *info,
 		  struct fid_ep **ep, void *context);
-int sock_passive_ep(struct fid_fabric *fabric, struct fi_info *info,
-		   struct fid_pep **pep, void *context);
+int sock_msg_sep(struct fid_domain *domain, struct fi_info *info,
+		 struct fid_sep **sep, void *context);
+int sock_msg_passive_ep(struct fid_fabric *fabric, struct fi_info *info,
+		 struct fid_pep **pep, void *context);
 
 
 int sock_mr_verify_key(struct sock_domain *domain, uint16_t key, 
@@ -745,6 +764,10 @@ struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_attr *attr,
 				      void *context);
 void sock_rx_ctx_add_ep(struct sock_rx_ctx *rx_ctx, struct sock_ep *ep);
 void sock_rx_ctx_free(struct sock_rx_ctx *rx_ctx);
+int sock_stx_ctx(struct fid_domain *domain,
+		 struct fi_tx_attr *attr, struct fid_stx **stx, void *context);
+int sock_srx_ctx(struct fid_domain *domain,
+		 struct fi_rx_attr *attr, struct fid_ep **srx, void *context);
 
 
 struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_attr *attr, 

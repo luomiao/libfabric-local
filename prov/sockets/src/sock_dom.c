@@ -319,6 +319,23 @@ int sock_endpoint(struct fid_domain *domain, struct fi_info *info,
 	}
 }
 
+int sock_scalable_ep(struct fid_domain *domain, struct fi_info *info,
+		     struct fid_sep **sep, void *context)
+{
+	switch (info->ep_type) {
+	case FI_EP_RDM:
+		return sock_rdm_sep(domain, info, sep, context);
+/*
+  case FI_EP_DGRAM:
+  return sock_dgram_sep(domain, info, ep, context);
+  case FI_EP_MSG:
+  return sock_msg_sep(domain, info, ep, context);
+*/
+	default:
+		return -FI_ENOPROTOOPT;
+	}
+}
+
 static struct fi_ops sock_dom_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_dom_close,
@@ -332,9 +349,12 @@ static struct fi_ops_domain sock_dom_ops = {
 	.av_open = sock_av_open,
 	.cq_open = sock_cq_open,
 	.endpoint = sock_endpoint,
+	.scalable_ep = sock_scalable_ep,
 	.cntr_open = sock_cntr_open,
 	.wait_open = sock_wait_open,
 	.poll_open = sock_poll_open,
+	.stx_ctx = sock_stx_ctx,
+	.srx_ctx = sock_srx_ctx,
 };
 
 static struct fi_ops_mr sock_dom_mr_ops = {

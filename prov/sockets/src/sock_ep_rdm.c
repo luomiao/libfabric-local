@@ -59,17 +59,6 @@
 extern const struct fi_domain_attr sock_domain_attr;
 extern const struct fi_fabric_attr sock_fabric_attr;
 
-extern struct fi_ops_rma sock_ep_rma;
-extern struct fi_ops_msg sock_ep_msg_ops;
-extern struct fi_ops_tagged sock_ep_tagged;
-extern struct fi_ops_atomic sock_ep_atomic;
-
-extern struct fi_ops_cm sock_ep_cm_ops;
-extern struct fi_ops_ep sock_ep_ops;
-extern struct fi_ops sock_ep_fi_ops;
-extern struct fi_ops_ep sock_ctx_ep_ops;
-extern struct fi_ops sock_ctx_ops;
-
 const struct fi_ep_attr sock_rdm_ep_attr = {
 	.protocol = FI_PROTO_SOCK_TCP,
 	.max_msg_size = SOCK_EP_MAX_MSG_SZ,
@@ -412,120 +401,74 @@ err:
 	return ret;	
 }
 
-int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
-		struct fid_ep **ep, void *context)
+int sock_rdm_endpoint(struct fid_domain *domain, struct fi_info *info,
+		struct sock_ep **ep, void *context, size_t fclass)
 {
 	int ret;
-	struct sock_ep *sock_ep;
-	struct sock_tx_ctx *tx_ctx;
-	struct sock_rx_ctx *rx_ctx;
-	struct sock_domain *sock_dom;
 
 	if (info) {
-		ret = sock_verify_info(info);
-		if (ret) {
-			SOCK_LOG_INFO("Cannot support requested options!\n");
-			return -FI_EINVAL;
-		}
-	}
-	
-	sock_dom = container_of(domain, struct sock_domain, dom_fid);
-	if (!sock_dom)
-		return -FI_EINVAL;
-
-	sock_ep = (struct sock_ep*)calloc(1, sizeof(*sock_ep));
-	if (!sock_ep)
-		return -FI_ENOMEM;
-
-	atomic_init(&sock_ep->ref, 0);
-	sock_ep->ep.fid.fclass = FI_CLASS_EP;
-	sock_ep->ep.fid.context = context;	
-	sock_ep->ep.fid.ops = &sock_ep_fi_ops;
-	
-	sock_ep->ep.ops = &sock_ep_ops;
-	sock_ep->ep.cm = &sock_ep_cm_ops;
-	sock_ep->ep.msg = &sock_ep_msg_ops;
-	sock_ep->ep.rma = &sock_ep_rma;
-	sock_ep->ep.tagged = &sock_ep_tagged;
-	sock_ep->ep.atomic = &sock_ep_atomic;
-
-	*ep = &sock_ep->ep;	
-	if (info) {
-		sock_ep->info.caps = info->caps;
-		sock_ep->info.addr_format = FI_SOCKADDR_IN;
-		
-		if (info->src_addr) {
-			sock_ep->src_addr = calloc(1, sizeof(struct sockaddr_in));
-			memcpy(sock_ep->src_addr, info->src_addr, 
-			       sizeof(struct sockaddr_in));
-		}
-
-		if (info->dest_addr) {
-			sock_ep->dest_addr = calloc(1, sizeof(struct sockaddr_in));
-			memcpy(sock_ep->dest_addr, info->dest_addr, 
-			       sizeof(struct sockaddr_in));
-		}
-
 		if (info->ep_attr) {
 			ret = sock_rdm_verify_ep_attr(info->ep_attr, 
 						      info->tx_attr, 
 						      info->rx_attr);
 			if (ret)
-				goto err;
-			sock_ep->ep_attr = *info->ep_attr;
+				return ret;
 		}
-
-		if (info->tx_attr)
-			sock_ep->tx_attr = *info->tx_attr;
-		else
-			sock_ep->tx_attr = sock_rdm_tx_attr;
-
-		if (info->rx_attr)
-			sock_ep->rx_attr = *info->rx_attr;
-		else
-			sock_ep->rx_attr = sock_rdm_rx_attr;
-	} else {
-		sock_ep->ep_attr = sock_rdm_ep_attr;
-		sock_ep->tx_attr = sock_rdm_tx_attr;
-		sock_ep->rx_attr = sock_rdm_rx_attr;
+			
+		if (info->tx_attr) {
+			ret = sock_rdm_verify_tx_attr(info->tx_attr);
+			if (ret)
+				return ret;
+		}
+		
+		if (info->rx_attr) {
+			ret = sock_rdm_verify_rx_attr(info->rx_attr);
+			if (ret)
+				return ret;
+		}
 	}
-
-	atomic_init(&sock_ep->ref, 0);
-	atomic_init(&sock_ep->num_tx_ctx, 0);
-	atomic_init(&sock_ep->num_rx_ctx, 0);
-
-	sock_ep->tx_array = calloc(sock_ep->ep_attr.tx_ctx_cnt + 1, 
-				 sizeof(struct sock_tx_ctx *));
-	sock_ep->rx_array = calloc(sock_ep->ep_attr.rx_ctx_cnt + 1,
-				 sizeof(struct sock_rx_ctx *));
 	
-	/* default tx ctx */
-	tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_attr, context);
-	tx_ctx->ep = sock_ep;
-	tx_ctx->domain = sock_dom;
-	tx_ctx->tx_id = sock_ep->ep_attr.tx_ctx_cnt;
-	sock_tx_ctx_add_ep(tx_ctx, sock_ep);
-	sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt] = tx_ctx;
-	sock_ep->tx_ctx = tx_ctx;
-	
-	/* default rx_ctx */
-	rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_attr, context);
-	rx_ctx->ep = sock_ep;
-	rx_ctx->domain = sock_dom;
-	rx_ctx->rx_id = sock_ep->ep_attr.rx_ctx_cnt;
-	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
-	sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt] = rx_ctx;
-	sock_ep->rx_ctx = rx_ctx;
+	ret = sock_alloc_endpoint(domain, info, ep, context, fclass);
+	if (ret)
+		return ret;
 
-	/* default config */
-	sock_ep->min_multi_recv = SOCK_EP_MIN_MULTI_RECV;
+	if (!info || !info->ep_attr) 
+		(*ep)->ep_attr = sock_rdm_ep_attr;
+
+	if (!info || !info->tx_attr)
+		(*ep)->tx_attr = sock_rdm_tx_attr;
+
+	if (!info || !info->rx_attr)
+		(*ep)->rx_attr = sock_rdm_rx_attr;
 	
-  	sock_ep->domain = sock_dom;
-	atomic_inc(&sock_dom->ref);
 	return 0;
+}
+
+int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
+		struct fid_ep **ep, void *context)
+{
+	int ret;
+	struct sock_ep *endpoint;
 	
-err:
-	free(sock_ep);
-	return -FI_EAVAIL;
+	ret = sock_rdm_endpoint(domain, info, &endpoint, context, FI_CLASS_EP);
+	if (ret)
+		return ret;
+
+	*ep = &endpoint->ep;
+	return 0;
+}
+
+int sock_rdm_sep(struct fid_domain *domain, struct fi_info *info,
+		struct fid_sep **sep, void *context)
+{
+	int ret;
+	struct sock_ep *endpoint;
+	
+	ret = sock_rdm_endpoint(domain, info, &endpoint, context, FI_CLASS_SEP);
+	if (ret)
+		return ret;
+
+	*sep = &endpoint->sep;
+	return 0;
 }
 

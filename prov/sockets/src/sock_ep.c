@@ -40,6 +40,17 @@
 #include "sock.h"
 #include "sock_util.h"
 
+extern struct fi_ops_rma sock_ep_rma;
+extern struct fi_ops_msg sock_ep_msg_ops;
+extern struct fi_ops_tagged sock_ep_tagged;
+extern struct fi_ops_atomic sock_ep_atomic;
+
+extern struct fi_ops_cm sock_ep_cm_ops;
+extern struct fi_ops_ep sock_ep_ops;
+extern struct fi_ops sock_ep_fi_ops;
+extern struct fi_ops_ep sock_ctx_ep_ops;
+extern struct fi_ops sock_ctx_ops;
+
 extern struct fi_ops_rma sock_ctx_rma;
 extern struct fi_ops_msg sock_ctx_msg_ops;
 extern struct fi_ops_tagged sock_ctx_tagged;
@@ -300,21 +311,21 @@ struct fi_ops_ep sock_ctx_ep_ops = {
 	.rx_ctx = fi_no_rx_ctx,
 };
 
-static int sock_ep_fi_close(struct fid *fid)
+static int sock_ep_close(struct fid *fid)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(fid, struct sock_ep, ep.fid);
-
+	
 	if (atomic_get(&sock_ep->ref) || atomic_get(&sock_ep->num_rx_ctx) ||
-	   atomic_get(&sock_ep->num_tx_ctx))
+	    atomic_get(&sock_ep->num_tx_ctx))
 		return -FI_EBUSY;
-
+	
 	sock_tx_ctx_free(sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt]);
 	sock_rx_ctx_free(sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt]);
-
+	
 	free(sock_ep->tx_array);
 	free(sock_ep->rx_array);
-
+	
 	if (sock_ep->src_addr)
 		free(sock_ep->src_addr);
 	if (sock_ep->dest_addr)
@@ -324,7 +335,7 @@ static int sock_ep_fi_close(struct fid *fid)
 	return 0;
 }
 
-static int sock_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
+static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 {
 	int ret, i;
 	struct sock_ep *ep;
@@ -509,8 +520,8 @@ static int sock_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 
 struct fi_ops sock_ep_fi_ops = {
 	.size = sizeof(struct fi_ops),
-	.close = sock_ep_fi_close,
-	.bind = sock_ep_fi_bind,
+	.close = sock_ep_close,
+	.bind = sock_ep_bind,
 	.control = fi_no_control,
 	.ops_open = fi_no_ops_open,
 };
@@ -691,3 +702,187 @@ struct fi_ops_cm sock_ep_cm_ops = {
 	.join = fi_no_join,
 	.leave = fi_no_leave,
 };
+
+int sock_stx_ctx(struct fid_domain *domain,
+		 struct fi_tx_attr *attr, struct fid_stx **stx, void *context)
+{
+	struct sock_domain *dom;
+	struct sock_tx_ctx *tx_ctx;
+
+	dom = container_of(domain, struct sock_domain, dom_fid);
+	
+	tx_ctx = sock_tx_ctx_alloc(attr, context);
+	if (!tx_ctx)
+		return -FI_ENOMEM;
+
+	tx_ctx->domain = dom;
+	tx_ctx->stx.ops = sock_ep_ops;
+	atomic_inc(&dom->ref);
+
+	*stx = &tx_ctx->stx;
+	return 0;
+}
+
+int sock_srx_ctx(struct fid_domain *domain,
+		 struct fi_rx_attr *attr, struct fid_ep **srx, void *context)
+{
+	struct sock_domain *dom;
+	struct sock_rx_ctx *rx_ctx;
+
+	dom = container_of(domain, struct sock_domain, dom_fid);
+	rx_ctx = sock_rx_ctx_alloc(attr, context);
+	if (!rx_ctx)
+		return -FI_ENOMEM;
+
+	rx_ctx->domain = dom;
+	rx_ctx->ctx.fid.fclass = FI_CLASS_SRX_CTX;
+	
+	rx_ctx->ctx.ops = &sock_ctx_ep_ops;
+	rx_ctx->ctx.msg = &sock_ctx_msg_ops;
+	rx_ctx->ctx.tagged = &sock_ctx_tagged;
+	
+	/* default config */
+	rx_ctx->min_multi_recv = SOCK_EP_MIN_MULTI_RECV;
+	
+	*srx = &rx_ctx->ctx;
+	atomic_inc(&dom->ref);
+	return 0;
+}
+
+
+int sock_alloc_endpoint(struct fid_domain *domain, struct fi_info *info,
+		  struct sock_ep **ep, void *context, size_t fclass)
+{
+	int ret;
+	struct sock_ep *sock_ep;
+	struct sock_tx_ctx *tx_ctx;
+	struct sock_rx_ctx *rx_ctx;
+	struct sock_domain *sock_dom;
+	
+	if (info) {
+		ret = sock_verify_info(info);
+		if (ret) {
+			SOCK_LOG_INFO("Cannot support requested options!\n");
+			return -FI_EINVAL;
+		}
+	}
+
+	if (domain)
+		sock_dom = container_of(domain, struct sock_domain, dom_fid);
+	else
+		sock_dom = NULL;
+	
+	sock_ep = (struct sock_ep*)calloc(1, sizeof(*sock_ep));
+	if (!sock_ep)
+		return -FI_ENOMEM;
+
+	atomic_init(&sock_ep->ref, 0);
+
+	switch (fclass) {
+	case FI_CLASS_EP:
+		sock_ep->ep.fid.fclass = FI_CLASS_EP;
+		sock_ep->ep.fid.context = context;	
+		sock_ep->ep.fid.ops = &sock_ep_fi_ops;
+		
+		sock_ep->ep.ops = &sock_ep_ops;
+		sock_ep->ep.cm = &sock_ep_cm_ops;
+		sock_ep->ep.msg = &sock_ep_msg_ops;
+		sock_ep->ep.rma = &sock_ep_rma;
+		sock_ep->ep.tagged = &sock_ep_tagged;
+		sock_ep->ep.atomic = &sock_ep_atomic;
+		break;
+
+	case FI_CLASS_SEP:
+		sock_ep->sep.fid.fclass = FI_CLASS_SEP;
+		sock_ep->sep.fid.context = context;	
+		sock_ep->sep.fid.ops = &sock_ep_fi_ops;
+		
+		sock_ep->sep.ops = &sock_ep_ops;
+		sock_ep->sep.cm = &sock_ep_cm_ops;
+		break;
+
+	case FI_CLASS_PEP:
+		sock_ep->pep.fid.fclass = FI_CLASS_SEP;
+		sock_ep->pep.fid.context = context;	
+		sock_ep->pep.fid.ops = &sock_ep_fi_ops;
+		
+		sock_ep->pep.ops = &sock_ep_ops;
+		sock_ep->pep.cm = &sock_ep_cm_ops;
+		break;
+		
+	default:
+		goto err;
+	}
+
+	sock_ep->fclass = fclass;
+	*ep = sock_ep;	
+
+	if (info) {
+		sock_ep->info.caps = info->caps;
+		sock_ep->info.addr_format = FI_SOCKADDR_IN;
+		
+		if (info->src_addr) {
+			sock_ep->src_addr = calloc(1, sizeof(struct sockaddr_in));
+			memcpy(sock_ep->src_addr, info->src_addr, 
+			       sizeof(struct sockaddr_in));
+		}
+		
+		if (info->dest_addr) {
+			sock_ep->dest_addr = calloc(1, sizeof(struct sockaddr_in));
+			memcpy(sock_ep->dest_addr, info->dest_addr, 
+			       sizeof(struct sockaddr_in));
+		}
+		
+		if (info->ep_attr) 
+			sock_ep->ep_attr = *info->ep_attr;
+		
+		if (info->tx_attr)
+			sock_ep->tx_attr = *info->tx_attr;
+		
+		if (info->rx_attr)
+			sock_ep->rx_attr = *info->rx_attr;
+	}
+	
+	atomic_init(&sock_ep->ref, 0);
+	atomic_init(&sock_ep->num_tx_ctx, 0);
+	atomic_init(&sock_ep->num_rx_ctx, 0);
+
+	if (sock_ep->fclass != FI_CLASS_SEP) {
+		sock_ep->ep_attr.tx_ctx_cnt = 0;
+		sock_ep->ep_attr.rx_ctx_cnt = 0;
+	}
+
+	sock_ep->tx_array = calloc(sock_ep->ep_attr.tx_ctx_cnt + 1, 
+				   sizeof(struct sock_tx_ctx *));
+	sock_ep->rx_array = calloc(sock_ep->ep_attr.rx_ctx_cnt + 1,
+				   sizeof(struct sock_rx_ctx *));
+	
+	/* default tx ctx */
+	tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_attr, context);
+	tx_ctx->ep = sock_ep;
+	tx_ctx->domain = sock_dom;
+	tx_ctx->tx_id = sock_ep->ep_attr.tx_ctx_cnt;
+	sock_tx_ctx_add_ep(tx_ctx, sock_ep);
+	sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt] = tx_ctx;
+	sock_ep->tx_ctx = tx_ctx;
+	
+	/* default rx_ctx */
+	rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_attr, context);
+	rx_ctx->ep = sock_ep;
+	rx_ctx->domain = sock_dom;
+	rx_ctx->rx_id = sock_ep->ep_attr.rx_ctx_cnt;
+	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
+	sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt] = rx_ctx;
+	sock_ep->rx_ctx = rx_ctx;
+	
+	/* default config */
+	sock_ep->min_multi_recv = SOCK_EP_MIN_MULTI_RECV;
+	
+  	sock_ep->domain = sock_dom;
+	atomic_inc(&sock_dom->ref);
+	return 0;
+	
+err:
+	free(sock_ep);
+	return -FI_EAVAIL;
+}

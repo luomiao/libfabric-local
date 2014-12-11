@@ -79,7 +79,8 @@ void sock_rx_ctx_free(struct sock_rx_ctx *rx_ctx)
 	free(rx_ctx);
 }
 
-struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_attr *attr, void *context)
+static struct sock_tx_ctx *sock_tx_context_alloc(struct fi_tx_attr *attr, 
+					     void *context, size_t fclass)
 {
 	struct sock_tx_ctx *tx_ctx;
 
@@ -93,21 +94,42 @@ struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_attr *attr, void *context)
 	dlist_init(&tx_ctx->cq_entry);
 	dlist_init(&tx_ctx->cntr_entry);
 	dlist_init(&tx_ctx->pe_entry);
-
+	
 	dlist_init(&tx_ctx->pe_entry_list);
 	dlist_init(&tx_ctx->ep_list);
-
+	
 	fastlock_init(&tx_ctx->rlock);
 	fastlock_init(&tx_ctx->wlock);
 
-	tx_ctx->ctx.fid.fclass = FI_CLASS_TX_CTX;
-	tx_ctx->ctx.fid.context = context;
-	tx_ctx->attr = *attr;
-
+	switch (fclass) {
+	case FI_CLASS_TX_CTX:
+		tx_ctx->ctx.fid.fclass = FI_CLASS_TX_CTX;
+		tx_ctx->ctx.fid.context = context;
+		break;
+	case FI_CLASS_STX_CTX:
+		tx_ctx->stx.fid.fclass = FI_CLASS_TX_CTX;
+		tx_ctx->stx.fid.context = context;
+		break;
+	default:
+		goto err;
+	}
+	tx_ctx->attr = *attr;		
 	return tx_ctx;
+
 err:
 	free(tx_ctx);
 	return NULL;
+}
+
+
+struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_attr *attr, void *context)
+{
+	return sock_tx_context_alloc(attr, context, FI_CLASS_TX_CTX);
+}
+
+struct sock_tx_ctx *sock_stx_ctx_alloc(struct fi_tx_attr *attr, void *context)
+{
+	return sock_tx_context_alloc(attr, context, FI_CLASS_STX_CTX);
 }
 
 void sock_tx_ctx_add_ep(struct sock_tx_ctx *tx_ctx, struct sock_ep *ep)
