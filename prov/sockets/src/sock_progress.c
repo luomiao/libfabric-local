@@ -2337,20 +2337,12 @@ out:
 static void *sock_pe_progress_thread(void *data)
 {
 	int ret;
-	struct pollfd fds[2];
 	struct dlist_entry *entry;
 	struct sock_tx_ctx *tx_ctx;
 	struct sock_rx_ctx *rx_ctx;
 	struct sock_pe *pe = (struct sock_pe *)data;
 
 	SOCK_LOG_INFO("Progress thread started\n");
-
-	fds[0].events = POLLIN;
-	fds[0].fd = pe->tx_list.fd[LIST_READ_FD];
-
-	fds[1].events = POLLIN;	
-	fds[1].fd = pe->rx_list.fd[LIST_READ_FD];
-	
 	while (pe->do_progress) {
 
 		/* progress tx */
@@ -2418,11 +2410,13 @@ struct sock_pe *sock_pe_init(struct sock_domain *domain)
 	dlistfd_head_init(&pe->rx_list);
 	fastlock_init(&pe->lock);
 
-	pe->do_progress = 1;
-	if (pthread_create(&pe->progress_thread, NULL, sock_pe_progress_thread,
-			  (void *)pe)) {
-		SOCK_LOG_ERROR("Couldn't create progress thread\n");
-		goto err;
+	if (domain->progress_mode == FI_PROGRESS_AUTO) {
+		pe->do_progress = 1;
+		if (pthread_create(&pe->progress_thread, NULL, 
+				   sock_pe_progress_thread, (void *)pe)) {
+			SOCK_LOG_ERROR("Couldn't create progress thread\n");
+			goto err;
+		}
 	}
 	SOCK_LOG_INFO("PE init: OK\n");
 	return pe;
@@ -2437,8 +2431,10 @@ err:
 
 void sock_pe_finalize(struct sock_pe *pe)
 {
-	pe->do_progress = 0;
-	pthread_join(pe->progress_thread, NULL);
+	if (pe->domain->progress_mode == FI_PROGRESS_AUTO) {
+		pe->do_progress = 0;
+		pthread_join(pe->progress_thread, NULL);
+	}
 	
 	fastlock_destroy(&pe->lock);
 	atomic_dec(&pe->domain->ref);

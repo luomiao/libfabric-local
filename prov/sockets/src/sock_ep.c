@@ -113,6 +113,7 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (!tx_ctx->progress) {
 			tx_ctx->progress = 1;
 			sock_pe_add_tx_ctx(tx_ctx->domain->pe, tx_ctx);
+			dlist_insert_tail(&tx_ctx->cq_entry, &sock_cq->tx_list);
 		}
 		break;
 		
@@ -139,6 +140,7 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (!rx_ctx->progress) {
 			rx_ctx->progress = 1;
 			sock_pe_add_rx_ctx(rx_ctx->domain->pe, rx_ctx);
+			dlist_insert_tail(&rx_ctx->cq_entry, &sock_cq->rx_list);
 		}
 		break;
 			
@@ -171,6 +173,7 @@ static int sock_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (!tx_ctx->progress) {
 			tx_ctx->progress = 1;
 			sock_pe_add_tx_ctx(tx_ctx->domain->pe, tx_ctx);
+			dlist_insert_tail(&tx_ctx->cntr_entry, &cntr->tx_list);
 		}
 		break;
 		
@@ -188,6 +191,7 @@ static int sock_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (!rx_ctx->progress) {
 			rx_ctx->progress = 1;
 			sock_pe_add_rx_ctx(rx_ctx->domain->pe, rx_ctx);
+			dlist_insert_tail(&rx_ctx->cntr_entry, &cntr->rx_list);
 		}
 		break;
 			

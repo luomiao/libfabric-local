@@ -129,9 +129,20 @@ static int sock_wait_init(struct sock_wait *wait, enum fi_wait_obj type)
 static int sock_wait_wait(struct fid_wait *wait_fid, int timeout)
 {
 	struct sock_wait *wait;
+	struct dlist_entry *p, *head;
 	int err = 0;
 	
 	wait = container_of(wait_fid, struct sock_wait, wait_fid);
+	head = &wait->fid_list;
+
+	/* 
+	   TODO: cntr, cq, wait
+	for (p = head->next; p != head; p = p->next) {
+		list_item = container_of(p, struct sock_fid_list, entry);
+		free(list_item);
+	}
+	*/
+
 	switch (wait->type) {
 	case FI_WAIT_FD:
 		err = fi_poll_fd(wait->fd[WAIT_READ_FD], timeout);
@@ -198,8 +209,18 @@ static int sock_wait_control(struct fid *fid, int command, void *arg)
 
 int sock_wait_close(fid_t fid)
 {
+	struct sock_fid_list *list_item;
+	struct dlist_entry *p, *head;
 	struct sock_wait *wait;
+
 	wait = container_of(fid, struct sock_wait, wait_fid.fid);
+	head = &wait->fid_list;
+
+	for (p = head->next; p != head; p = p->next) {
+		list_item = container_of(p, struct sock_fid_list, entry);
+		free(list_item);
+	}
+
 	if (wait->type == FI_WAIT_FD) {
 		close(wait->fd[WAIT_READ_FD]);
 		close(wait->fd[WAIT_WRITE_FD]);

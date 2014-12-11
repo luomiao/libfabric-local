@@ -49,6 +49,31 @@
 #include "sock_util.h"
 
 
+int sock_cq_progress(struct sock_cq *cq)
+{
+	struct sock_tx_ctx *tx_ctx;
+	struct sock_rx_ctx *rx_ctx;
+	struct dlist_entry *entry;
+
+	if (cq->domain->progress_mode == FI_PROGRESS_AUTO)
+		return 0;
+
+	fastlock_acquire(&cq->lock);
+	for (entry = cq->tx_list.next; entry != &cq->tx_list;
+	     entry = entry->next) {
+		tx_ctx = container_of(entry, struct sock_tx_ctx, cntr_entry);
+		sock_pe_progress_tx_ctx(cq->domain->pe, tx_ctx);
+	}
+
+	for (entry = cq->rx_list.next; entry != &cq->rx_list;
+	     entry = entry->next) {
+		rx_ctx = container_of(entry, struct sock_rx_ctx, cntr_entry);
+		sock_pe_progress_rx_ctx(cq->domain->pe, rx_ctx);
+	}
+	fastlock_release(&cq->lock);
+	return 0;
+}
+
 static ssize_t sock_cq_entry_size(struct sock_cq *sock_cq)
 {
 	ssize_t size;
@@ -209,6 +234,7 @@ ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count,
 	
 	sock_cq = container_of(cq, struct sock_cq, cq_fid);
 	cq_entry_len = sock_cq->cq_entry_size;
+	sock_cq_progress(sock_cq);
 
 	if (sock_cq->attr.wait_cond == FI_CQ_COND_THRESHOLD) {
 		threshold = MIN((int64_t)cond, count);
@@ -265,8 +291,9 @@ ssize_t sock_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
 	
 	sock_cq = container_of(cq, struct sock_cq, cq_fid);
 	num_read = 0;
-	fastlock_acquire(&sock_cq->lock);
+	sock_cq_progress(sock_cq);
 
+	fastlock_acquire(&sock_cq->lock);
 	while (rbused(&sock_cq->cqerr_rb) >= sizeof(struct fi_cq_err_entry)) {
 		rbread(&sock_cq->cqerr_rb, 
 		       (char*)buf +sizeof(struct fi_cq_err_entry) * num_read, 
@@ -431,6 +458,8 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	struct sock_domain *sock_dom;
 	struct sock_cq *sock_cq;
 	struct fi_wait_attr wait_attr;
+	struct sock_fid_list *list_entry;
+	struct sock_wait *wait;
 	int ret;
 
 	sock_dom = container_of(domain, struct sock_domain, dom_fid);
@@ -498,6 +527,11 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 	case FI_WAIT_SET:
 		sock_cq->waitset = attr->wait_set;
 		sock_cq->signal = 1;
+		wait = container_of(attr->wait_set, struct sock_wait, wait_fid);
+		list_entry = calloc(1, sizeof(*list_entry));
+		dlist_init(&list_entry->entry);
+		list_entry->fid = &sock_cq->cq_fid.fid;
+		dlist_insert_after(&list_entry->entry, &wait->fid_list);
 		break;
 	default:
 		break;

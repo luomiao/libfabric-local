@@ -49,6 +49,7 @@ struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_attr *attr, void *context)
 		return NULL;
 
 	dlist_init(&rx_ctx->cq_entry);
+	dlist_init(&rx_ctx->cntr_entry);
 	dlist_init(&rx_ctx->pe_entry);
 
 	dlist_init(&rx_ctx->pe_entry_list);
@@ -90,6 +91,7 @@ struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_attr *attr, void *context)
 		goto err;
 
 	dlist_init(&tx_ctx->cq_entry);
+	dlist_init(&tx_ctx->cntr_entry);
 	dlist_init(&tx_ctx->pe_entry);
 
 	dlist_init(&tx_ctx->pe_entry_list);

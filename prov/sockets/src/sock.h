@@ -149,13 +149,16 @@ struct sock_domain {
 struct sock_cntr {
 	struct fid_cntr		cntr_fid;
 	struct sock_domain	*dom;
-	uint64_t		value;
-	uint64_t		threshold;
-	atomic_t		ref;
+	atomic_t	value;
+	atomic_t	threshold;
+	atomic_t	ref;
 	atomic_t err_cnt;
 	pthread_cond_t		cond;
 	pthread_mutex_t		mut;
 	struct fi_cntr_attr attr;
+
+	struct dlist_entry rx_list;
+	struct dlist_entry tx_list;
 
 	struct fid_wait *waitset;
 	int signal;
@@ -189,20 +192,21 @@ struct sock_av {
 	struct sock_conn_map	*cmap;
 };
 
-struct sock_poll_list {
-	struct dlist_entry		entry;
-	struct fid			*fid;
+struct sock_fid_list {
+	struct dlist_entry entry;
+	struct fid	*fid;
 };
 
 struct sock_poll {
-	struct fid_poll		poll_fid;
-	struct sock_domain	*domain;
-	struct dlist_entry	head;
+	struct fid_poll poll_fid;
+	struct sock_domain *domain;
+	struct dlist_entry fid_list;
 };
 
 struct sock_wait {
 	struct fid_wait wait_fid;
 	struct sock_domain *domain;
+	struct dlist_entry fid_list;
 	enum fi_wait_obj type;
 	union {
 		int			fd[2];
@@ -435,8 +439,9 @@ struct sock_rx_ctx {
 	struct sock_cntr  *rem_read_cntr;
 	struct sock_cntr  *rem_write_cntr;
 
-	struct dlist_entry cq_entry;
 	struct dlist_entry pe_entry;
+	struct dlist_entry cq_entry;
+	struct dlist_entry cntr_entry;
 
 	struct dlist_entry pe_entry_list;
 	struct dlist_entry rx_entry_list;
@@ -478,8 +483,9 @@ struct sock_tx_ctx {
 	struct sock_cntr *read_cntr;
 	struct sock_cntr *write_cntr;
 
-	struct dlist_entry cq_entry;
 	struct dlist_entry pe_entry;
+	struct dlist_entry cq_entry;
+	struct dlist_entry cntr_entry;
 
 	struct dlist_entry pe_entry_list;
 	struct dlist_entry ep_list;
@@ -702,6 +708,7 @@ int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
 		 struct fid_cq **cq, void *context);
 int sock_cq_report_error(struct sock_cq *cq, struct sock_pe_entry *entry,
 			 size_t olen, int err, int prov_errno, void *err_data);
+int sock_cq_progress(struct sock_cq *cq);
 
 
 int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
@@ -716,6 +723,7 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 		struct fid_cntr **cntr, void *context);
 int sock_cntr_inc(struct sock_cntr *cntr);
 int sock_cntr_err_inc(struct sock_cntr *cntr);
+int sock_cntr_progress(struct sock_cntr *cntr);
 
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context);

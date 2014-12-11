@@ -50,18 +50,44 @@ const struct fi_cntr_attr sock_cntr_attr = {
 	.flags = 0,
 };
 
+int sock_cntr_progress(struct sock_cntr *cntr)
+{
+	struct sock_tx_ctx *tx_ctx;
+	struct sock_rx_ctx *rx_ctx;
+	struct dlist_entry *entry;
+
+	if (cntr->dom->progress_mode == FI_PROGRESS_AUTO)
+		return 0;
+
+	fastlock_acquire(&cntr->mut);
+	for (entry = cntr->tx_list.next; entry != &cntr->tx_list;
+	     entry = entry->next) {
+		tx_ctx = container_of(entry, struct sock_tx_ctx, cntr_entry);
+		sock_pe_progress_tx_ctx(cntr->dom->pe, tx_ctx);
+	}
+
+	for (entry = cntr->rx_list.next; entry != &cntr->rx_list;
+	     entry = entry->next) {
+		rx_ctx = container_of(entry, struct sock_rx_ctx, cntr_entry);
+		sock_pe_progress_rx_ctx(cntr->dom->pe, rx_ctx);
+	}
+	fastlock_release(&cntr->mut);
+	return 0;
+}
+
 static uint64_t sock_cntr_read(struct fid_cntr *cntr)
 {
 	struct sock_cntr *_cntr;
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
-	return _cntr->value;
+	sock_cntr_progress(_cntr);
+	return atomic_get(&_cntr->value);
 }
 
 int sock_cntr_inc(struct sock_cntr *cntr)
 {
 	fastlock_acquire(&cntr->mut);
-	cntr->value += 1;
-	if (cntr->value >= cntr->threshold)
+	atomic_inc(&cntr->value);
+	if (atomic_get(&cntr->value) >= atomic_get(&cntr->threshold))
 		pthread_cond_signal(&cntr->cond);
 	fastlock_release(&cntr->mut);
 	return 0;
@@ -80,8 +106,8 @@ static int sock_cntr_add(struct fid_cntr *cntr, uint64_t value)
 
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
 	fastlock_acquire(&_cntr->mut);
-	_cntr->value += value;
-	if (_cntr->value >= _cntr->threshold)
+	atomic_set(&_cntr->value, atomic_get(&_cntr->value) + value);
+	if (atomic_get(&_cntr->value) >= atomic_get(&_cntr->threshold))
 		pthread_cond_signal(&_cntr->cond);
 	fastlock_release(&_cntr->mut);
 	return 0;
@@ -93,8 +119,8 @@ static int sock_cntr_set(struct fid_cntr *cntr, uint64_t value)
 
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
 	fastlock_acquire(&_cntr->mut);
-	_cntr->value = value;
-	if (_cntr->value >= _cntr->threshold)
+	atomic_set(&_cntr->value, value);
+	if (atomic_get(&_cntr->value) >= atomic_get(&_cntr->threshold))
 		pthread_cond_signal(&_cntr->cond);
 	fastlock_release(&_cntr->mut);
 	return 0;
@@ -107,10 +133,12 @@ static int sock_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout
 
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
 	fastlock_acquire(&_cntr->mut);
-	_cntr->threshold = threshold;
-	while (_cntr->value < _cntr->threshold && !ret)
+	atomic_set(&_cntr->threshold, threshold);
+	while (atomic_get(&_cntr->value) < atomic_get(&_cntr->threshold) && !ret) {
+		sock_cntr_progress(_cntr);
 		ret = fi_wait_cond(&_cntr->cond, &_cntr->mut, timeout);
-	_cntr->threshold = ~0;
+	}
+	atomic_set(&_cntr->threshold, ~0);
 	fastlock_release(&_cntr->mut);
 	return -ret;
 }
@@ -183,6 +211,7 @@ uint64_t sock_cntr_readerr(struct fid_cntr *cntr)
 {
 	struct sock_cntr *_cntr;
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
+	sock_cntr_progress(_cntr);
 	return atomic_get(&_cntr->err_cnt);
 }
 
@@ -232,6 +261,8 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 	struct sock_domain *dom;
 	struct sock_cntr *_cntr;
 	struct fi_wait_attr wait_attr;
+	struct sock_fid_list *list_entry;
+	struct sock_wait *wait;
 	
 	if (attr && sock_cntr_verify_attr(attr))
 		return -FI_ENOSYS;
@@ -269,6 +300,12 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 	case FI_WAIT_SET:
 		_cntr->waitset = attr->wait_set;
 		_cntr->signal = 1;
+		wait = container_of(attr->wait_set, struct sock_wait, wait_fid);
+		list_entry = calloc(1, sizeof(*list_entry));
+		dlist_init(&list_entry->entry);
+		list_entry->fid = &_cntr->cntr_fid.fid;
+		dlist_insert_after(&list_entry->entry, &wait->fid_list);
+
 		break;
 		
 	default:
@@ -279,11 +316,16 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 	atomic_init(&_cntr->ref, 0);
 	atomic_init(&_cntr->err_cnt, 0);
 
+	atomic_init(&_cntr->value, 0);
+	atomic_init(&_cntr->threshold, ~0);
+
+	dlist_init(&_cntr->tx_list);
+	dlist_init(&_cntr->rx_list);
+
 	_cntr->cntr_fid.fid.fclass = FI_CLASS_CNTR;
 	_cntr->cntr_fid.fid.context = context;
 	_cntr->cntr_fid.fid.ops = &sock_cntr_fi_ops;
 	_cntr->cntr_fid.ops = &sock_cntr_ops;
-	_cntr->threshold = ~0;
 
 	dom = container_of(domain, struct sock_domain, dom_fid);
 	atomic_inc(&dom->ref);
