@@ -81,15 +81,15 @@
 
 #define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE |	\
 			 FI_SEND | FI_RECV | FI_TAGGED | FI_RMA |	\
-			 FI_BUFFERED_RECV | FI_MULTI_RECV | FI_TRIGGER)
+			 FI_BUFFERED_RECV | FI_MULTI_RECV)
 
 #define SOCK_EP_DGRAM_CAP (FI_MSG | FI_INJECT | FI_SOURCE |	\
 			   FI_SEND | FI_RECV | FI_TAGGED | FI_BUFFERED_RECV | \
-			   FI_MULTI_RECV | FI_TRIGGER)
+			   FI_MULTI_RECV)
 
 #define SOCK_EP_MSG_CAP (FI_MSG | FI_INJECT | FI_SOURCE |		\
 			 FI_SEND | FI_RECV | FI_TAGGED | FI_RMA |	\
-			 FI_BUFFERED_RECV | FI_MULTI_RECV | FI_TRIGGER)
+			 FI_BUFFERED_RECV | FI_MULTI_RECV)
 
 #define SOCK_OPS_CAP (FI_INJECT | FI_SEND | FI_RECV )
 #define SOCK_MODE (0)
@@ -142,50 +142,6 @@ struct sock_domain {
 	char service[NI_MAXSERV];
 };
 
-struct sock_trigger {
-	uint8_t op;
-	struct sock_cntr *cntr;
-	size_t threshold;
-	struct dlist_entry entry;
-
-	struct fid_ep	*ep;
-	uint64_t flags;
-	
-	union {
-		struct {
-			struct fi_msg msg;
-			struct iovec *msg_iov;
-			void  **desc;
-		} msg;
-
-		struct {
-			struct fi_msg_tagged msg;
-			struct iovec *msg_iov;
-			void  **desc;
-		} tmsg;
-
-		struct {
-			struct fi_msg_rma msg;
-			struct iovec *msg_iov;
-			void **desc;
-			struct fi_rma_iov *rma_iov;
-		} rma;
-		
-		struct {
-			struct fi_msg_atomic msg;
-			struct fi_ioc *msg_iov;
-			void **desc;
-			struct fi_rma_ioc *rma_iov;
-			struct fi_ioc *comparev;
-			void **compare_desc;
-			size_t compare_count;
-			struct fi_ioc *resultv;
-			void **result_desc;
-			size_t result_count;
-		} atomic;
-	};
-};
-
 struct sock_cntr {
 	struct fid_cntr		cntr_fid;
 	struct sock_domain	*dom;
@@ -199,7 +155,6 @@ struct sock_cntr {
 
 	struct dlist_entry rx_list;
 	struct dlist_entry tx_list;
-	struct dlist_entry trigger_list;
 
 	struct fid_wait *waitset;
 	int signal;

@@ -57,8 +57,8 @@
 #include "sock.h"
 #include "sock_util.h"
 
-static ssize_t sock_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
-		   uint64_t flags)
+static ssize_t sock_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg, 
+				uint64_t flags)
 {
 	int i;
 	struct sock_rx_ctx *rx_ctx;
@@ -128,8 +128,8 @@ static ssize_t sock_ctx_recvv(struct fid_ep *ep, const struct iovec *iov,
 	return sock_ctx_recvmsg(ep, &msg, 0);
 }
 
-static ssize_t sock_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
-		   uint64_t flags)
+static ssize_t sock_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg, 
+				uint64_t flags)
 {
 	int ret, i;
 	uint64_t total_len;
@@ -629,7 +629,6 @@ struct fi_ops_msg sock_ep_msg_ops = {
 	.inject = sock_ep_msg_inject,
 	.senddata = sock_ep_msg_senddata,
 };
-
 
 static ssize_t sock_ep_trecvmsg(struct fid_ep *ep, const struct fi_msg_tagged *msg,
 		   uint64_t flags)
