@@ -238,14 +238,16 @@ static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type,
 		_info->caps = SOCK_EP_DGRAM_CAP;
 	}
 
-	*(_info->tx_attr) = sock_dgram_tx_attr;
-	*(_info->rx_attr) = sock_dgram_rx_attr;
-	*(_info->ep_attr) = sock_dgram_ep_attr;
+	*(_info->tx_attr) = hints->tx_attr ? *hints->tx_attr : sock_dgram_tx_attr;
+	*(_info->rx_attr) = hints->rx_attr ? *hints->rx_attr : sock_dgram_rx_attr;
+	*(_info->ep_attr) = hints->ep_attr ? *hints->ep_attr : sock_dgram_ep_attr;
 
-	*(_info->domain_attr) = sock_domain_attr;
+	*(_info->domain_attr) = hints->domain_attr ? *hints->domain_attr : 
+		sock_domain_attr;
+	*(_info->fabric_attr) = hints->fabric_attr ? *hints->fabric_attr : 
+		sock_fabric_attr;
+
 	_info->domain_attr->name = strdup(sock_dom_name);
-
-	*(_info->fabric_attr) = sock_fabric_attr;
 	_info->fabric_attr->name = strdup(sock_fab_name);
 	_info->fabric_attr->prov_name = strdup(sock_fab_name);
 
