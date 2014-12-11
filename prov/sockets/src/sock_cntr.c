@@ -37,7 +37,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 
@@ -55,9 +55,6 @@ int sock_cntr_progress(struct sock_cntr *cntr)
 	struct sock_tx_ctx *tx_ctx;
 	struct sock_rx_ctx *rx_ctx;
 	struct dlist_entry *entry;
-
-	if (cntr->dom->progress_mode == FI_PROGRESS_AUTO)
-		return 0;
 
 	fastlock_acquire(&cntr->mut);
 	for (entry = cntr->tx_list.next; entry != &cntr->tx_list;
@@ -79,7 +76,8 @@ static uint64_t sock_cntr_read(struct fid_cntr *cntr)
 {
 	struct sock_cntr *_cntr;
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
-	sock_cntr_progress(_cntr);
+	if (_cntr->dom->progress_mode == FI_PROGRESS_MANUAL)
+		sock_cntr_progress(_cntr);
 	return atomic_get(&_cntr->value);
 }
 
@@ -128,14 +126,30 @@ static int sock_cntr_set(struct fid_cntr *cntr, uint64_t value)
 
 static int sock_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout)
 {
-	struct sock_cntr *_cntr;
 	int ret = 0;
+	struct timeval now;
+	double start_ms, end_ms;
+	struct sock_cntr *_cntr;
 
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
 	fastlock_acquire(&_cntr->mut);
 	atomic_set(&_cntr->threshold, threshold);
 	while (atomic_get(&_cntr->value) < atomic_get(&_cntr->threshold) && !ret) {
-		sock_cntr_progress(_cntr);
+		if (_cntr->dom->progress_mode == FI_PROGRESS_MANUAL) {
+			if (timeout > 0) {
+				gettimeofday(&now, NULL);
+				start_ms = (double)now.tv_sec * 1000.0 + 
+					(double)now.tv_usec / 1000.0;
+			}
+			sock_cntr_progress(_cntr);
+			if (timeout > 0) {
+				gettimeofday(&now, NULL);
+				end_ms = (double)now.tv_sec * 1000.0 + 
+					(double)now.tv_usec / 1000.0;
+				timeout -=  (end_ms - start_ms);
+				timeout = timeout < 0 ? 0 : timeout;
+			}
+		}
 		ret = fi_wait_cond(&_cntr->cond, &_cntr->mut, timeout);
 	}
 	atomic_set(&_cntr->threshold, ~0);
@@ -211,7 +225,8 @@ uint64_t sock_cntr_readerr(struct fid_cntr *cntr)
 {
 	struct sock_cntr *_cntr;
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
-	sock_cntr_progress(_cntr);
+	if (_cntr->dom->progress_mode == FI_PROGRESS_MANUAL)
+		sock_cntr_progress(_cntr);
 	return atomic_get(&_cntr->err_cnt);
 }
 

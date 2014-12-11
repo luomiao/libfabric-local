@@ -96,7 +96,8 @@ static int sock_poll_poll(struct fid_poll *pollset, void **context, int count)
 		switch (list_item->fid->fclass) {
 		case FI_CLASS_CQ:
 			cq = container_of(list_item->fid, struct sock_cq, cq_fid);
-			sock_cq_progress(cq);
+			if (cq->domain->progress_mode == FI_PROGRESS_MANUAL)
+				sock_cq_progress(cq);
 			fastlock_acquire(&cq->lock);
 			if (rbfdused(&cq->cq_rbfd)) {
 				*context++ = cq->cq_fid.fid.context;
@@ -107,7 +108,8 @@ static int sock_poll_poll(struct fid_poll *pollset, void **context, int count)
 
 		case FI_CLASS_CNTR:
 			cntr = container_of(list_item->fid, struct sock_cntr, cntr_fid);
-			sock_cntr_progress(cntr);
+			if (cntr->dom->progress_mode == FI_PROGRESS_MANUAL)
+				sock_cntr_progress(cntr);
 			fastlock_acquire(&cntr->mut);
 			if (atomic_get(&cntr->value) >= atomic_get(&cntr->threshold)) {
 				*context++ = cntr->cntr_fid.fid.context;

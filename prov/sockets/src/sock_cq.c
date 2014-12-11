@@ -55,9 +55,6 @@ int sock_cq_progress(struct sock_cq *cq)
 	struct sock_rx_ctx *rx_ctx;
 	struct dlist_entry *entry;
 
-	if (cq->domain->progress_mode == FI_PROGRESS_AUTO)
-		return 0;
-
 	fastlock_acquire(&cq->lock);
 	for (entry = cq->tx_list.next; entry != &cq->tx_list;
 	     entry = entry->next) {
@@ -229,12 +226,29 @@ ssize_t sock_cq_sreadfrom(struct fid_cq *cq, void *buf, size_t count,
 	int ret;
 	fi_addr_t addr;
 	int64_t threshold;
-	ssize_t i, bytes_read, num_read, cq_entry_len;
+	struct timeval now;
 	struct sock_cq *sock_cq;
+	double start_ms, end_ms;
+	ssize_t i, bytes_read, num_read, cq_entry_len;
 	
 	sock_cq = container_of(cq, struct sock_cq, cq_fid);
 	cq_entry_len = sock_cq->cq_entry_size;
-	sock_cq_progress(sock_cq);
+
+	if (sock_cq->domain->progress_mode == FI_PROGRESS_MANUAL) {
+		if (timeout > 0) {
+			gettimeofday(&now, NULL);
+			start_ms = (double)now.tv_sec * 1000.0 + 
+				(double)now.tv_usec / 1000.0;
+		}
+		sock_cq_progress(sock_cq);
+		if (timeout > 0) {
+			gettimeofday(&now, NULL);
+			end_ms = (double)now.tv_sec * 1000.0 + 
+				(double)now.tv_usec / 1000.0;
+			timeout -=  (end_ms - start_ms);
+			timeout = timeout < 0 ? 0 : timeout;
+		}
+	}
 
 	if (sock_cq->attr.wait_cond == FI_CQ_COND_THRESHOLD) {
 		threshold = MIN((int64_t)cond, count);
@@ -291,7 +305,9 @@ ssize_t sock_cq_readerr(struct fid_cq *cq, struct fi_cq_err_entry *buf,
 	
 	sock_cq = container_of(cq, struct sock_cq, cq_fid);
 	num_read = 0;
-	sock_cq_progress(sock_cq);
+
+	if (sock_cq->domain->progress_mode == FI_PROGRESS_MANUAL)
+		sock_cq_progress(sock_cq);
 
 	fastlock_acquire(&sock_cq->lock);
 	while (rbused(&sock_cq->cqerr_rb) >= sizeof(struct fi_cq_err_entry)) {

@@ -36,6 +36,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include "sock.h"
 #include "sock_util.h"
@@ -72,7 +73,7 @@ int sock_wait_get_obj(struct fid_wait *fid, void *arg)
 			break;
 			
 		case FI_WAIT_MUT_COND:
-			/* FIXME: new structure needs to be defined */
+			/* FIXME: new structure needs to be defined in libfabric */
 			mutex_cond.mutex = &wait->mutex;
 			mutex_cond.cond = &wait->cond;
 			obj_size = sizeof(mutex_cond);
@@ -128,20 +129,48 @@ static int sock_wait_init(struct sock_wait *wait, enum fi_wait_obj type)
 
 static int sock_wait_wait(struct fid_wait *wait_fid, int timeout)
 {
-	struct sock_wait *wait;
-	struct dlist_entry *p, *head;
 	int err = 0;
+	struct sock_cq *cq;
+	struct sock_cntr *cntr;
+	struct timeval now;
+	struct sock_wait *wait;
+	double start_ms, end_ms;
+	struct dlist_entry *p, *head;
+	struct sock_fid_list *list_item;
 	
 	wait = container_of(wait_fid, struct sock_wait, wait_fid);
-	head = &wait->fid_list;
+	if (wait->domain->progress_mode == FI_PROGRESS_MANUAL) {
+		if (timeout > 0) {
+			gettimeofday(&now, NULL);
+			start_ms = (double)now.tv_sec * 1000.0 + 
+				(double)now.tv_usec / 1000.0;
+		}
 
-	/* 
-	   TODO: cntr, cq, wait
-	for (p = head->next; p != head; p = p->next) {
-		list_item = container_of(p, struct sock_fid_list, entry);
-		free(list_item);
+		head = &wait->fid_list;
+		for (p = head->next; p != head; p = p->next) {
+			list_item = container_of(p, struct sock_fid_list, entry);
+			switch (list_item->fid->fclass) {
+			case FI_CLASS_CQ:
+				cq = container_of(list_item->fid, 
+						  struct sock_cq, cq_fid);
+				sock_cq_progress(cq);
+				break;
+
+			case FI_CLASS_CNTR:
+				cntr = container_of(list_item->fid, 
+						    struct sock_cntr, cntr_fid);
+				sock_cntr_progress(cntr);
+				break;
+			}
+		}
+		if (timeout > 0) {
+			gettimeofday(&now, NULL);
+			end_ms = (double)now.tv_sec * 1000.0 + 
+				(double)now.tv_usec / 1000.0;
+			timeout -=  (end_ms - start_ms);
+			timeout = timeout < 0 ? 0 : timeout;
+		}
 	}
-	*/
 
 	switch (wait->type) {
 	case FI_WAIT_FD:
@@ -151,12 +180,12 @@ static int sock_wait_wait(struct fid_wait *wait_fid, int timeout)
 		else if (err == 0)
 			err = -FI_ETIMEDOUT;
 		break;
-
+		
 	case FI_WAIT_MUT_COND:
 		err = fi_wait_cond(&wait->cond,
 				   &wait->mutex, timeout);
 		break;
-
+		
 	default:
 		SOCK_LOG_ERROR("Invalid wait object type\n");
 		return -FI_EINVAL;
