@@ -1886,6 +1886,7 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		}
 	}
 
+	sock_comm_flush(pe_entry->conn);
 	if (pe_entry->done_len == pe_entry->total_len) {
 		pe_entry->tx.send_done = 1;
 		pe_entry->conn->tx_pe_entry = NULL;
@@ -1897,7 +1898,6 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		}
 	}
 
-	sock_comm_flush(pe_entry->conn);
 	return 0;
 }
 

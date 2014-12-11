@@ -373,15 +373,17 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 
 		if (!dest_addr->sa_family) {
 			if(getnameinfo(src_addr, sizeof(*src_addr), NULL, 0,
-						sock_domain->service, sizeof(sock_domain->service),
-					NI_NUMERICSERV)) {
+				       sock_domain->service, 
+				       sizeof(sock_domain->service),
+				       NI_NUMERICSERV)) {
 				SOCK_LOG_ERROR("could not resolve src_addr\n");
 				goto err;
 			}
 		} else {
 			if(getnameinfo(dest_addr, sizeof(*dest_addr), NULL, 0,
-						sock_domain->service, sizeof(sock_domain->service),
-					NI_NUMERICSERV)) {
+				       sock_domain->service, 
+				       sizeof(sock_domain->service),
+				       NI_NUMERICSERV)) {
 				SOCK_LOG_ERROR("could not resolve dest_addr\n");
 				goto err;
 			}
@@ -397,6 +399,12 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 	sock_domain->dom_fid.fid.ops = &sock_dom_fi_ops;
 	sock_domain->dom_fid.ops = &sock_dom_ops;
 	sock_domain->dom_fid.mr = &sock_dom_mr_ops;
+
+	if (!info || !info->domain_attr || 
+	    info->domain_attr->data_progress == FI_PROGRESS_UNSPEC)
+		sock_domain->progress_mode = FI_PROGRESS_AUTO;
+	else
+		sock_domain->progress_mode = info->domain_attr->data_progress;
 
 	sock_domain->pe = sock_pe_init(sock_domain);
 	if(!sock_domain->pe){

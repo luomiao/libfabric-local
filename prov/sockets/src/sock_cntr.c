@@ -56,7 +56,6 @@ int sock_cntr_progress(struct sock_cntr *cntr)
 	struct sock_rx_ctx *rx_ctx;
 	struct dlist_entry *entry;
 
-	fastlock_acquire(&cntr->mut);
 	for (entry = cntr->tx_list.next; entry != &cntr->tx_list;
 	     entry = entry->next) {
 		tx_ctx = container_of(entry, struct sock_tx_ctx, cntr_entry);
@@ -68,7 +67,6 @@ int sock_cntr_progress(struct sock_cntr *cntr)
 		rx_ctx = container_of(entry, struct sock_rx_ctx, cntr_entry);
 		sock_pe_progress_rx_ctx(cntr->dom->pe, rx_ctx);
 	}
-	fastlock_release(&cntr->mut);
 	return 0;
 }
 

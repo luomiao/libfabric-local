@@ -113,8 +113,8 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (!tx_ctx->progress) {
 			tx_ctx->progress = 1;
 			sock_pe_add_tx_ctx(tx_ctx->domain->pe, tx_ctx);
-			dlist_insert_tail(&tx_ctx->cq_entry, &sock_cq->tx_list);
 		}
+		dlist_insert_tail(&tx_ctx->cq_entry, &sock_cq->tx_list);
 		break;
 		
 	case FI_CLASS_RX_CTX:
@@ -140,8 +140,8 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (!rx_ctx->progress) {
 			rx_ctx->progress = 1;
 			sock_pe_add_rx_ctx(rx_ctx->domain->pe, rx_ctx);
-			dlist_insert_tail(&rx_ctx->cq_entry, &sock_cq->rx_list);
 		}
+		dlist_insert_tail(&rx_ctx->cq_entry, &sock_cq->rx_list);
 		break;
 			
 	default:
@@ -173,8 +173,9 @@ static int sock_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (!tx_ctx->progress) {
 			tx_ctx->progress = 1;
 			sock_pe_add_tx_ctx(tx_ctx->domain->pe, tx_ctx);
-			dlist_insert_tail(&tx_ctx->cntr_entry, &cntr->tx_list);
 		}
+		dlist_insert_tail(&tx_ctx->cntr_entry, &cntr->tx_list);
+			
 		break;
 		
 	case FI_CLASS_RX_CTX:
@@ -191,8 +192,8 @@ static int sock_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (!rx_ctx->progress) {
 			rx_ctx->progress = 1;
 			sock_pe_add_rx_ctx(rx_ctx->domain->pe, rx_ctx);
-			dlist_insert_tail(&rx_ctx->cntr_entry, &cntr->rx_list);
 		}
+		dlist_insert_tail(&rx_ctx->cntr_entry, &cntr->rx_list);
 		break;
 			
 	default:
@@ -380,26 +381,31 @@ static int sock_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 				ep->rem_write_cq_event = 1;
 		}
 
-		for (i=0; i<=ep->ep_attr.tx_ctx_cnt; i++) {
-			tx_ctx = ep->tx_array[i];
-
-			if (!tx_ctx)
-				continue;
-
-			if ((ret = sock_ctx_bind_cq(&tx_ctx->ctx.fid, 
-							bfid, flags)))
-				return ret;
+		if (flags & FI_SEND || flags & FI_WRITE || flags & FI_READ) {
+			for (i=0; i<=ep->ep_attr.tx_ctx_cnt; i++) {
+				tx_ctx = ep->tx_array[i];
+				
+				if (!tx_ctx)
+					continue;
+				
+				if ((ret = sock_ctx_bind_cq(&tx_ctx->ctx.fid, 
+							    bfid, flags)))
+					return ret;
+			}
 		}
 
-		for (i=0; i<=ep->ep_attr.rx_ctx_cnt; i++) {
-			rx_ctx = ep->rx_array[i];
-
-			if (!rx_ctx)
-				continue;
-
-			if ((ret = sock_ctx_bind_cq(&rx_ctx->ctx.fid, 
-							bfid, flags)))
-				return ret;
+		if (flags & FI_RECV || flags & FI_REMOTE_READ || 
+		    flags & FI_REMOTE_WRITE) {
+			for (i=0; i<=ep->ep_attr.rx_ctx_cnt; i++) {
+				rx_ctx = ep->rx_array[i];
+				
+				if (!rx_ctx)
+					continue;
+				
+				if ((ret = sock_ctx_bind_cq(&rx_ctx->ctx.fid, 
+							    bfid, flags)))
+					return ret;
+			}
 		}
 		break;
 
@@ -426,26 +432,31 @@ static int sock_ep_fi_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		if (flags & FI_REMOTE_WRITE)
 			ep->rem_write_cntr = cntr;
 		
-		for (i=0; i<=ep->ep_attr.tx_ctx_cnt; i++) {
-			tx_ctx = ep->tx_array[i];
-			
-			if (!tx_ctx)
-				continue;
-
-			if ((ret = sock_ctx_bind_cntr(&tx_ctx->ctx.fid, 
-							  bfid, flags)))
-				return ret;
+		if (flags & FI_SEND || flags & FI_WRITE || flags & FI_READ) {
+			for (i=0; i<=ep->ep_attr.tx_ctx_cnt; i++) {
+				tx_ctx = ep->tx_array[i];
+				
+				if (!tx_ctx)
+					continue;
+				
+				if ((ret = sock_ctx_bind_cntr(&tx_ctx->ctx.fid, 
+							      bfid, flags)))
+					return ret;
+			}
 		}
 
-		for (i=0; i<=ep->ep_attr.rx_ctx_cnt; i++) {
-			rx_ctx = ep->rx_array[i];
-
-			if (!rx_ctx)
-				continue;
-
-			if ((ret = sock_ctx_bind_cntr(&rx_ctx->ctx.fid, 
-							  bfid, flags)))
-				return ret;
+		if (flags & FI_RECV || flags & FI_REMOTE_READ || 
+		    flags & FI_REMOTE_WRITE) {
+			for (i=0; i<=ep->ep_attr.rx_ctx_cnt; i++) {
+				rx_ctx = ep->rx_array[i];
+				
+				if (!rx_ctx)
+					continue;
+				
+				if ((ret = sock_ctx_bind_cntr(&rx_ctx->ctx.fid, 
+							      bfid, flags)))
+					return ret;
+			}
 		}
 		break;
 

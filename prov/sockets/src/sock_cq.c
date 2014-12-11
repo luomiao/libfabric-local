@@ -55,19 +55,17 @@ int sock_cq_progress(struct sock_cq *cq)
 	struct sock_rx_ctx *rx_ctx;
 	struct dlist_entry *entry;
 
-	fastlock_acquire(&cq->lock);
 	for (entry = cq->tx_list.next; entry != &cq->tx_list;
 	     entry = entry->next) {
-		tx_ctx = container_of(entry, struct sock_tx_ctx, cntr_entry);
+		tx_ctx = container_of(entry, struct sock_tx_ctx, cq_entry);
 		sock_pe_progress_tx_ctx(cq->domain->pe, tx_ctx);
 	}
 
 	for (entry = cq->rx_list.next; entry != &cq->rx_list;
 	     entry = entry->next) {
-		rx_ctx = container_of(entry, struct sock_rx_ctx, cntr_entry);
+		rx_ctx = container_of(entry, struct sock_rx_ctx, cq_entry);
 		sock_pe_progress_rx_ctx(cq->domain->pe, rx_ctx);
 	}
-	fastlock_release(&cq->lock);
 	return 0;
 }
 
