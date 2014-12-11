@@ -243,7 +243,6 @@ enum {
 	SOCK_OP_TRECV,
 };
 
-
 /*
  * Transmit context - ring buffer data:
  *    tx_op + flags + context + dest_addr + conn + [data] + [tag] + tx_iov
@@ -381,21 +380,6 @@ struct sock_ep {
 	fi_addr_t conn_addr;
 };
 
-struct sock_pep {
-	struct fid_pep		pep;
-	struct sock_domain  *dom;
-	
-	int sock_fd;
-
-	struct sock_eq 	*eq;
-
-	struct sock_cq 	*send_cq;
-	struct sock_cq 	*recv_cq;
-
-	uint64_t			op_flags;
-	uint64_t			pep_cap;
-};
-
 struct sock_rx_entry {
 	struct sock_op rx_op;
 	uint8_t is_buffered;
@@ -502,7 +486,6 @@ struct sock_tx_ctx {
 
 	struct fi_tx_attr attr;
 };
-
 
 #define SOCK_WIRE_PROTO_VERSION (0)
 
