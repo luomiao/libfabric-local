@@ -56,6 +56,12 @@ extern struct fi_ops_msg sock_ctx_msg_ops;
 extern struct fi_ops_tagged sock_ctx_tagged;
 extern struct fi_ops_atomic sock_ctx_atomic;
 
+extern const struct fi_domain_attr sock_domain_attr;
+extern const struct fi_fabric_attr sock_fabric_attr;
+
+extern const char const sock_fab_name[];
+extern const char const sock_dom_name[];
+
 static int sock_ctx_close(struct fid *fid)
 {
 	struct sock_ep *ep;
@@ -736,6 +742,52 @@ int sock_srx_ctx(struct fid_domain *domain,
 	return 0;
 }
 
+struct fi_info *sock_fi_info(enum fi_ep_type ep_type, 
+			     struct fi_info *hints, void *src_addr, void *dest_addr)
+{
+	struct fi_info *_info = fi_allocinfo_internal();
+	if (!_info)
+		return NULL;
+	
+	_info->src_addr = calloc(1, sizeof(struct sockaddr_in));
+	_info->dest_addr = calloc(1, sizeof(struct sockaddr_in));
+	
+	_info->ep_type = ep_type;
+	_info->mode = SOCK_MODE;
+	_info->addr_format = FI_SOCKADDR_IN;
+	_info->dest_addrlen =_info->src_addrlen = sizeof(struct sockaddr_in);
+
+	if (src_addr) {
+		memcpy(_info->src_addr, src_addr, sizeof(struct sockaddr_in));
+	}
+	
+	if (dest_addr) {
+		memcpy(_info->dest_addr, dest_addr, sizeof(struct sockaddr_in));
+	}
+
+	if (hints->caps) 
+		_info->caps = hints->caps;
+		
+	if (hints->ep_attr)
+		*(_info->ep_attr) = *hints->ep_attr;
+	
+	if (hints->tx_attr)
+		*(_info->tx_attr) = *hints->tx_attr;
+
+	if (hints->rx_attr)
+		*(_info->rx_attr) = *hints->rx_attr;
+
+	*(_info->domain_attr) = hints->domain_attr ? *hints->domain_attr : 
+		sock_domain_attr;
+	*(_info->fabric_attr) = hints->fabric_attr ? *hints->fabric_attr : 
+		sock_fabric_attr;
+
+	_info->domain_attr->name = strdup(sock_dom_name);
+	_info->fabric_attr->name = strdup(sock_fab_name);
+	_info->fabric_attr->prov_name = strdup(sock_fab_name);
+
+	return _info;
+}
 
 int sock_alloc_endpoint(struct fid_domain *domain, struct fi_info *info,
 		  struct sock_ep **ep, void *context, size_t fclass)

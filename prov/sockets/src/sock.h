@@ -101,9 +101,6 @@
 #define SOCK_MAJOR_VERSION 1
 #define SOCK_MINOR_VERSION 0
 
-extern const char const sock_fab_name[];
-extern const char const sock_dom_name[];
-
 struct sock_fabric{
 	struct fid_fabric fab_fid;
 	atomic_t ref;
@@ -670,9 +667,6 @@ int sock_verify_info(struct fi_info *hints);
 int sock_verify_fabric_attr(struct fi_fabric_attr *attr);
 int sock_verify_domain_attr(struct fi_domain_attr *attr);
 
-
-int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
-		     uint64_t flags, struct fi_info *hints, struct fi_info **info);
 int sock_rdm_verify_ep_attr(struct fi_ep_attr *ep_attr, struct fi_tx_attr *tx_attr,
 			    struct fi_rx_attr *rx_attr);
 int sock_dgram_verify_ep_attr(struct fi_ep_attr *ep_attr, struct fi_tx_attr *tx_attr,
@@ -681,9 +675,14 @@ int sock_msg_verify_ep_attr(struct fi_ep_attr *ep_attr, struct fi_tx_attr *tx_at
 			    struct fi_rx_attr *rx_attr);
 
 
-
+struct fi_info *sock_fi_info(enum fi_ep_type ep_type, 
+			     struct fi_info *hints, void *src_addr, void *dest_addr);
+int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
+		     uint64_t flags, struct fi_info *hints, struct fi_info **info);
 int sock_dgram_getinfo(uint32_t version, const char *node, const char *service,
-		uint64_t flags, struct fi_info *hints, struct fi_info **info);
+		       uint64_t flags, struct fi_info *hints, struct fi_info **info);
+int sock_msg_getinfo(uint32_t version, const char *node, const char *service,
+		       uint64_t flags, struct fi_info *hints, struct fi_info **info);
 
 
 int sock_domain(struct fid_fabric *fabric, struct fi_info *info,

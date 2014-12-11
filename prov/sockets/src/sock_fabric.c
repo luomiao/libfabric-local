@@ -194,6 +194,10 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 		case FI_EP_DGRAM:
 			return sock_dgram_getinfo(version, node, service, flags,
 						hints, info);
+		
+		case FI_EP_MSG:
+			return sock_msg_getinfo(version, node, service, flags,
+						hints, info);
 		default:
 			break;
 		}
@@ -212,6 +216,18 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 		return ret;
 	
 	ret = sock_dgram_getinfo(version, node, service, flags,
+			       hints, &_info);
+
+	if (ret == 0) {
+		*info = tmp = _info;
+		while(tmp->next != NULL)
+			tmp=tmp->next;
+	} else if (ret == -FI_ENODATA) {
+		tmp = NULL;
+	} else
+		return ret;
+
+	ret = sock_msg_getinfo(version, node, service, flags,
 			       hints, &_info);
 
 	if (NULL != tmp) {

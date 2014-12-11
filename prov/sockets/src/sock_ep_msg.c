@@ -56,10 +56,6 @@
 #include "sock.h"
 #include "sock_util.h"
 
-
-extern const struct fi_domain_attr sock_domain_attr;
-extern const struct fi_fabric_attr sock_fabric_attr;
-
 const struct fi_ep_attr sock_msg_ep_attr = {
 	.protocol = FI_PROTO_SOCK_TCP,
 	.max_msg_size = SOCK_EP_MAX_MSG_SZ,
@@ -198,49 +194,25 @@ int sock_msg_verify_ep_attr(struct fi_ep_attr *ep_attr,
 	return 0;
 }
 
-
-static struct fi_info *allocate_fi_info(enum fi_ep_type ep_type, 
-					int addr_format, struct fi_info *hints,
-					void *src_addr, void *dest_addr)
+static struct fi_info *sock_msg_fi_info(struct fi_info *hints, 
+					  void *src_addr, void *dest_addr)
 {
-	struct fi_info *_info = fi_allocinfo_internal();
+	struct fi_info *_info = sock_fi_info(FI_EP_MSG, hints, 
+					     src_addr, dest_addr);
 	if (!_info)
 		return NULL;
-
-	_info->src_addr = calloc(1, sizeof(struct sockaddr_in));
-	_info->dest_addr = calloc(1, sizeof(struct sockaddr_in));
 	
-	_info->ep_type = ep_type;
-	_info->mode = SOCK_MODE;
-	_info->addr_format = addr_format;
-	_info->dest_addrlen =_info->src_addrlen = sizeof(struct sockaddr_in);
-
-	if (src_addr) {
-		memcpy(_info->src_addr, src_addr, sizeof(struct sockaddr_in));
-	}
-	
-	if (dest_addr) {
-		memcpy(_info->dest_addr, dest_addr, sizeof(struct sockaddr_in));
-	}
-
-	if (hints->caps) {
-		_info->caps = hints->caps;
-	} else {
+	if (!hints->caps) 
 		_info->caps = SOCK_EP_MSG_CAP;
-	}
+	
+	if (!hints->tx_attr)
+		*(_info->tx_attr) = sock_msg_tx_attr;
 
-	*(_info->tx_attr) = hints->tx_attr ? *hints->tx_attr : sock_msg_tx_attr;
-	*(_info->rx_attr) = hints->rx_attr ? *hints->rx_attr : sock_msg_rx_attr;
-	*(_info->ep_attr) = hints->ep_attr ? *hints->ep_attr : sock_msg_ep_attr;
+	if (!hints->rx_attr)
+		*(_info->rx_attr) = sock_msg_rx_attr;
 
-	*(_info->domain_attr) = hints->domain_attr ? *hints->domain_attr : 
-		sock_domain_attr;
-	*(_info->fabric_attr) = hints->fabric_attr ? *hints->fabric_attr : 
-		sock_fabric_attr;
-
-	_info->domain_attr->name = strdup(sock_dom_name);
-	_info->fabric_attr->name = strdup(sock_fab_name);
-	_info->fabric_attr->prov_name = strdup(sock_fab_name);
+	if (!hints->ep_attr)
+		*(_info->ep_attr) = sock_msg_ep_attr;
 
 	return _info;
 }
@@ -383,8 +355,7 @@ int sock_msg_getinfo(uint32_t version, const char *node, const char *service,
 			      ((struct sockaddr_in*)src_addr)->sin_family, sa_ip);
 	}
 
-	_info = allocate_fi_info(FI_EP_MSG, FI_SOCKADDR_IN, hints, 
-				 src_addr, dest_addr);
+	_info = sock_msg_fi_info(hints, src_addr, dest_addr);
 	if (!_info) {
 		ret = FI_ENOMEM;
 		goto err;
