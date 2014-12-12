@@ -319,6 +319,7 @@ struct sock_ep {
 		struct fid_pep pep;
 	};
 	size_t fclass;
+	uint64_t flags;
 
 	uint8_t enabled;
 	uint8_t connected;
@@ -397,6 +398,7 @@ struct sock_rx_entry {
 
 struct sock_rx_ctx {
 	struct fid_ep ctx;
+	uint64_t flags;
 
 	uint16_t rx_id;
 	uint8_t enabled;
@@ -443,6 +445,7 @@ struct sock_tx_ctx {
 		struct fid_stx stx;
 	};
 	size_t fclass;
+	uint64_t flags;
 
 	struct ringbuffd	rbfd;
 	fastlock_t		wlock;

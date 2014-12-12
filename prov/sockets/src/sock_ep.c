@@ -68,10 +68,11 @@ static int sock_ctx_close(struct fid *fid)
 	struct dlist_entry *entry;
 	struct sock_tx_ctx *tx_ctx;
 	struct sock_rx_ctx *rx_ctx;
+	struct sock_tx_ctx *stx_ctx;
 
 	switch (fid->fclass) {
 	case FI_CLASS_TX_CTX:
-		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx);
+		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx.fid);
 		
 		for (entry = tx_ctx->ep_list.next; entry != &tx_ctx->ep_list;
 		    entry = entry->next) {
@@ -82,7 +83,7 @@ static int sock_ctx_close(struct fid *fid)
 		break;
 
 	case FI_CLASS_RX_CTX:
-		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx);
+		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx.fid);
 		
 		for (entry = rx_ctx->ep_list.next; entry != &rx_ctx->ep_list;
 		    entry = entry->next) {
@@ -90,6 +91,17 @@ static int sock_ctx_close(struct fid *fid)
 			atomic_dec(&ep->num_rx_ctx);
 		}
 		sock_rx_ctx_free(rx_ctx);
+		break;
+
+	case FI_CLASS_STX_CTX:
+		stx_ctx = container_of(fid, struct sock_tx_ctx, stx.fid);
+		
+		for (entry = stx_ctx->ep_list.next; entry != &stx_ctx->ep_list;
+		    entry = entry->next) {
+			ep = container_of(entry, struct sock_ep, tx_ctx_entry);
+			atomic_dec(&ep->num_rx_ctx);
+		}
+		sock_tx_ctx_free(stx_ctx);
 		break;
 
 	default:
@@ -104,6 +116,7 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 	struct sock_cq *sock_cq;
 	struct sock_tx_ctx *tx_ctx;
 	struct sock_rx_ctx *rx_ctx;
+	struct sock_tx_ctx *stx_ctx;
 
 	sock_cq = container_of(bfid, struct sock_cq, cq_fid.fid);
 	switch (fid->fclass) {
@@ -111,19 +124,19 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx);
 		if (flags & FI_SEND) {
 			tx_ctx->send_cq = sock_cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				tx_ctx->send_cq_event = 1;
 		}
 
 		if (flags & FI_READ) {
 			tx_ctx->read_cq = sock_cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				tx_ctx->read_cq_event = 1;
 		}
 
 		if (flags & FI_WRITE) {
 			tx_ctx->write_cq = sock_cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				tx_ctx->write_cq_event = 1;
 		}
 
@@ -135,22 +148,22 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 		break;
 		
 	case FI_CLASS_RX_CTX:
-		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx);
+		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx.fid);
 		if (flags & FI_RECV) {
 			rx_ctx->recv_cq = sock_cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				rx_ctx->recv_cq_event = 1;
 		}
 
 		if (flags & FI_REMOTE_READ) {
 			rx_ctx->rem_read_cq = sock_cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				rx_ctx->rem_read_cq_event = 1;
 		}
 
 		if (flags & FI_REMOTE_WRITE) {
 			rx_ctx->rem_write_cq = sock_cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				rx_ctx->rem_write_cq_event = 1;
 		}
 
@@ -159,6 +172,33 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 			sock_pe_add_rx_ctx(rx_ctx->domain->pe, rx_ctx);
 		}
 		dlist_insert_tail(&rx_ctx->cq_entry, &sock_cq->rx_list);
+		break;
+
+	case FI_CLASS_STX_CTX:
+		stx_ctx = container_of(fid, struct sock_tx_ctx, stx.fid);
+		if (flags & FI_SEND) {
+			stx_ctx->send_cq = sock_cq;
+			if (flags & FI_COMPLETION)
+				stx_ctx->send_cq_event = 1;
+		}
+
+		if (flags & FI_READ) {
+			stx_ctx->read_cq = sock_cq;
+			if (flags & FI_COMPLETION)
+				stx_ctx->read_cq_event = 1;
+		}
+
+		if (flags & FI_WRITE) {
+			stx_ctx->write_cq = sock_cq;
+			if (flags & FI_COMPLETION)
+				stx_ctx->write_cq_event = 1;
+		}
+
+		if (!stx_ctx->progress) {
+			stx_ctx->progress = 1;
+			sock_pe_add_tx_ctx(stx_ctx->domain->pe, stx_ctx);
+		}
+		dlist_insert_tail(&stx_ctx->cq_entry, &sock_cq->tx_list);
 		break;
 			
 	default:
@@ -173,11 +213,12 @@ static int sock_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 	struct sock_cntr *cntr;
 	struct sock_tx_ctx *tx_ctx;
 	struct sock_rx_ctx *rx_ctx;
+	struct sock_tx_ctx *stx_ctx;
 
 	cntr = container_of(bfid, struct sock_cntr, cntr_fid.fid);
 	switch (fid->fclass) {
 	case FI_CLASS_TX_CTX:
-		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx);
+		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx.fid);
 		if (flags & FI_SEND)
 			tx_ctx->send_cntr = cntr;
 		
@@ -196,7 +237,7 @@ static int sock_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 		break;
 		
 	case FI_CLASS_RX_CTX:
-		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx);
+		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx.fid);
 		if (flags & FI_RECV) 
 			rx_ctx->recv_cntr = cntr;
 
@@ -211,6 +252,25 @@ static int sock_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 			sock_pe_add_rx_ctx(rx_ctx->domain->pe, rx_ctx);
 		}
 		dlist_insert_tail(&rx_ctx->cntr_entry, &cntr->rx_list);
+		break;
+
+	case FI_CLASS_STX_CTX:
+		stx_ctx = container_of(fid, struct sock_tx_ctx, ctx.fid);
+		if (flags & FI_SEND)
+			stx_ctx->send_cntr = cntr;
+		
+		if (flags & FI_READ)
+			stx_ctx->read_cntr = cntr;
+
+		if (flags & FI_WRITE)
+			stx_ctx->write_cntr = cntr;
+
+		if (!stx_ctx->progress) {
+			stx_ctx->progress = 1;
+			sock_pe_add_tx_ctx(stx_ctx->domain->pe, stx_ctx);
+		}
+		dlist_insert_tail(&stx_ctx->cntr_entry, &cntr->tx_list);
+			
 		break;
 			
 	default:
@@ -236,11 +296,67 @@ static int sock_ctx_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 
 }
 
+static int sock_ctx_control(struct fid *fid, int command, void *arg)
+{
+	struct sock_tx_ctx *tx_ctx;
+	struct sock_rx_ctx *rx_ctx;
+	struct sock_tx_ctx *stx_ctx;
+
+	switch (fid->fclass) {
+	case FI_CLASS_TX_CTX:
+		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx.fid);
+		switch (command) {
+		case FI_GETOPSFLAG:
+			*(uint64_t*)arg = tx_ctx->flags;
+			break;
+		case FI_SETOPSFLAG:
+			tx_ctx->flags = (uint64_t)arg;
+			break;
+		default:
+			return -FI_EINVAL;
+		}
+		break;
+
+	case FI_CLASS_RX_CTX:
+		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx.fid);
+		switch (command) {
+		case FI_GETOPSFLAG:
+			*(uint64_t*)arg = rx_ctx->flags;
+			break;
+		case FI_SETOPSFLAG:
+			rx_ctx->flags = (uint64_t)arg;
+			break;
+		default:
+			return -FI_EINVAL;
+		}
+		break;
+
+	case FI_CLASS_STX_CTX:
+		stx_ctx = container_of(fid, struct sock_tx_ctx, stx.fid);
+		switch (command) {
+		case FI_GETOPSFLAG:
+			*(uint64_t*)arg = stx_ctx->flags;
+			break;
+		case FI_SETOPSFLAG:
+			stx_ctx->flags = (uint64_t)arg;
+			break;
+		default:
+			return -FI_EINVAL;
+		}
+		break;
+
+	default:
+		return -FI_EINVAL;
+	}
+	
+	return 0;
+}
+
 struct fi_ops sock_ctx_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_ctx_close,
 	.bind = sock_ctx_bind,
-	.control = fi_no_control,
+	.control = sock_ctx_control,
 };
 
 static int sock_ctx_enable(struct fid_ep *ep)
@@ -250,12 +366,12 @@ static int sock_ctx_enable(struct fid_ep *ep)
 
 	switch (ep->fid.fclass) {
 	case FI_CLASS_RX_CTX:
-		rx_ctx = container_of(ep, struct sock_rx_ctx, ctx);
+		rx_ctx = container_of(ep, struct sock_rx_ctx, ctx.fid);
 		rx_ctx->enabled = 1;
 		return 0;
 
 	case FI_CLASS_TX_CTX:
-		tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+		tx_ctx = container_of(ep, struct sock_tx_ctx, ctx.fid);
 		tx_ctx->enabled = 1;
 		return 0;
 
@@ -363,37 +479,37 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 
 		if (flags & FI_SEND) {
 			ep->send_cq = cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				ep->send_cq_event = 1;
 		}
 
 		if (flags & FI_READ) {
 			ep->read_cq = cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				ep->read_cq_event = 1;
 		}
 
 		if (flags & FI_WRITE) {
 			ep->write_cq = cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				ep->write_cq_event = 1;
 		}
 
 		if (flags & FI_RECV) {
 			ep->recv_cq = cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				ep->recv_cq_event = 1;
 		}
 
 		if (flags & FI_REMOTE_READ) {
 			ep->rem_read_cq = cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				ep->rem_read_cq_event = 1;
 		}
 
 		if (flags & FI_REMOTE_WRITE) {
 			ep->rem_write_cq = cq;
-			if (flags & FI_EVENT)
+			if (flags & FI_COMPLETION)
 				ep->rem_write_cq_event = 1;
 		}
 
@@ -476,8 +592,7 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		break;
 
 	case FI_CLASS_AV:
-		av = container_of(bfid,
-				struct sock_av, av_fid.fid);
+		av = container_of(bfid, struct sock_av, av_fid.fid);
 		assert(ep->domain == av->dom);
 
 		ep->av = av;
@@ -511,11 +626,30 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 	return 0;
 }
 
+static int sock_ep_control(struct fid *fid, int command, void *arg)
+{
+	struct sock_ep *ep;
+	ep = container_of(fid, struct sock_ep, ep.fid);
+
+	switch (command) {
+	case FI_GETOPSFLAG:
+		*(uint64_t*)arg = ep->flags;
+		break;
+	case FI_SETOPSFLAG:
+		ep->flags = (uint64_t)arg;
+		break;
+	default:
+		return -FI_EINVAL;
+	}
+	return 0;
+}
+
+
 struct fi_ops sock_ep_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_ep_close,
 	.bind = sock_ep_bind,
-	.control = fi_no_control,
+	.control = sock_ep_control,
 	.ops_open = fi_no_ops_open,
 };
 
@@ -602,7 +736,7 @@ static int sock_ep_tx_ctx(struct fid_sep *ep, int index, struct fi_tx_attr *attr
 	struct sock_ep *sock_ep;
 	struct sock_tx_ctx *tx_ctx;
 
-	sock_ep = container_of(ep, struct sock_ep, ep.fid);
+	sock_ep = container_of(ep, struct sock_ep, sep);
 	if (index >= sock_ep->ep_attr.tx_ctx_cnt)
 		return -FI_EINVAL;
 
@@ -633,7 +767,7 @@ static int sock_ep_rx_ctx(struct fid_sep *ep, int index, struct fi_rx_attr *attr
 	struct sock_ep *sock_ep;
 	struct sock_rx_ctx *rx_ctx;
 
-	sock_ep = container_of(ep, struct sock_ep, ep.fid);
+	sock_ep = container_of(ep, struct sock_ep, sep);
 	if (index >= sock_ep->ep_attr.rx_ctx_cnt)
 		return -FI_EINVAL;
 

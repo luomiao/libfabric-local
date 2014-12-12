@@ -104,7 +104,7 @@ static int sock_pe_report_tx_completion(struct sock_pe_entry *pe_entry,
 	int ret = 0;
 
 	if (tx_ctx->send_cq_event) {
-		if (pe_entry->msg_hdr.flags & FI_EVENT) {
+		if (pe_entry->msg_hdr.flags & FI_COMPLETION) {
 			if (tx_ctx->send_cq) {
 				ret = tx_ctx->send_cq->report_completion(
 					tx_ctx->send_cq, pe_entry->addr, pe_entry);
@@ -148,7 +148,7 @@ int sock_pe_report_rx_completion(struct sock_pe_entry *pe_entry,
 	int ret = 0;
 
 	if (rx_ctx->recv_cq_event) {
-		if (pe_entry->msg_hdr.flags & FI_EVENT) {
+		if (pe_entry->msg_hdr.flags & FI_COMPLETION) {
 			if (rx_ctx->recv_cq) {
 				ret = rx_ctx->recv_cq->report_completion(
 					rx_ctx->recv_cq, pe_entry->msg_hdr.src_addr,
