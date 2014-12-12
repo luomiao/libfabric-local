@@ -85,7 +85,8 @@ static ssize_t sock_ctx_rma_readmsg(struct fid_ep *ep,
 		ret = -FI_EAGAIN;
 		goto err;
 	}
-	
+
+	flags |= tx_ctx->attr.op_flags;	
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = SOCK_OP_READ;
 	tx_op.src_iov_len = msg->rma_iov_count;
@@ -200,6 +201,7 @@ static ssize_t sock_ctx_rma_writemsg(struct fid_ep *ep,
 	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
 	assert(conn);
 
+	flags |= tx_ctx->attr.op_flags;
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = SOCK_OP_WRITE;
 	tx_op.dest_iov_len = msg->rma_iov_count;

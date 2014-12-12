@@ -70,9 +70,8 @@ static ssize_t sock_ctx_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	rx_entry = sock_rx_new_entry(rx_ctx);
 	if (!rx_entry)
 		return -FI_ENOMEM;
-	
-	dlist_init(&rx_entry->entry);
 
+	flags |= rx_ctx->attr.op_flags;
 	rx_entry->rx_op.op = SOCK_OP_RECV;
 	rx_entry->rx_op.dest_iov_len = msg->iov_count;
 
@@ -147,6 +146,7 @@ static ssize_t sock_ctx_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	SOCK_LOG_INFO("New sendmsg on TX: %p using conn: %p\n", 
 		      tx_ctx, conn);
 
+	flags |= tx_ctx->attr.op_flags;
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = SOCK_OP_SEND;
 
@@ -296,7 +296,7 @@ static ssize_t sock_ctx_trecvmsg(struct fid_ep *ep,
 	if (!rx_entry)
 		return -FI_ENOMEM;
 	
-	dlist_init(&rx_entry->entry);
+	flags |= rx_ctx->attr.op_flags;
 	rx_entry->rx_op.op = SOCK_OP_TRECV;
 	rx_entry->rx_op.dest_iov_len = msg->iov_count;
 
@@ -390,6 +390,7 @@ static ssize_t sock_ctx_tsendmsg(struct fid_ep *ep,
 		goto err;
 	}
 
+	flags |= tx_ctx->attr.op_flags;
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = SOCK_OP_TSEND;
 	tx_op.src_iov_len = msg->iov_count;

@@ -102,6 +102,7 @@ static ssize_t sock_ctx_tx_atomic(struct fid_ep *ep,
 		goto err;
 	}
 
+	flags |= tx_ctx->attr.op_flags;
 	memset(&tx_op, 0, sizeof(struct sock_op));
 	tx_op.op = type;
 	tx_op.dest_iov_len = msg->rma_iov_count;
