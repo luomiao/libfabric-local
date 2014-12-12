@@ -52,10 +52,7 @@ int sock_wait_get_obj(struct fid_wait *fid, void *arg)
 	int obj_size;
 	enum fi_wait_obj obj_type;
 	struct fi_wait_obj_set *wait_obj_set;
-	struct {
-		pthread_mutex_t *mutex;
-		pthread_cond_t *cond;
-	} mutex_cond;
+	struct fi_mut_cond *mut_cond;
 	struct sock_wait *wait;
 
 	wait = container_of(fid, struct sock_wait, wait_fid.fid);
@@ -73,12 +70,11 @@ int sock_wait_get_obj(struct fid_wait *fid, void *arg)
 			break;
 			
 		case FI_WAIT_MUT_COND:
-			/* FIXME: new structure needs to be defined in libfabric */
-			mutex_cond.mutex = &wait->mutex;
-			mutex_cond.cond = &wait->cond;
-			obj_size = sizeof(mutex_cond);
+			mut_cond->mut = &wait->mutex;
+			mut_cond->cond = &wait->cond;
+			obj_size = sizeof(mut_cond);
 			obj_type = wait->type;
-			obj_ptr = &mutex_cond;
+			obj_ptr = &mut_cond;
 			break;
 			
 		default:

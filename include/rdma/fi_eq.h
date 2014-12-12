@@ -78,8 +78,8 @@ struct fi_wait_obj_set {
 };
 	
 struct fi_mut_cond {
-	pthread_mutex_t		mut;
-	pthread_cond_t		cond;
+	pthread_mutex_t		*mut;
+	pthread_cond_t		*cond;
 };
 
 /*
