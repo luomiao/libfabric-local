@@ -307,10 +307,10 @@ static int sock_ctx_control(struct fid *fid, int command, void *arg)
 		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx.fid);
 		switch (command) {
 		case FI_GETOPSFLAG:
-			*(uint64_t*)arg = tx_ctx->flags;
+			*(uint64_t*)arg = tx_ctx->attr.op_flags;
 			break;
 		case FI_SETOPSFLAG:
-			tx_ctx->flags = (uint64_t)arg;
+			tx_ctx->attr.op_flags = (uint64_t)arg;
 			break;
 		default:
 			return -FI_EINVAL;
@@ -321,10 +321,10 @@ static int sock_ctx_control(struct fid *fid, int command, void *arg)
 		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx.fid);
 		switch (command) {
 		case FI_GETOPSFLAG:
-			*(uint64_t*)arg = rx_ctx->flags;
+			*(uint64_t*)arg = rx_ctx->attr.op_flags;
 			break;
 		case FI_SETOPSFLAG:
-			rx_ctx->flags = (uint64_t)arg;
+			rx_ctx->attr.op_flags = (uint64_t)arg;
 			break;
 		default:
 			return -FI_EINVAL;
@@ -335,10 +335,10 @@ static int sock_ctx_control(struct fid *fid, int command, void *arg)
 		stx_ctx = container_of(fid, struct sock_tx_ctx, stx.fid);
 		switch (command) {
 		case FI_GETOPSFLAG:
-			*(uint64_t*)arg = stx_ctx->flags;
+			*(uint64_t*)arg = stx_ctx->attr.op_flags;
 			break;
 		case FI_SETOPSFLAG:
-			stx_ctx->flags = (uint64_t)arg;
+			stx_ctx->attr.op_flags = (uint64_t)arg;
 			break;
 		default:
 			return -FI_EINVAL;
@@ -628,16 +628,29 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 
 static int sock_ep_control(struct fid *fid, int command, void *arg)
 {
-	struct sock_ep *ep;
+	struct fi_alias *alias;
+	struct sock_ep *ep, *new_ep;
 	ep = container_of(fid, struct sock_ep, ep.fid);
 
 	switch (command) {
+	case FI_ALIAS:
+		alias = (struct fi_alias*)arg;
+		new_ep = calloc(1, sizeof(*new_ep));
+		if (!new_ep)
+			return -FI_ENOMEM;
+		*new_ep = *ep;
+		new_ep->op_flags = alias->flags;
+		*alias->fid = &new_ep->ep.fid;
+		break;
+
 	case FI_GETOPSFLAG:
-		*(uint64_t*)arg = ep->flags;
+		*(uint64_t*)arg = ep->op_flags;
 		break;
+
 	case FI_SETOPSFLAG:
-		ep->flags = (uint64_t)arg;
+		ep->op_flags = (uint64_t)arg;
 		break;
+
 	default:
 		return -FI_EINVAL;
 	}
@@ -1009,11 +1022,15 @@ int sock_alloc_endpoint(struct fid_domain *domain, struct fi_info *info,
 		if (info->ep_attr) 
 			sock_ep->ep_attr = *info->ep_attr;
 		
-		if (info->tx_attr)
+		if (info->tx_attr) {
 			sock_ep->tx_attr = *info->tx_attr;
+			sock_ep->op_flags = info->tx_attr->op_flags;
+		}
 		
-		if (info->rx_attr)
+		if (info->rx_attr) {
 			sock_ep->rx_attr = *info->rx_attr;
+			sock_ep->op_flags |= info->rx_attr->op_flags;
+		}
 	}
 	
 	atomic_init(&sock_ep->ref, 0);
