@@ -198,10 +198,10 @@ fi_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
 {
 	return domain->ops->wait_open(domain, attr, waitset);
 }
-
+	
 static inline int
 fi_poll_open(struct fid_domain *domain, struct fi_poll_attr *attr,
-			struct fid_poll **pollset)
+	     struct fid_poll **pollset)
 {
 	return domain->ops->poll_open(domain, attr, pollset);
 }

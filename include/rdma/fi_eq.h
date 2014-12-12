@@ -93,10 +93,10 @@ struct fi_poll_attr {
 
 struct fi_ops_poll {
 	size_t	size;
-	int (*poll)(struct fid_poll *pollset, void **context, int count);
-	int (*poll_add)(struct fid_poll *pollset, struct fid *event_fid, 
+	int	(*poll)(struct fid_poll *pollset, void **context, int count);
+	int	(*poll_add)(struct fid_poll *pollset, struct fid *event_fid, 
 			uint64_t flags);
-	int (*poll_del)(struct fid_poll *pollset, struct fid *event_fid, 
+	int	(*poll_del)(struct fid_poll *pollset, struct fid *event_fid, 
 			uint64_t flags);
 };
 
@@ -147,7 +147,7 @@ struct fi_eq_cm_entry {
 	/* user must call fi_freeinfo to release info */
 	struct fi_info		*info;
 	/* connection data placed here, up to space provided */
-	uint8_t			data[0];
+	uint8_t			data[];
 };
 
 struct fi_ops_eq {
