@@ -184,7 +184,7 @@ static void * _sock_conn_listen(void *arg)
 	struct addrinfo *s_res = NULL, *p;
 	struct addrinfo hints;
 	int optval;
-	int listen_fd, conn_fd;
+	int listen_fd = 0, conn_fd;
 	struct sockaddr_in remote;
 	socklen_t addr_size;
 	struct sock_conn *conn;

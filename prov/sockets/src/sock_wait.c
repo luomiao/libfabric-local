@@ -48,8 +48,8 @@ enum {
 
 int sock_wait_get_obj(struct fid_wait *fid, void *arg)
 {
-	void *obj_ptr;
 	int obj_size;
+	void *obj_ptr;
 	enum fi_wait_obj obj_type;
 	struct fi_wait_obj_set *wait_obj_set;
 	struct fi_mut_cond *mut_cond;
@@ -57,37 +57,32 @@ int sock_wait_get_obj(struct fid_wait *fid, void *arg)
 
 	wait = container_of(fid, struct sock_wait, wait_fid.fid);
 	wait_obj_set = (struct fi_wait_obj_set*)arg;
+	mut_cond = wait_obj_set->obj;
 
 	if (!arg)
 		return -EINVAL;
 
-	if (wait) {
-		switch (wait->type) {
-		case FI_WAIT_FD:
-			obj_size = sizeof(wait->fd[WAIT_READ_FD]);
-			obj_type = wait->type;
-			obj_ptr = &wait->fd[WAIT_READ_FD];
-			break;
-			
-		case FI_WAIT_MUT_COND:
-			mut_cond->mut = &wait->mutex;
-			mut_cond->cond = &wait->cond;
-			obj_size = sizeof(mut_cond);
-			obj_type = wait->type;
-			obj_ptr = &mut_cond;
-			break;
-			
-		default:
-			SOCK_LOG_ERROR("Invalid wait obj type\n");
-			return -FI_EINVAL;
-		}
+	switch (wait->type) {
+	case FI_WAIT_FD:
+		obj_size = sizeof(wait->fd[WAIT_READ_FD]);
+		obj_type = wait->type;
+		obj_ptr = &wait->fd[WAIT_READ_FD];
+		break;
+		
+	case FI_WAIT_MUT_COND:
+		mut_cond->mut = &wait->mutex;
+		mut_cond->cond = &wait->cond;
+		obj_size = sizeof(mut_cond);
+		obj_type = wait->type;
+		obj_ptr = &mut_cond;
+		break;
+		
+	default:
+		SOCK_LOG_ERROR("Invalid wait obj type\n");
+		return -FI_EINVAL;
 	}
 
-	if (obj_size) {
-		if (wait_obj_set->count)
-			memcpy(wait_obj_set->obj, obj_ptr, obj_size);
-	}
-	
+	memcpy(wait_obj_set->obj, obj_ptr, obj_size);
 	wait_obj_set->count = 1;
 	wait_obj_set->wait_obj = obj_type;
 	return 0;
@@ -130,7 +125,7 @@ static int sock_wait_wait(struct fid_wait *wait_fid, int timeout)
 	struct sock_cntr *cntr;
 	struct timeval now;
 	struct sock_wait *wait;
-	double start_ms, end_ms;
+	double start_ms = 0.0, end_ms = 0.0;
 	struct dlist_entry *p, *head;
 	struct sock_fid_list *list_item;
 	

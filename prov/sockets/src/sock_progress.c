@@ -986,7 +986,7 @@ static int sock_pe_update_atomic(void *cmp, void *dst, void *src,
 static int sock_pe_process_rx_atomic(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 				     struct sock_pe_entry *pe_entry)
 {
-	int i, j, ret;
+	int i, j, ret = 0;
 	size_t datatype_sz;
 	uint64_t offset, len, entry_len, data_len;
 	
