@@ -81,8 +81,8 @@
 
 #define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE |	\
 			 FI_SEND | FI_RECV | FI_TAGGED | FI_RMA |	\
-			 FI_BUFFERED_RECV | FI_MULTI_RECV | FI_NAMED_RX_CTX |\
-			 FI_DIRECTED_RECV | FI_SOURCE | FI_REMOTE_CQ_DATA |\
+			 FI_BUFFERED_RECV | FI_MULTI_RECV | FI_NAMED_RX_CTX | \
+			 FI_DIRECTED_RECV | FI_SOURCE | FI_REMOTE_CQ_DATA | \
 			 FI_REMOTE_SIGNAL | FI_DYNAMIC_MR | FI_ATOMICS)
 
 #define SOCK_EP_DGRAM_CAP (FI_MSG | FI_INJECT | FI_SOURCE |	\
@@ -177,6 +177,9 @@ struct sock_mr {
 	uint64_t		key;
 	size_t			iov_count;
 	struct iovec		mr_iov[1];
+
+	struct sock_cntr *cntr;
+	struct sock_cq *cq;
 };
 
 struct sock_av_addr {
@@ -749,6 +752,7 @@ int sock_mr_verify_key(struct sock_domain *domain, uint16_t key,
 		       void *buf, size_t len, uint64_t access);
 int sock_mr_verify_desc(struct sock_domain *domain, void *desc, 
 			void *buf, size_t len, uint64_t access);
+struct sock_mr * sock_mr_get_entry(struct sock_domain *domain, uint16_t key);
 
 
 struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_attr *attr, 

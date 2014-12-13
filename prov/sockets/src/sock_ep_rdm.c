@@ -93,10 +93,10 @@ static int sock_rdm_verify_rx_attr(const struct fi_rx_attr *attr)
 	if (!attr)
 		return 0;
 
-	if ((attr->caps | sock_rdm_rx_attr.caps) != sock_rdm_rx_attr.caps)
+	if ((attr->caps | SOCK_EP_RDM_CAP) != SOCK_EP_RDM_CAP)
 		return -FI_ENODATA;
 
-	if ((attr->op_flags | sock_rdm_rx_attr.op_flags) != SOCK_EP_RDM_CAP)
+	if ((attr->op_flags | SOCK_EP_RDM_CAP) != SOCK_EP_RDM_CAP)
 		return -FI_ENODATA;
 
 	if (attr->msg_order != sock_rdm_rx_attr.msg_order)
@@ -119,10 +119,10 @@ static int sock_rdm_verify_tx_attr(const struct fi_tx_attr *attr)
 	if (!attr)
 		return 0;
 
-	if ((attr->caps | sock_rdm_tx_attr.caps) != sock_rdm_tx_attr.caps)
+	if ((attr->caps | SOCK_EP_RDM_CAP) != SOCK_EP_RDM_CAP)
 		return -FI_ENODATA;
 
-	if ((attr->op_flags | sock_rdm_tx_attr.op_flags) != SOCK_EP_RDM_CAP)
+	if ((attr->op_flags | SOCK_EP_RDM_CAP) != SOCK_EP_RDM_CAP)
 		return -FI_ENODATA;
 
 	if (attr->msg_order != sock_rdm_tx_attr.msg_order)

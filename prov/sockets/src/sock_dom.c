@@ -165,13 +165,44 @@ static int sock_mr_close(struct fid *fid)
 	return 0;
 }
 
+static int sock_mr_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
+{
+	struct sock_cntr *cntr;
+	struct sock_cq *cq;
+	struct sock_mr *mr;
+
+	mr = container_of(fid, struct sock_mr, mr_fid.fid);
+	switch (bfid->fclass) {
+	case FI_CLASS_CQ:
+		cq = container_of(bfid, struct sock_cq, cq_fid.fid);
+		assert(mr->dom == cq->domain);
+		mr->cq = cq;
+		break;
+
+	case FI_CLASS_CNTR:
+		cntr = container_of(bfid, struct sock_cntr, cntr_fid.fid);
+		assert(mr->dom == cntr->dom);
+		mr->cntr = cntr;
+		break;
+
+	default:
+		return -FI_EINVAL;
+	}
+	return 0;
+}
+
 static struct fi_ops sock_mr_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_mr_close,
-	.bind = fi_no_bind,
+	.bind = sock_mr_bind,
 	.control = fi_no_control,
 	.ops_open = fi_no_ops_open,
 };
+
+struct sock_mr * sock_mr_get_entry(struct sock_domain *domain, uint16_t key)
+{
+	return (struct sock_mr *)idm_lookup(&domain->mr_idm, key);
+}
 
 int sock_mr_verify_key(struct sock_domain *domain, uint16_t key, 
 		       void *buf, size_t len, uint64_t access)
@@ -327,12 +358,10 @@ int sock_scalable_ep(struct fid_domain *domain, struct fi_info *info,
 	switch (info->ep_type) {
 	case FI_EP_RDM:
 		return sock_rdm_sep(domain, info, sep, context);
-/*
-  case FI_EP_DGRAM:
-  return sock_dgram_sep(domain, info, ep, context);
-  case FI_EP_MSG:
-  return sock_msg_sep(domain, info, ep, context);
-*/
+	case FI_EP_DGRAM:
+		return sock_dgram_sep(domain, info, sep, context);
+	case FI_EP_MSG:
+		return sock_msg_sep(domain, info, sep, context);
 	default:
 		return -FI_ENOPROTOOPT;
 	}

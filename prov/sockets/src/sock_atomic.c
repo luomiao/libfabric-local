@@ -441,43 +441,8 @@ static ssize_t sock_ctx_atomic_compwritev(struct fid_ep *ep,
 					    resultv, result_desc, 1, 0);
 }
 
-static int sock_ctx_atomic_writevalid(struct fid_ep *ep,
-				      enum fi_datatype datatype, enum fi_op op, size_t *count)
-{
-	size_t datatype_sz = fi_datatype_size(datatype);
-	*count = (SOCK_EP_MAX_MSG_SZ/datatype_sz);
-	return 0;
-}
-
-static int sock_ctx_atomic_readwritevalid(struct fid_ep *ep,
-					  enum fi_datatype datatype, enum fi_op op, size_t *count)
-{
-	size_t datatype_sz;
-
-	switch(datatype){
-	case FI_FLOAT:
-	case FI_DOUBLE:
-		if (op == FI_BOR || op == FI_BAND ||
-		    op == FI_BXOR || op == FI_MSWAP)
-			return -FI_ENOENT;
-		break;
-
-	case FI_FLOAT_COMPLEX:
-	case FI_DOUBLE_COMPLEX:
-	case FI_LONG_DOUBLE:
-	case FI_LONG_DOUBLE_COMPLEX:
-		return -FI_ENOENT;
-	default:
-		break;
-	}
-
-	datatype_sz = fi_datatype_size(datatype);
-	*count = (SOCK_EP_MAX_ATOMIC_SZ/datatype_sz);
-	return 0;
-}
-
-static int sock_ctx_atomic_compwritevalid(struct fid_ep *ep,
-			  enum fi_datatype datatype, enum fi_op op, size_t *count)
+static int sock_ctx_atomic_valid(struct fid_ep *ep, enum fi_datatype datatype, 
+			      enum fi_op op, size_t *count)
 {
 	size_t datatype_sz;
 
@@ -515,9 +480,9 @@ struct fi_ops_atomic sock_ctx_atomic = {
 	.compwrite = sock_ctx_atomic_compwrite,
 	.compwritev = sock_ctx_atomic_compwritev,
 	.compwritemsg = sock_ctx_atomic_compwritemsg,
-	.writevalid = sock_ctx_atomic_writevalid,
-	.readwritevalid = sock_ctx_atomic_readwritevalid,
-	.compwritevalid = sock_ctx_atomic_compwritevalid,
+	.writevalid = sock_ctx_atomic_valid,
+	.readwritevalid = sock_ctx_atomic_valid,
+	.compwritevalid = sock_ctx_atomic_valid,
 };
 
 static ssize_t sock_ep_atomic_write(struct fid_ep *ep, const void *buf, size_t count, 
@@ -643,31 +608,12 @@ static ssize_t sock_ep_atomic_compwritemsg(struct fid_ep *ep,
 					    resultv, result_desc, result_count, flags);
 }
 
-static int sock_ep_atomic_writevalid(struct fid_ep *ep,
+static int sock_ep_atomic_valid(struct fid_ep *ep,
 				     enum fi_datatype datatype, enum fi_op op, size_t *count)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_writevalid(&sock_ep->tx_ctx->ctx, 
-					  datatype, op, count);
-}
-
-static int sock_ep_atomic_readwritevalid(struct fid_ep *ep,
-					 enum fi_datatype datatype, enum fi_op op, size_t *count)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_readwritevalid(&sock_ep->tx_ctx->ctx, 
-					      datatype, op, count);
-}
-
-static int sock_ep_atomic_compwritevalid(struct fid_ep *ep,
-					 enum fi_datatype datatype, enum fi_op op, size_t *count)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_compwritevalid(&sock_ep->tx_ctx->ctx, 
-					      datatype, op, count);
+	return sock_ctx_atomic_valid(&sock_ep->tx_ctx->ctx, datatype, op, count);
 }
 
 struct fi_ops_atomic sock_ep_atomic = {
@@ -682,7 +628,7 @@ struct fi_ops_atomic sock_ep_atomic = {
 	.compwrite = sock_ep_atomic_compwrite,
 	.compwritev = sock_ep_atomic_compwritev,
 	.compwritemsg = sock_ep_atomic_compwritemsg,
-	.writevalid = sock_ep_atomic_writevalid,
-	.readwritevalid = sock_ep_atomic_readwritevalid,
-	.compwritevalid = sock_ep_atomic_compwritevalid,
+	.writevalid = sock_ep_atomic_valid,
+	.readwritevalid = sock_ep_atomic_valid,
+	.compwritevalid = sock_ep_atomic_valid,
 };

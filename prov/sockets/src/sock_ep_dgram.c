@@ -92,10 +92,10 @@ static int sock_dgram_verify_rx_attr(const struct fi_rx_attr *attr)
 	if (!attr)
 		return 0;
 
-	if ((attr->caps | sock_dgram_rx_attr.caps) != sock_dgram_rx_attr.caps)
+	if ((attr->caps | SOCK_EP_DGRAM_CAP) != SOCK_EP_DGRAM_CAP)
 		return -FI_ENODATA;
 
-	if ((attr->op_flags | sock_dgram_rx_attr.op_flags) != SOCK_EP_DGRAM_CAP)
+	if ((attr->op_flags | SOCK_EP_DGRAM_CAP) != SOCK_EP_DGRAM_CAP)
 		return -FI_ENODATA;
 
 	if (attr->msg_order != sock_dgram_rx_attr.msg_order)
@@ -118,10 +118,10 @@ static int sock_dgram_verify_tx_attr(const struct fi_tx_attr *attr)
 	if (!attr)
 		return 0;
 
-	if ((attr->caps | sock_dgram_tx_attr.caps) != sock_dgram_tx_attr.caps)
+	if ((attr->caps | SOCK_EP_DGRAM_CAP) != SOCK_EP_DGRAM_CAP)
 		return -FI_ENODATA;
 
-	if ((attr->op_flags | sock_dgram_tx_attr.op_flags) != SOCK_EP_DGRAM_CAP)
+	if ((attr->op_flags | SOCK_EP_DGRAM_CAP) != SOCK_EP_DGRAM_CAP)
 		return -FI_ENODATA;
 
 	if (attr->msg_order != sock_dgram_tx_attr.msg_order)
