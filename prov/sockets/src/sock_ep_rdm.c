@@ -96,8 +96,7 @@ static int sock_rdm_verify_rx_attr(const struct fi_rx_attr *attr)
 	if ((attr->caps | sock_rdm_rx_attr.caps) != sock_rdm_rx_attr.caps)
 		return -FI_ENODATA;
 
-	if ((attr->op_flags | sock_rdm_rx_attr.op_flags) != 
-	   sock_rdm_rx_attr.op_flags)
+	if ((attr->op_flags | sock_rdm_rx_attr.op_flags) != SOCK_EP_RDM_CAP)
 		return -FI_ENODATA;
 
 	if (attr->msg_order != sock_rdm_rx_attr.msg_order)
@@ -123,8 +122,7 @@ static int sock_rdm_verify_tx_attr(const struct fi_tx_attr *attr)
 	if ((attr->caps | sock_rdm_tx_attr.caps) != sock_rdm_tx_attr.caps)
 		return -FI_ENODATA;
 
-	if ((attr->op_flags | sock_rdm_tx_attr.op_flags) != 
-	   sock_rdm_tx_attr.op_flags)
+	if ((attr->op_flags | sock_rdm_tx_attr.op_flags) != SOCK_EP_RDM_CAP)
 		return -FI_ENODATA;
 
 	if (attr->msg_order != sock_rdm_tx_attr.msg_order)
@@ -236,17 +234,13 @@ int sock_rdm_getinfo(uint32_t version, const char *node, const char *service,
 
 	*info = NULL;
 	
-	if (!node && !service && !hints)
-		return -FI_EBADFLAGS;
-
 	if (version != FI_VERSION(SOCK_MAJOR_VERSION, 
 				 SOCK_MINOR_VERSION))
 		return -FI_ENODATA;
 
 	if (hints) {
 		if ((SOCK_EP_RDM_CAP | hints->caps) != SOCK_EP_RDM_CAP) {
-			SOCK_LOG_INFO(
-				   "Cannot support requested options!\n");
+			SOCK_LOG_INFO("Cannot support requested options!\n");
 			return -FI_ENODATA;
 		}
 		
