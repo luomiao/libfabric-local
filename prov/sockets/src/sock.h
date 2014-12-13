@@ -757,7 +757,6 @@ struct sock_mr * sock_mr_get_entry(struct sock_domain *domain, uint16_t key);
 
 struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_attr *attr, 
 				      void *context);
-void sock_rx_ctx_add_ep(struct sock_rx_ctx *rx_ctx, struct sock_ep *ep);
 void sock_rx_ctx_free(struct sock_rx_ctx *rx_ctx);
 int sock_stx_ctx(struct fid_domain *domain,
 		 struct fi_tx_attr *attr, struct fid_stx **stx, void *context);
@@ -767,7 +766,6 @@ int sock_srx_ctx(struct fid_domain *domain,
 
 struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_attr *attr, 
 				      void *context);
-void sock_tx_ctx_add_ep(struct sock_tx_ctx *tx_ctx, struct sock_ep *ep);
 void sock_tx_ctx_free(struct sock_tx_ctx *tx_ctx);
 void sock_tx_ctx_start(struct sock_tx_ctx *tx_ctx);
 void sock_tx_ctx_write(struct sock_tx_ctx *tx_ctx, const void *buf, size_t len);

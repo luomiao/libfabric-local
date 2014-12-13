@@ -99,7 +99,6 @@ static int sock_ctx_close(struct fid *fid)
 		for (entry = stx_ctx->ep_list.next; entry != &stx_ctx->ep_list;
 		    entry = entry->next) {
 			ep = container_of(entry, struct sock_ep, tx_ctx_entry);
-			atomic_dec(&ep->num_rx_ctx);
 		}
 		sock_tx_ctx_free(stx_ctx);
 		break;
@@ -437,14 +436,16 @@ static int sock_ep_close(struct fid *fid)
 {
 	struct sock_ep *sock_ep;
 	sock_ep = container_of(fid, struct sock_ep, ep.fid);
-	
+
 	if (atomic_get(&sock_ep->ref) || atomic_get(&sock_ep->num_rx_ctx) ||
 	    atomic_get(&sock_ep->num_tx_ctx))
 		return -FI_EBUSY;
 	
-	sock_tx_ctx_free(sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt]);
-	sock_rx_ctx_free(sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt]);
-	
+	if (sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt]) 
+		sock_tx_ctx_free(sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt]);
+	if (sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt]) 
+		sock_rx_ctx_free(sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt]);
+
 	free(sock_ep->tx_array);
 	free(sock_ep->rx_array);
 	
@@ -464,8 +465,8 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 	struct sock_cq *cq;
 	struct sock_av *av;
 	struct sock_cntr *cntr;
-	struct sock_rx_ctx *rx_ctx;
 	struct sock_tx_ctx *tx_ctx;
+	struct sock_rx_ctx *rx_ctx;
 
 	ep = container_of(fid, struct sock_ep, ep.fid);
 	
@@ -619,6 +620,24 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		
 		break;
 
+	case FI_CLASS_STX_CTX:
+		tx_ctx = container_of(bfid, struct sock_tx_ctx, stx.fid);
+		dlist_insert_tail(&ep->tx_ctx_entry, &tx_ctx->ep_list);
+		ep->tx_ctx = tx_ctx;
+		
+		sock_tx_ctx_free(ep->tx_array[ep->ep_attr.tx_ctx_cnt]);
+		ep->tx_array[ep->ep_attr.tx_ctx_cnt] = NULL;
+		break;
+
+	case FI_CLASS_SRX_CTX:
+		rx_ctx = container_of(bfid, struct sock_rx_ctx, ctx);
+		dlist_insert_tail(&ep->rx_ctx_entry, &rx_ctx->ep_list);
+		ep->rx_ctx = rx_ctx;
+		
+		sock_rx_ctx_free(ep->rx_array[ep->ep_attr.rx_ctx_cnt]);
+		ep->rx_array[ep->ep_attr.rx_ctx_cnt] = NULL;
+		break;
+
 	default:
 		return -ENOSYS;
 	}
@@ -743,8 +762,8 @@ static int sock_ep_setopt(fid_t fid, int level, int optname,
 	return 0;
 }
 
-static int sock_ep_tx_ctx(struct fid_sep *ep, int index, struct fi_tx_attr *attr, 
-		    struct fid_ep **tx_ep, void *context)
+static int sock_ep_tx_ctx(struct fid_sep *ep, int index, struct fi_tx_attr *attr,
+			  struct fid_ep **tx_ep, void *context)
 {
 	struct sock_ep *sock_ep;
 	struct sock_tx_ctx *tx_ctx;
@@ -760,7 +779,7 @@ static int sock_ep_tx_ctx(struct fid_sep *ep, int index, struct fi_tx_attr *attr
 	tx_ctx->tx_id = index;
 	tx_ctx->ep = sock_ep;
 	tx_ctx->domain = sock_ep->domain;
-	sock_tx_ctx_add_ep(tx_ctx, sock_ep);
+	dlist_insert_tail(&sock_ep->tx_ctx_entry, &tx_ctx->ep_list);
 
 	tx_ctx->ctx.ops = &sock_ctx_ep_ops;
 	tx_ctx->ctx.msg = &sock_ctx_msg_ops;
@@ -791,7 +810,7 @@ static int sock_ep_rx_ctx(struct fid_sep *ep, int index, struct fi_rx_attr *attr
 	rx_ctx->rx_id = index;
 	rx_ctx->ep = sock_ep;
 	rx_ctx->domain = sock_ep->domain;
-	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
+	dlist_insert_tail(&sock_ep->rx_ctx_entry, &rx_ctx->ep_list);
 
 	rx_ctx->ctx.ops = &sock_ctx_ep_ops;
 	rx_ctx->ctx.msg = &sock_ctx_msg_ops;
@@ -1052,7 +1071,7 @@ int sock_alloc_endpoint(struct fid_domain *domain, struct fi_info *info,
 	tx_ctx->ep = sock_ep;
 	tx_ctx->domain = sock_dom;
 	tx_ctx->tx_id = sock_ep->ep_attr.tx_ctx_cnt;
-	sock_tx_ctx_add_ep(tx_ctx, sock_ep);
+	dlist_insert_tail(&sock_ep->tx_ctx_entry, &tx_ctx->ep_list);
 	sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt] = tx_ctx;
 	sock_ep->tx_ctx = tx_ctx;
 	
@@ -1061,7 +1080,7 @@ int sock_alloc_endpoint(struct fid_domain *domain, struct fi_info *info,
 	rx_ctx->ep = sock_ep;
 	rx_ctx->domain = sock_dom;
 	rx_ctx->rx_id = sock_ep->ep_attr.rx_ctx_cnt;
-	sock_rx_ctx_add_ep(rx_ctx, sock_ep);
+	dlist_insert_tail(&sock_ep->rx_ctx_entry, &rx_ctx->ep_list);
 	sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt] = rx_ctx;
 	sock_ep->rx_ctx = rx_ctx;
 	

@@ -65,14 +65,6 @@ struct sock_rx_ctx *sock_rx_ctx_alloc(struct fi_rx_attr *attr, void *context)
 	return rx_ctx;
 }
 
-void sock_rx_ctx_add_ep(struct sock_rx_ctx *rx_ctx, struct sock_ep *ep)
-{
-	fastlock_acquire(&rx_ctx->lock);
-	dlist_insert_tail(&ep->rx_ctx_entry, &rx_ctx->ep_list);
-	atomic_inc(&ep->num_rx_ctx); 
-	fastlock_release(&rx_ctx->lock);
-}
-
 void sock_rx_ctx_free(struct sock_rx_ctx *rx_ctx)
 {
 	fastlock_destroy(&rx_ctx->lock);
@@ -130,14 +122,6 @@ struct sock_tx_ctx *sock_tx_ctx_alloc(struct fi_tx_attr *attr, void *context)
 struct sock_tx_ctx *sock_stx_ctx_alloc(struct fi_tx_attr *attr, void *context)
 {
 	return sock_tx_context_alloc(attr, context, FI_CLASS_STX_CTX);
-}
-
-void sock_tx_ctx_add_ep(struct sock_tx_ctx *tx_ctx, struct sock_ep *ep)
-{
-	fastlock_acquire(&tx_ctx->lock);
-	dlist_insert_tail(&ep->tx_ctx_entry, &tx_ctx->ep_list);
-	atomic_inc(&ep->num_tx_ctx); 
-	fastlock_release(&tx_ctx->lock);
 }
 
 void sock_tx_ctx_free(struct sock_tx_ctx *tx_ctx)
