@@ -2433,6 +2433,7 @@ struct sock_pe *sock_pe_init(struct sock_domain *domain)
 	dlistfd_head_init(&pe->tx_list);
 	dlistfd_head_init(&pe->rx_list);
 	fastlock_init(&pe->lock);
+	pe->domain = domain;
 
 	if (domain->progress_mode == FI_PROGRESS_AUTO) {
 		pe->do_progress = 1;
@@ -2461,7 +2462,6 @@ void sock_pe_finalize(struct sock_pe *pe)
 	}
 	
 	fastlock_destroy(&pe->lock);
-	atomic_dec(&pe->domain->ref);
 
 	dlistfd_head_free(&pe->tx_list);
 	dlistfd_head_free(&pe->rx_list);
