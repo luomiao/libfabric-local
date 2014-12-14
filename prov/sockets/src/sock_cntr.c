@@ -59,13 +59,13 @@ int sock_cntr_progress(struct sock_cntr *cntr)
 	for (entry = cntr->tx_list.next; entry != &cntr->tx_list;
 	     entry = entry->next) {
 		tx_ctx = container_of(entry, struct sock_tx_ctx, cntr_entry);
-		sock_pe_progress_tx_ctx(cntr->dom->pe, tx_ctx);
+		sock_pe_progress_tx_ctx(cntr->domain->pe, tx_ctx);
 	}
 
 	for (entry = cntr->rx_list.next; entry != &cntr->rx_list;
 	     entry = entry->next) {
 		rx_ctx = container_of(entry, struct sock_rx_ctx, cntr_entry);
-		sock_pe_progress_rx_ctx(cntr->dom->pe, rx_ctx);
+		sock_pe_progress_rx_ctx(cntr->domain->pe, rx_ctx);
 	}
 	return 0;
 }
@@ -74,7 +74,7 @@ static uint64_t sock_cntr_read(struct fid_cntr *cntr)
 {
 	struct sock_cntr *_cntr;
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
-	if (_cntr->dom->progress_mode == FI_PROGRESS_MANUAL)
+	if (_cntr->domain->progress_mode == FI_PROGRESS_MANUAL)
 		sock_cntr_progress(_cntr);
 	return atomic_get(&_cntr->value);
 }
@@ -133,7 +133,7 @@ static int sock_cntr_wait(struct fid_cntr *cntr, uint64_t threshold, int timeout
 	fastlock_acquire(&_cntr->mut);
 	atomic_set(&_cntr->threshold, threshold);
 	while (atomic_get(&_cntr->value) < atomic_get(&_cntr->threshold) && !ret) {
-		if (_cntr->dom->progress_mode == FI_PROGRESS_MANUAL) {
+		if (_cntr->domain->progress_mode == FI_PROGRESS_MANUAL) {
 			if (timeout > 0) {
 				gettimeofday(&now, NULL);
 				start_ms = (double)now.tv_sec * 1000.0 + 
@@ -214,7 +214,7 @@ static int sock_cntr_close(struct fid *fid)
 	
 	fastlock_destroy(&cntr->mut);
 	pthread_cond_destroy(&cntr->cond);
-	atomic_dec(&cntr->dom->ref);
+	atomic_dec(&cntr->domain->ref);
 	free(cntr);
 	return 0;
 }
@@ -223,7 +223,7 @@ uint64_t sock_cntr_readerr(struct fid_cntr *cntr)
 {
 	struct sock_cntr *_cntr;
 	_cntr = container_of(cntr, struct sock_cntr, cntr_fid);
-	if (_cntr->dom->progress_mode == FI_PROGRESS_MANUAL)
+	if (_cntr->domain->progress_mode == FI_PROGRESS_MANUAL)
 		sock_cntr_progress(_cntr);
 	return atomic_get(&_cntr->err_cnt);
 }
@@ -342,7 +342,7 @@ int sock_cntr_open(struct fid_domain *domain, struct fi_cntr_attr *attr,
 
 	dom = container_of(domain, struct sock_domain, dom_fid);
 	atomic_inc(&dom->ref);
-	_cntr->dom = dom;
+	_cntr->domain = dom;
 	*cntr = &_cntr->cntr_fid;
 	return 0;
 

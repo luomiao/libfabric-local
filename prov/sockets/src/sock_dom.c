@@ -119,8 +119,9 @@ static int sock_dom_close(struct fid *fid)
 	void *res;
 
 	dom = container_of(fid, struct sock_domain, dom_fid.fid);
-	if (atomic_get(&dom->ref))
+	if (atomic_get(&dom->ref)) {
 		return -FI_EBUSY;
+	}
 
 	dom->listening = 0;
 	if (pthread_join(dom->listen_thread, &res)) {
@@ -156,7 +157,7 @@ static int sock_mr_close(struct fid *fid)
 	struct sock_mr *mr;
 
 	mr = container_of(fid, struct sock_mr, mr_fid.fid);
-	dom = mr->dom;
+	dom = mr->domain;
 	fastlock_acquire(&dom->lock);
 	idm_clear(&dom->mr_idm , (int) mr->mr_fid.key);
 	fastlock_release(&dom->lock);
@@ -255,8 +256,7 @@ static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr
 	_mr->mr_fid.fid.context = attr->context;
 	_mr->mr_fid.fid.ops = &sock_mr_fi_ops;
 
-	atomic_inc(&dom->ref);
-	_mr->dom = dom;
+	_mr->domain = dom;
 	_mr->access = attr->access;
 	_mr->offset = (flags & FI_MR_OFFSET) ?
 		      attr->offset : (uintptr_t) attr->mr_iov[0].iov_base;
@@ -274,6 +274,7 @@ static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr
 	memcpy(&_mr->mr_iov, attr->mr_iov, sizeof(_mr->mr_iov) * attr->iov_count);
 
 	*mr = &_mr->mr_fid;
+	atomic_inc(&dom->ref);
 
 	if (dom->mr_eq) {
 		eq_entry.fid = &domain->fid;
@@ -286,7 +287,6 @@ static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr
 
 err:
 	fastlock_release(&dom->lock);
-	atomic_dec(&dom->ref);
 	free(_mr);
 	return -errno;
 }
@@ -463,8 +463,8 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 		goto err;
 	}
 
-	sock_domain->r_cmap.dom = sock_domain;
-	sock_domain->u_cmap.dom = sock_domain;
+	sock_domain->r_cmap.domain = sock_domain;
+	sock_domain->u_cmap.domain = sock_domain;
 
 	sock_conn_listen(sock_domain);
 

@@ -79,25 +79,23 @@
 #define SOCK_EQ_DEF_SZ (1<<8)
 #define SOCK_CQ_DEF_SZ (1<<8)
 
-#define SOCK_EP_RDM_CAP (FI_MSG | FI_INJECT | FI_SOURCE |	\
-			 FI_SEND | FI_RECV | FI_TAGGED | FI_RMA |	\
-			 FI_BUFFERED_RECV | FI_MULTI_RECV | FI_NAMED_RX_CTX | \
-			 FI_DIRECTED_RECV | FI_SOURCE | FI_REMOTE_CQ_DATA | \
-			 FI_REMOTE_SIGNAL | FI_DYNAMIC_MR | FI_ATOMICS)
 
-#define SOCK_EP_DGRAM_CAP (FI_MSG | FI_INJECT | FI_SOURCE |	\
-			   FI_SEND | FI_RECV | FI_TAGGED | FI_BUFFERED_RECV | \
-			   FI_MULTI_RECV | FI_NAMED_RX_CTX | FI_DIRECTED_RECV |\
-			   FI_SOURCE | FI_REMOTE_CQ_DATA | FI_REMOTE_SIGNAL | \
-			   FI_DYNAMIC_MR | FI_ATOMICS)
+#define SOCK_EP_RDM_CAP (FI_MSG | FI_RMA | FI_TAGGED | FI_ATOMICS | FI_DYNAMIC_MR | \
+			 FI_NAMED_RX_CTX | FI_BUFFERED_RECV | FI_DIRECTED_RECV | \
+			 FI_INJECT | FI_MULTI_RECV | FI_SOURCE | FI_READ | FI_WRITE | \
+			 FI_RECV | FI_SEND | FI_REMOTE_READ | FI_REMOTE_WRITE |	\
+			 FI_REMOTE_CQ_DATA | FI_COMPLETION | FI_REMOTE_SIGNAL |	\
+			 FI_REMOTE_COMPLETE)
 
-#define SOCK_EP_MSG_CAP (FI_MSG | FI_INJECT | FI_SOURCE |		\
-			 FI_SEND | FI_RECV | FI_TAGGED | FI_RMA |	\
-			 FI_BUFFERED_RECV | FI_MULTI_RECV | FI_NAMED_RX_CTX | \
-			 FI_DIRECTED_RECV | FI_SOURCE | FI_REMOTE_CQ_DATA | \
-			 FI_REMOTE_SIGNAL | FI_DYNAMIC_MR | FI_ATOMICS)
+#define SOCK_EP_MSG_CAP SOCK_EP_RDM_CAP
 
-#define SOCK_OPS_CAP (FI_SEND | FI_RECV | FI_MULTI_RECV |	\
+#define SOCK_EP_DGRAM_CAP (FI_MSG | FI_TAGGED | FI_DYNAMIC_MR | FI_NAMED_RX_CTX | \
+			   FI_BUFFERED_RECV | FI_DIRECTED_RECV | FI_INJECT | \
+			   FI_MULTI_RECV | FI_SOURCE | FI_RECV | FI_SEND | \
+			   FI_REMOTE_CQ_DATA | FI_COMPLETION |		\
+			   FI_REMOTE_SIGNAL | FI_REMOTE_COMPLETE)
+
+#define SOCK_DEF_OPS (FI_SEND | FI_RECV | FI_MULTI_RECV |	\
 		      FI_BUFFERED_RECV | FI_READ | FI_WRITE |	\
 		      FI_REMOTE_READ | FI_REMOTE_WRITE )
 
@@ -128,7 +126,7 @@ struct sock_conn_map {
         struct sock_conn *table;
         int used;
         int size;
-		struct sock_domain *dom;
+		struct sock_domain *domain;
 };
 
 struct sock_domain {
@@ -153,7 +151,7 @@ struct sock_domain {
 
 struct sock_cntr {
 	struct fid_cntr		cntr_fid;
-	struct sock_domain	*dom;
+	struct sock_domain	*domain;
 	atomic_t	value;
 	atomic_t	threshold;
 	atomic_t	ref;
@@ -171,7 +169,7 @@ struct sock_cntr {
 
 struct sock_mr {
 	struct fid_mr		mr_fid;
-	struct sock_domain	*dom;
+	struct sock_domain	*domain;
 	uint64_t		access;
 	uint64_t		offset;
 	uint64_t		key;
@@ -189,7 +187,7 @@ struct sock_av_addr {
 
 struct sock_av {
 	struct fid_av		av_fid;
-	struct sock_domain	*dom;
+	struct sock_domain	*domain;
 	atomic_t		ref;
 	struct fi_av_attr	attr;
 	uint64_t		mask;
@@ -332,9 +330,6 @@ struct sock_ep {
 	};
 	size_t fclass;
 	uint64_t op_flags;
-
-	uint8_t enabled;
-	uint8_t connected;
 
 	uint8_t send_cq_event;
 	uint8_t recv_cq_event;

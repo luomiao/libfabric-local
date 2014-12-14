@@ -208,7 +208,7 @@ static int sock_av_close(struct fid *fid)
 			free(addr);
 	}
 
-	atomic_dec(&av->dom->ref);
+	atomic_dec(&av->domain->ref);
 	free(av);
 	return 0;
 }
@@ -303,7 +303,7 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 
 	atomic_init(&_av->ref, 0);
 	atomic_inc(&dom->ref);
-	_av->dom = dom;
+	_av->domain = dom;
 	switch (dom->info.addr_format) {
 	case FI_SOCKADDR_IN:
 		_av->addrlen = sizeof(struct sockaddr_in);

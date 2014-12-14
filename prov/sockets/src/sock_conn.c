@@ -125,7 +125,7 @@ uint16_t sock_conn_map_match_or_connect(struct sock_conn_map *map, struct
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
-	getaddrinfo(sa_ip, map->dom->service, &hints, &c_res);
+	getaddrinfo(sa_ip, map->domain->service, &hints, &c_res);
 	conn_fd = socket(c_res->ai_family, c_res->ai_socktype, 0);
 	if (conn_fd < 0) {
 		SOCK_LOG_ERROR("failed to create conn_fd, errno: %d\n", errno);
