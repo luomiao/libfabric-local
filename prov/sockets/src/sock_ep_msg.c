@@ -179,10 +179,12 @@ int sock_msg_verify_ep_attr(struct fi_ep_attr *ep_attr,
 		   sock_msg_ep_attr.msg_order)
 			return -FI_ENODATA;
 
-		if (ep_attr->tx_ctx_cnt > sock_msg_ep_attr.tx_ctx_cnt)
+		if ((ep_attr->tx_ctx_cnt > sock_msg_ep_attr.tx_ctx_cnt) &&
+		    ep_attr->tx_ctx_cnt != FI_SHARED_CONTEXT)
 			return -FI_ENODATA;
 
-		if (ep_attr->rx_ctx_cnt > sock_msg_ep_attr.rx_ctx_cnt)
+		if ((ep_attr->rx_ctx_cnt > sock_msg_ep_attr.rx_ctx_cnt) &&
+		    ep_attr->rx_ctx_cnt != FI_SHARED_CONTEXT)
 			return -FI_ENODATA;
 	}
 

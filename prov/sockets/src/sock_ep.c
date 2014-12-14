@@ -622,18 +622,14 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		tx_ctx = container_of(bfid, struct sock_tx_ctx, stx.fid);
 		dlist_insert_tail(&ep->tx_ctx_entry, &tx_ctx->ep_list);
 		ep->tx_ctx = tx_ctx;
-		
-		sock_tx_ctx_free(ep->tx_array[ep->ep_attr.tx_ctx_cnt]);
-		ep->tx_array[ep->ep_attr.tx_ctx_cnt] = NULL;
+		ep->tx_array[ep->ep_attr.tx_ctx_cnt] = tx_ctx;
 		break;
 
 	case FI_CLASS_SRX_CTX:
 		rx_ctx = container_of(bfid, struct sock_rx_ctx, ctx);
 		dlist_insert_tail(&ep->rx_ctx_entry, &rx_ctx->ep_list);
 		ep->rx_ctx = rx_ctx;
-		
-		sock_rx_ctx_free(ep->rx_array[ep->ep_attr.rx_ctx_cnt]);
-		ep->rx_array[ep->ep_attr.rx_ctx_cnt] = NULL;
+		ep->rx_array[ep->ep_attr.rx_ctx_cnt] = rx_ctx;
 		break;
 
 	default:
@@ -1058,28 +1054,33 @@ int sock_alloc_endpoint(struct fid_domain *domain, struct fi_info *info,
 		sock_ep->ep_attr.rx_ctx_cnt = 0;
 	}
 
-	sock_ep->tx_array = calloc(sock_ep->ep_attr.tx_ctx_cnt + 1, 
-				   sizeof(struct sock_tx_ctx *));
-	sock_ep->rx_array = calloc(sock_ep->ep_attr.rx_ctx_cnt + 1,
-				   sizeof(struct sock_rx_ctx *));
+	if (sock_ep->ep_attr.tx_ctx_cnt != FI_SHARED_CONTEXT) {
+		sock_ep->tx_array = calloc(sock_ep->ep_attr.tx_ctx_cnt + 1, 
+					   sizeof(struct sock_tx_ctx *));
+
+		/* default tx ctx */
+		tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_attr, context);
+		tx_ctx->ep = sock_ep;
+		tx_ctx->domain = sock_dom;
+		tx_ctx->tx_id = sock_ep->ep_attr.tx_ctx_cnt;
+		dlist_insert_tail(&sock_ep->tx_ctx_entry, &tx_ctx->ep_list);
+		sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt] = tx_ctx;
+		sock_ep->tx_ctx = tx_ctx;
+	}
 	
-	/* default tx ctx */
-	tx_ctx = sock_tx_ctx_alloc(&sock_ep->tx_attr, context);
-	tx_ctx->ep = sock_ep;
-	tx_ctx->domain = sock_dom;
-	tx_ctx->tx_id = sock_ep->ep_attr.tx_ctx_cnt;
-	dlist_insert_tail(&sock_ep->tx_ctx_entry, &tx_ctx->ep_list);
-	sock_ep->tx_array[sock_ep->ep_attr.tx_ctx_cnt] = tx_ctx;
-	sock_ep->tx_ctx = tx_ctx;
-	
-	/* default rx_ctx */
-	rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_attr, context);
-	rx_ctx->ep = sock_ep;
-	rx_ctx->domain = sock_dom;
-	rx_ctx->rx_id = sock_ep->ep_attr.rx_ctx_cnt;
-	dlist_insert_tail(&sock_ep->rx_ctx_entry, &rx_ctx->ep_list);
-	sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt] = rx_ctx;
-	sock_ep->rx_ctx = rx_ctx;
+	if (sock_ep->ep_attr.rx_ctx_cnt != FI_SHARED_CONTEXT) {
+		sock_ep->rx_array = calloc(sock_ep->ep_attr.rx_ctx_cnt + 1,
+					   sizeof(struct sock_rx_ctx *));
+		
+		/* default rx_ctx */
+		rx_ctx = sock_rx_ctx_alloc(&sock_ep->rx_attr, context);
+		rx_ctx->ep = sock_ep;
+		rx_ctx->domain = sock_dom;
+		rx_ctx->rx_id = sock_ep->ep_attr.rx_ctx_cnt;
+		dlist_insert_tail(&sock_ep->rx_ctx_entry, &rx_ctx->ep_list);
+		sock_ep->rx_array[sock_ep->ep_attr.rx_ctx_cnt] = rx_ctx;
+		sock_ep->rx_ctx = rx_ctx;
+	}
 	
 	/* default config */
 	sock_ep->min_multi_recv = SOCK_EP_MIN_MULTI_RECV;

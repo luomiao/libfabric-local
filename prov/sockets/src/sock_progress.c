@@ -198,7 +198,7 @@ void sock_pe_report_mr_completion(struct sock_domain *domain,
 		mr = sock_mr_get_entry(domain, pe_entry->rx.rx_iov[i].iov.key);
 		
 		pe_entry->buf = pe_entry->rx.rx_iov[i].iov.addr;
-		pe_entry->done_len = pe_entry->rx.rx_iov[i].iov.len;
+		pe_entry->data_len = pe_entry->rx.rx_iov[i].iov.len;
 		
 		if (mr->cq)
 			mr->cq->report_completion(mr->cq, 
@@ -208,6 +208,61 @@ void sock_pe_report_mr_completion(struct sock_domain *domain,
 			sock_cntr_inc(mr->cntr);
 	}
 }
+
+void sock_pe_report_remote_write(struct sock_rx_ctx *rx_ctx,
+				 struct sock_pe_entry *pe_entry)
+{
+	pe_entry->buf = pe_entry->rx.rx_iov[0].iov.addr;
+	pe_entry->data_len = pe_entry->rx.rx_iov[0].iov.len;
+	
+	if ((!rx_ctx->rem_write_cq && !rx_ctx->rem_write_cntr &&
+	     !(rx_ctx->attr.op_flags & FI_REMOTE_WRITE)))
+		return;
+	
+	if (rx_ctx->rem_write_cq) {
+		if (rx_ctx->rem_write_cq_event) {
+			if ( pe_entry->flags & FI_COMPLETION)
+				rx_ctx->rem_write_cq->report_completion(
+					rx_ctx->rem_write_cq, 
+					pe_entry->msg_hdr.src_addr, pe_entry);
+		} else {
+			rx_ctx->rem_write_cq->report_completion(
+				rx_ctx->rem_write_cq, 
+				pe_entry->msg_hdr.src_addr, pe_entry);
+		}
+	}
+	
+	if (rx_ctx->rem_write_cntr)
+		sock_cntr_inc(rx_ctx->rem_write_cntr);
+}
+
+void sock_pe_report_remote_read(struct sock_rx_ctx *rx_ctx,
+				struct sock_pe_entry *pe_entry)
+{
+	pe_entry->buf = pe_entry->rx.rx_iov[0].iov.addr;
+	pe_entry->data_len = pe_entry->rx.rx_iov[0].iov.len;
+	
+	if ((!rx_ctx->rem_read_cq && !rx_ctx->rem_read_cntr &&
+	     !(rx_ctx->attr.op_flags & FI_REMOTE_READ)))
+		return;
+	
+	if (rx_ctx->rem_read_cq) {
+		if (rx_ctx->rem_read_cq_event) {
+			if ( pe_entry->flags & FI_COMPLETION)
+				rx_ctx->rem_read_cq->report_completion(
+					rx_ctx->rem_read_cq, 
+					pe_entry->msg_hdr.src_addr, pe_entry);
+		} else {
+			rx_ctx->rem_read_cq->report_completion(
+				rx_ctx->rem_read_cq, 
+				pe_entry->msg_hdr.src_addr, pe_entry);
+		}
+	}
+	
+	if (rx_ctx->rem_read_cntr)
+		sock_cntr_inc(rx_ctx->rem_read_cntr);
+}
+
 
 static void sock_pe_progress_pending_ack(struct sock_pe *pe, 
 					 struct sock_pe_entry *pe_entry)
@@ -587,6 +642,7 @@ static int sock_pe_process_rx_read(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		sock_pe_report_rx_completion(pe_entry, rx_ctx);
 	}
 
+	sock_pe_report_remote_read(rx_ctx, pe_entry);
 	sock_pe_send_rma_read_response(pe, pe_entry, data_len);	
 	return ret;
 }
@@ -694,6 +750,7 @@ static int sock_pe_process_rx_write(struct sock_pe *pe, struct sock_rx_ctx *rx_c
 	}
 
 out:
+	sock_pe_report_remote_write(rx_ctx, pe_entry);
 	sock_pe_report_mr_completion(rx_ctx->domain, pe_entry);
 	sock_pe_send_response(pe, pe_entry, SOCK_OP_WRITE_COMPLETE);	
 	return ret;
@@ -1153,6 +1210,7 @@ static int sock_pe_process_rx_atomic(struct sock_pe *pe, struct sock_rx_ctx *rx_
 		sock_pe_report_rx_completion(pe_entry, rx_ctx);
 	}
 
+	sock_pe_report_remote_write(rx_ctx, pe_entry);
 	sock_pe_report_mr_completion(rx_ctx->domain, pe_entry);
 	sock_pe_send_atomic_op_response(pe, pe_entry, entry_len);
 	return ret;
