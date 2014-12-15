@@ -57,7 +57,7 @@
 #include "sock_util.h"
 
 
-static ssize_t sock_ctx_tx_atomic(struct fid_ep *ep, 
+static ssize_t sock_ep_tx_atomic(struct fid_ep *ep, 
 				  const struct fi_msg_atomic *msg, 
 				  const struct fi_ioc *comparev, void **compare_desc, 
 				  size_t compare_count, struct fi_ioc *resultv, 
@@ -71,8 +71,24 @@ static ssize_t sock_ctx_tx_atomic(struct fid_ep *ep,
 	struct sock_conn *conn;
 	struct sock_tx_ctx *tx_ctx;
 	uint64_t total_len, src_len, dst_len;
+	struct sock_ep *sock_ep;
 
-	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+	switch (ep->fid.fclass) {
+	case FI_CLASS_EP:
+		sock_ep = container_of(ep, struct sock_ep, ep);
+		tx_ctx = sock_ep->tx_ctx;
+		break;
+
+	case FI_CLASS_TX_CTX:
+		tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+		sock_ep = tx_ctx->ep;
+		break;
+
+	default:
+		SOCK_LOG_ERROR("Invalid EP type\n");
+		return -FI_EINVAL;
+	}
+
 	assert(tx_ctx->enabled && 
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
@@ -122,6 +138,7 @@ static ssize_t sock_ctx_tx_atomic(struct fid_ep *ep,
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->msg_iov[0].addr, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &sock_ep, sizeof(uint64_t));
 
 	if (flags & FI_REMOTE_CQ_DATA) {
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
@@ -194,14 +211,14 @@ err:
 }
 
 
-static ssize_t sock_ctx_atomic_writemsg(struct fid_ep *ep,
+static ssize_t sock_ep_atomic_writemsg(struct fid_ep *ep,
 			const struct fi_msg_atomic *msg, uint64_t flags)
 {
-	return sock_ctx_tx_atomic(ep, msg, NULL, NULL, 0,
+	return sock_ep_tx_atomic(ep, msg, NULL, NULL, 0,
 				  NULL, NULL, 0, flags, SOCK_OP_ATOMIC_WRITE);
 }
 
-static ssize_t sock_ctx_atomic_write(struct fid_ep *ep,
+static ssize_t sock_ep_atomic_write(struct fid_ep *ep,
 				     const void *buf, size_t count, void *desc,
 				     fi_addr_t dest_addr, uint64_t addr, 
 				     uint64_t key, enum fi_datatype datatype, 
@@ -229,10 +246,10 @@ static ssize_t sock_ctx_atomic_write(struct fid_ep *ep,
 	msg.context = context;
 	msg.data = 0;
 
-	return sock_ctx_atomic_writemsg(ep, &msg, 0);
+	return sock_ep_atomic_writemsg(ep, &msg, 0);
 }
 
-static ssize_t sock_ctx_atomic_writev(struct fid_ep *ep,
+static ssize_t sock_ep_atomic_writev(struct fid_ep *ep,
 			const struct fi_ioc *iov, void **desc, size_t count,
 			fi_addr_t dest_addr,
 			uint64_t addr, uint64_t key,
@@ -257,10 +274,10 @@ static ssize_t sock_ctx_atomic_writev(struct fid_ep *ep,
 	msg.context = context;
 	msg.data = 0;
 
-	return sock_ctx_atomic_writemsg(ep, &msg, 0);
+	return sock_ep_atomic_writemsg(ep, &msg, 0);
 }
 
-static ssize_t sock_ctx_atomic_inject(struct fid_ep *ep, const void *buf, size_t count,
+static ssize_t sock_ep_atomic_inject(struct fid_ep *ep, const void *buf, size_t count,
 				      fi_addr_t dest_addr, uint64_t addr, uint64_t key,
 				      enum fi_datatype datatype, enum fi_op op)
 {
@@ -284,20 +301,20 @@ static ssize_t sock_ctx_atomic_inject(struct fid_ep *ep, const void *buf, size_t
 	msg.op = op;
 	msg.data = 0;
 
-	return sock_ctx_atomic_writemsg(ep, &msg, FI_INJECT);
+	return sock_ep_atomic_writemsg(ep, &msg, FI_INJECT);
 }
 
-static ssize_t sock_ctx_atomic_readwritemsg(struct fid_ep *ep, 
+static ssize_t sock_ep_atomic_readwritemsg(struct fid_ep *ep, 
 					    const struct fi_msg_atomic *msg,
 					    struct fi_ioc *resultv, void **result_desc, 
 					    size_t result_count, uint64_t flags)
 {
-	return sock_ctx_tx_atomic(ep, msg, NULL, NULL, 0,
+	return sock_ep_tx_atomic(ep, msg, NULL, NULL, 0,
 				  resultv, result_desc, result_count, flags, 
 				  SOCK_OP_ATOMIC_READ_WRITE);
 }
 
-static ssize_t sock_ctx_atomic_readwrite(struct fid_ep *ep,
+static ssize_t sock_ep_atomic_readwrite(struct fid_ep *ep,
 			const void *buf, size_t count, void *desc,
 			void *result, void *result_desc,
 			fi_addr_t dest_addr,
@@ -329,11 +346,11 @@ static ssize_t sock_ctx_atomic_readwrite(struct fid_ep *ep,
 	resultv.addr = result;
 	resultv.count = 1;
     
-	return sock_ctx_atomic_readwritemsg(ep, &msg, 
+	return sock_ep_atomic_readwritemsg(ep, &msg, 
 					    &resultv, &result_desc, 1, 0);
 }
 
-static ssize_t sock_ctx_atomic_readwritev(struct fid_ep *ep,
+static ssize_t sock_ep_atomic_readwritev(struct fid_ep *ep,
 			const struct fi_ioc *iov, void **desc, size_t count,
 			struct fi_ioc *resultv, void **result_desc, size_t result_count,
 			fi_addr_t dest_addr,
@@ -357,22 +374,22 @@ static ssize_t sock_ctx_atomic_readwritev(struct fid_ep *ep,
 	msg.op = op;
 	msg.context = context;
 	
-	return sock_ctx_atomic_readwritemsg(ep, &msg, 
+	return sock_ep_atomic_readwritemsg(ep, &msg, 
 					    resultv, result_desc, result_count, 0);
 }
 
-static ssize_t sock_ctx_atomic_compwritemsg(struct fid_ep *ep,
+static ssize_t sock_ep_atomic_compwritemsg(struct fid_ep *ep,
 			const struct fi_msg_atomic *msg,
 			const struct fi_ioc *comparev, void **compare_desc, size_t compare_count,
 			struct fi_ioc *resultv, void **result_desc, size_t result_count,
 			uint64_t flags)
 {
-	return sock_ctx_tx_atomic(ep, msg, comparev, compare_desc, compare_count,
+	return sock_ep_tx_atomic(ep, msg, comparev, compare_desc, compare_count,
 				  resultv, result_desc, result_count, flags, 
 				  SOCK_OP_ATOMIC_COMP_WRITE);
 }
 
-static ssize_t sock_ctx_atomic_compwrite(struct fid_ep *ep,
+static ssize_t sock_ep_atomic_compwrite(struct fid_ep *ep,
 			const void *buf, size_t count, void *desc,
 			const void *compare, void *compare_desc,
 			void *result, void *result_desc,
@@ -408,11 +425,11 @@ static ssize_t sock_ctx_atomic_compwrite(struct fid_ep *ep,
 	comparev.addr = (void*)compare;
 	comparev.count = 1;
 
-	return sock_ctx_atomic_compwritemsg(ep, &msg, &comparev, &compare_desc, 1,
+	return sock_ep_atomic_compwritemsg(ep, &msg, &comparev, &compare_desc, 1,
 					    &resultv, &result_desc, 1, 0);
 }
 
-static ssize_t sock_ctx_atomic_compwritev(struct fid_ep *ep,
+static ssize_t sock_ep_atomic_compwritev(struct fid_ep *ep,
 			const struct fi_ioc *iov, void **desc, size_t count,
 			const struct fi_ioc *comparev, void **compare_desc, size_t compare_count,
 			struct fi_ioc *resultv, void **result_desc, size_t result_count,
@@ -437,11 +454,11 @@ static ssize_t sock_ctx_atomic_compwritev(struct fid_ep *ep,
 	msg.op = op;
 	msg.context = context;
 	
-	return sock_ctx_atomic_compwritemsg(ep, &msg, comparev, compare_desc, 1,
+	return sock_ep_atomic_compwritemsg(ep, &msg, comparev, compare_desc, 1,
 					    resultv, result_desc, 1, 0);
 }
 
-static int sock_ctx_atomic_valid(struct fid_ep *ep, enum fi_datatype datatype, 
+static int sock_ep_atomic_valid(struct fid_ep *ep, enum fi_datatype datatype, 
 			      enum fi_op op, size_t *count)
 {
 	size_t datatype_sz;
@@ -466,154 +483,6 @@ static int sock_ctx_atomic_valid(struct fid_ep *ep, enum fi_datatype datatype,
 	datatype_sz = fi_datatype_size(datatype);
 	*count = (SOCK_EP_MAX_ATOMIC_SZ/datatype_sz);
 	return 0;
-}
-
-struct fi_ops_atomic sock_ctx_atomic = {
-	.size = sizeof(struct fi_ops_atomic),
-	.write = sock_ctx_atomic_write,
-	.writev = sock_ctx_atomic_writev,
-	.writemsg = sock_ctx_atomic_writemsg,
-	.inject = sock_ctx_atomic_inject,
-	.readwrite = sock_ctx_atomic_readwrite,
-	.readwritev = sock_ctx_atomic_readwritev,
-	.readwritemsg = sock_ctx_atomic_readwritemsg,
-	.compwrite = sock_ctx_atomic_compwrite,
-	.compwritev = sock_ctx_atomic_compwritev,
-	.compwritemsg = sock_ctx_atomic_compwritemsg,
-	.writevalid = sock_ctx_atomic_valid,
-	.readwritevalid = sock_ctx_atomic_valid,
-	.compwritevalid = sock_ctx_atomic_valid,
-};
-
-static ssize_t sock_ep_atomic_write(struct fid_ep *ep, const void *buf, size_t count, 
-				    void *desc, fi_addr_t dest_addr, uint64_t addr, uint64_t key,
-				    enum fi_datatype datatype, enum fi_op op, void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_write(&sock_ep->tx_ctx->ctx, buf, count, desc, dest_addr,
-				     addr, key, datatype, op, context);
-}
-
-static ssize_t sock_ep_atomic_writev(struct fid_ep *ep, const struct fi_ioc *iov, 
-				     void **desc, size_t count, fi_addr_t dest_addr,
-				     uint64_t addr, uint64_t key, enum fi_datatype datatype, 
-				     enum fi_op op, void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_writev(&sock_ep->tx_ctx->ctx, iov, desc, count, dest_addr,
-				      addr, key, datatype, op, context);
-}
-
-static ssize_t sock_ep_atomic_writemsg(struct fid_ep *ep,
-				       const struct fi_msg_atomic *msg, uint64_t flags)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_writemsg(&sock_ep->tx_ctx->ctx, msg, flags);
-}
-
-static ssize_t sock_ep_atomic_inject(struct fid_ep *ep, const void *buf, size_t count,
-				     fi_addr_t dest_addr, uint64_t addr, uint64_t key,
-				     enum fi_datatype datatype, enum fi_op op)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_inject(&sock_ep->tx_ctx->ctx, buf, count, dest_addr,
-				      addr, key, datatype, op);
-}
-
-static ssize_t sock_ep_atomic_readwrite(struct fid_ep *ep, const void *buf, 
-					size_t count, void *desc, void *result, void *result_desc,
-					fi_addr_t dest_addr, uint64_t addr, uint64_t key,
-					enum fi_datatype datatype, enum fi_op op, void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_readwrite(&sock_ep->tx_ctx->ctx, buf, count, desc, 
-					 result, result_desc, dest_addr, addr, 
-					 key, datatype, op, context);
-}
-
-static ssize_t sock_ep_atomic_readwritev(struct fid_ep *ep,
-					 const struct fi_ioc *iov, void **desc, size_t count,
-					 struct fi_ioc *resultv, void **result_desc, size_t result_count,
-					 fi_addr_t dest_addr,
-					 uint64_t addr, uint64_t key,
-					 enum fi_datatype datatype, enum fi_op op, void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_readwritev(&sock_ep->tx_ctx->ctx, iov, desc, count,
-					  resultv, result_desc, result_count, 
-					  dest_addr, addr, key, datatype, op, context);
-}
-
-static ssize_t sock_ep_atomic_readwritemsg(struct fid_ep *ep, 
-					   const struct fi_msg_atomic *msg,
-					   struct fi_ioc *resultv, void **result_desc, 
-					   size_t result_count, uint64_t flags)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_readwritemsg(&sock_ep->tx_ctx->ctx, msg, 
-					    resultv, result_desc, result_count, 
-					    flags);
-}
-
-
-static ssize_t sock_ep_atomic_compwrite(struct fid_ep *ep,
-					const void *buf, size_t count, void *desc,
-					const void *compare, void *compare_desc,
-					void *result, void *result_desc,
-					fi_addr_t dest_addr, uint64_t addr, uint64_t key,
-					enum fi_datatype datatype, enum fi_op op, void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_compwrite(&sock_ep->tx_ctx->ctx, buf, count,
-					 desc, compare, compare_desc, result, 
-					 result_desc, dest_addr, addr, key, 
-					 datatype, op, context);
-}
-
-static ssize_t sock_ep_atomic_compwritev(struct fid_ep *ep,
-					 const struct fi_ioc *iov, void **desc, size_t count,
-					 const struct fi_ioc *comparev, void **compare_desc, 
-					 size_t compare_count, struct fi_ioc *resultv, 
-					 void **result_desc, size_t result_count,
-					 fi_addr_t dest_addr, uint64_t addr, uint64_t key,
-					 enum fi_datatype datatype, enum fi_op op, void *context)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_compwritev(&sock_ep->tx_ctx->ctx, iov, desc, count,
-					  comparev, compare_desc, compare_count,
-					  resultv, result_desc, result_count, dest_addr, addr, key, 
-					  datatype, op, context);
-}
-
-static ssize_t sock_ep_atomic_compwritemsg(struct fid_ep *ep,
-					   const struct fi_msg_atomic *msg,
-					   const struct fi_ioc *comparev, void **compare_desc, 
-					   size_t compare_count, struct fi_ioc *resultv, 
-					   void **result_desc, size_t result_count,
-					   uint64_t flags)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_compwritemsg(&sock_ep->tx_ctx->ctx, msg,
-					    comparev, compare_desc, compare_count,
-					    resultv, result_desc, result_count, flags);
-}
-
-static int sock_ep_atomic_valid(struct fid_ep *ep,
-				     enum fi_datatype datatype, enum fi_op op, size_t *count)
-{
-	struct sock_ep *sock_ep;
-	sock_ep = container_of(ep, struct sock_ep, ep);
-	return sock_ctx_atomic_valid(&sock_ep->tx_ctx->ctx, datatype, op, count);
 }
 
 struct fi_ops_atomic sock_ep_atomic = {

@@ -51,11 +51,6 @@ extern struct fi_ops sock_ep_fi_ops;
 extern struct fi_ops_ep sock_ctx_ep_ops;
 extern struct fi_ops sock_ctx_ops;
 
-extern struct fi_ops_rma sock_ctx_rma;
-extern struct fi_ops_msg sock_ctx_msg_ops;
-extern struct fi_ops_tagged sock_ctx_tagged;
-extern struct fi_ops_atomic sock_ctx_atomic;
-
 extern const struct fi_domain_attr sock_domain_attr;
 extern const struct fi_fabric_attr sock_fabric_attr;
 
@@ -122,21 +117,21 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 	case FI_CLASS_TX_CTX:
 		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx);
 		if (flags & FI_SEND) {
-			tx_ctx->send_cq = sock_cq;
+			tx_ctx->comp.send_cq = sock_cq;
 			if (flags & FI_COMPLETION)
-				tx_ctx->send_cq_event = 1;
+				tx_ctx->comp.send_cq_event = 1;
 		}
 
 		if (flags & FI_READ) {
-			tx_ctx->read_cq = sock_cq;
+			tx_ctx->comp.read_cq = sock_cq;
 			if (flags & FI_COMPLETION)
-				tx_ctx->read_cq_event = 1;
+				tx_ctx->comp.read_cq_event = 1;
 		}
 
 		if (flags & FI_WRITE) {
-			tx_ctx->write_cq = sock_cq;
+			tx_ctx->comp.write_cq = sock_cq;
 			if (flags & FI_COMPLETION)
-				tx_ctx->write_cq_event = 1;
+				tx_ctx->comp.write_cq_event = 1;
 		}
 
 		if (!tx_ctx->progress) {
@@ -149,21 +144,21 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 	case FI_CLASS_RX_CTX:
 		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx.fid);
 		if (flags & FI_RECV) {
-			rx_ctx->recv_cq = sock_cq;
+			rx_ctx->comp.recv_cq = sock_cq;
 			if (flags & FI_COMPLETION)
-				rx_ctx->recv_cq_event = 1;
+				rx_ctx->comp.recv_cq_event = 1;
 		}
 
 		if (flags & FI_REMOTE_READ) {
-			rx_ctx->rem_read_cq = sock_cq;
+			rx_ctx->comp.rem_read_cq = sock_cq;
 			if (flags & FI_COMPLETION)
-				rx_ctx->rem_read_cq_event = 1;
+				rx_ctx->comp.rem_read_cq_event = 1;
 		}
 
 		if (flags & FI_REMOTE_WRITE) {
-			rx_ctx->rem_write_cq = sock_cq;
+			rx_ctx->comp.rem_write_cq = sock_cq;
 			if (flags & FI_COMPLETION)
-				rx_ctx->rem_write_cq_event = 1;
+				rx_ctx->comp.rem_write_cq_event = 1;
 		}
 
 		if (!rx_ctx->progress) {
@@ -176,21 +171,21 @@ static int sock_ctx_bind_cq(struct fid *fid, struct fid *bfid, uint64_t flags)
 	case FI_CLASS_STX_CTX:
 		tx_ctx = container_of(fid, struct sock_tx_ctx, stx.fid);
 		if (flags & FI_SEND) {
-			tx_ctx->send_cq = sock_cq;
+			tx_ctx->comp.send_cq = sock_cq;
 			if (flags & FI_COMPLETION)
-				tx_ctx->send_cq_event = 1;
+				tx_ctx->comp.send_cq_event = 1;
 		}
 
 		if (flags & FI_READ) {
-			tx_ctx->read_cq = sock_cq;
+			tx_ctx->comp.read_cq = sock_cq;
 			if (flags & FI_COMPLETION)
-				tx_ctx->read_cq_event = 1;
+				tx_ctx->comp.read_cq_event = 1;
 		}
 
 		if (flags & FI_WRITE) {
-			tx_ctx->write_cq = sock_cq;
+			tx_ctx->comp.write_cq = sock_cq;
 			if (flags & FI_COMPLETION)
-				tx_ctx->write_cq_event = 1;
+				tx_ctx->comp.write_cq_event = 1;
 		}
 
 		if (!tx_ctx->progress) {
@@ -218,13 +213,13 @@ static int sock_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 	case FI_CLASS_TX_CTX:
 		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx.fid);
 		if (flags & FI_SEND)
-			tx_ctx->send_cntr = cntr;
+			tx_ctx->comp.send_cntr = cntr;
 		
 		if (flags & FI_READ)
-			tx_ctx->read_cntr = cntr;
+			tx_ctx->comp.read_cntr = cntr;
 
 		if (flags & FI_WRITE)
-			tx_ctx->write_cntr = cntr;
+			tx_ctx->comp.write_cntr = cntr;
 
 		if (!tx_ctx->progress) {
 			tx_ctx->progress = 1;
@@ -237,13 +232,13 @@ static int sock_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 	case FI_CLASS_RX_CTX:
 		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx.fid);
 		if (flags & FI_RECV) 
-			rx_ctx->recv_cntr = cntr;
+			rx_ctx->comp.recv_cntr = cntr;
 
 		if (flags & FI_REMOTE_READ) 
-			rx_ctx->rem_read_cntr = cntr;
+			rx_ctx->comp.rem_read_cntr = cntr;
 
 		if (flags & FI_REMOTE_WRITE) 
-			rx_ctx->rem_write_cntr = cntr;
+			rx_ctx->comp.rem_write_cntr = cntr;
 		
 		if (!rx_ctx->progress) {
 			rx_ctx->progress = 1;
@@ -255,13 +250,13 @@ static int sock_ctx_bind_cntr(struct fid *fid, struct fid *bfid, uint64_t flags)
 	case FI_CLASS_STX_CTX:
 		tx_ctx = container_of(fid, struct sock_tx_ctx, ctx.fid);
 		if (flags & FI_SEND)
-			tx_ctx->send_cntr = cntr;
+			tx_ctx->comp.send_cntr = cntr;
 		
 		if (flags & FI_READ)
-			tx_ctx->read_cntr = cntr;
+			tx_ctx->comp.read_cntr = cntr;
 
 		if (flags & FI_WRITE)
-			tx_ctx->write_cntr = cntr;
+			tx_ctx->comp.write_cntr = cntr;
 
 		if (!tx_ctx->progress) {
 			tx_ctx->progress = 1;
@@ -472,44 +467,47 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 	case FI_CLASS_EQ:
 		return -FI_ENOSYS;
 
+	case FI_CLASS_MR:
+		return 0;
+
 	case FI_CLASS_CQ:
 		cq = container_of(bfid, struct sock_cq, cq_fid.fid);
 		assert(ep->domain == cq->domain);
 
 		if (flags & FI_SEND) {
-			ep->send_cq = cq;
+			ep->comp.send_cq = cq;
 			if (flags & FI_COMPLETION)
-				ep->send_cq_event = 1;
+				ep->comp.send_cq_event = 1;
 		}
 
 		if (flags & FI_READ) {
-			ep->read_cq = cq;
+			ep->comp.read_cq = cq;
 			if (flags & FI_COMPLETION)
-				ep->read_cq_event = 1;
+				ep->comp.read_cq_event = 1;
 		}
 
 		if (flags & FI_WRITE) {
-			ep->write_cq = cq;
+			ep->comp.write_cq = cq;
 			if (flags & FI_COMPLETION)
-				ep->write_cq_event = 1;
+				ep->comp.write_cq_event = 1;
 		}
 
 		if (flags & FI_RECV) {
-			ep->recv_cq = cq;
+			ep->comp.recv_cq = cq;
 			if (flags & FI_COMPLETION)
-				ep->recv_cq_event = 1;
+				ep->comp.recv_cq_event = 1;
 		}
 
 		if (flags & FI_REMOTE_READ) {
-			ep->rem_read_cq = cq;
+			ep->comp.rem_read_cq = cq;
 			if (flags & FI_COMPLETION)
-				ep->rem_read_cq_event = 1;
+				ep->comp.rem_read_cq_event = 1;
 		}
 
 		if (flags & FI_REMOTE_WRITE) {
-			ep->rem_write_cq = cq;
+			ep->comp.rem_write_cq = cq;
 			if (flags & FI_COMPLETION)
-				ep->rem_write_cq_event = 1;
+				ep->comp.rem_write_cq_event = 1;
 		}
 
 		if (flags & FI_SEND || flags & FI_WRITE || flags & FI_READ) {
@@ -545,22 +543,22 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 		assert(ep->domain == cntr->dom);
 
 		if (flags & FI_SEND)
-			ep->send_cntr = cntr;
+			ep->comp.send_cntr = cntr;
 
 		if (flags & FI_RECV)
-			ep->recv_cntr = cntr;
+			ep->comp.recv_cntr = cntr;
 
 		if (flags & FI_READ)
-			ep->read_cntr = cntr;
+			ep->comp.read_cntr = cntr;
 
 		if (flags & FI_WRITE)
-			ep->write_cntr = cntr;
+			ep->comp.write_cntr = cntr;
 
 		if (flags & FI_REMOTE_READ)
-			ep->rem_read_cntr = cntr;
+			ep->comp.rem_read_cntr = cntr;
 		
 		if (flags & FI_REMOTE_WRITE)
-			ep->rem_write_cntr = cntr;
+			ep->comp.rem_write_cntr = cntr;
 		
 		if (flags & FI_SEND || flags & FI_WRITE || flags & FI_READ) {
 			for (i=0; i<=ep->ep_attr.tx_ctx_cnt; i++) {
@@ -775,10 +773,10 @@ static int sock_ep_tx_ctx(struct fid_sep *ep, int index, struct fi_tx_attr *attr
 	dlist_insert_tail(&sock_ep->tx_ctx_entry, &tx_ctx->ep_list);
 
 	tx_ctx->ctx.ops = &sock_ctx_ep_ops;
-	tx_ctx->ctx.msg = &sock_ctx_msg_ops;
-	tx_ctx->ctx.tagged = &sock_ctx_tagged;
-	tx_ctx->ctx.rma = &sock_ctx_rma;
-	tx_ctx->ctx.atomic = &sock_ctx_atomic;
+	tx_ctx->ctx.msg = &sock_ep_msg_ops;
+	tx_ctx->ctx.tagged = &sock_ep_tagged;
+	tx_ctx->ctx.rma = &sock_ep_rma;
+	tx_ctx->ctx.atomic = &sock_ep_atomic;
 
 	*tx_ep = &tx_ctx->ctx;
 	sock_ep->tx_array[index] = tx_ctx;
@@ -806,8 +804,8 @@ static int sock_ep_rx_ctx(struct fid_sep *ep, int index, struct fi_rx_attr *attr
 	dlist_insert_tail(&sock_ep->rx_ctx_entry, &rx_ctx->ep_list);
 
 	rx_ctx->ctx.ops = &sock_ctx_ep_ops;
-	rx_ctx->ctx.msg = &sock_ctx_msg_ops;
-	rx_ctx->ctx.tagged = &sock_ctx_tagged;
+	rx_ctx->ctx.msg = &sock_ep_msg_ops;
+	rx_ctx->ctx.tagged = &sock_ep_tagged;
 
 	/* default config */
 	rx_ctx->min_multi_recv = SOCK_EP_MIN_MULTI_RECV;
@@ -890,8 +888,8 @@ int sock_srx_ctx(struct fid_domain *domain,
 	rx_ctx->ctx.fid.fclass = FI_CLASS_SRX_CTX;
 	
 	rx_ctx->ctx.ops = &sock_ctx_ep_ops;
-	rx_ctx->ctx.msg = &sock_ctx_msg_ops;
-	rx_ctx->ctx.tagged = &sock_ctx_tagged;
+	rx_ctx->ctx.msg = &sock_ep_msg_ops;
+	rx_ctx->ctx.tagged = &sock_ep_tagged;
 	
 	/* default config */
 	rx_ctx->min_multi_recv = SOCK_EP_MIN_MULTI_RECV;

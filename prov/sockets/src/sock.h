@@ -322,31 +322,14 @@ struct sock_eq{
 	int signal;
 };
 
-struct sock_ep {
-	union{
-		struct fid_ep ep;
-		struct fid_sep sep;
-		struct fid_pep pep;
-	};
-	size_t fclass;
-	uint64_t op_flags;
-
+struct sock_comp {
 	uint8_t send_cq_event;
 	uint8_t recv_cq_event;
 	uint8_t read_cq_event;
 	uint8_t write_cq_event;
 	uint8_t rem_read_cq_event;
 	uint8_t rem_write_cq_event;
-
-	uint16_t buffered_len;
-	uint16_t min_multi_recv;
-	uint8_t reserved[4];
-
-	atomic_t ref;
-
-	struct sock_eq *eq;
-	struct sock_av *av;
-	struct sock_domain *domain;	
+	char reserved[2];
 
 	struct sock_cq	*send_cq;
 	struct sock_cq	*recv_cq;
@@ -361,6 +344,29 @@ struct sock_ep {
 	struct sock_cntr *write_cntr;
 	struct sock_cntr *rem_read_cntr;
 	struct sock_cntr *rem_write_cntr;
+
+	struct sock_eq *eq;
+};
+
+struct sock_ep {
+	union{
+		struct fid_ep ep;
+		struct fid_sep sep;
+		struct fid_pep pep;
+	};
+	size_t fclass;
+	uint64_t op_flags;
+
+	uint16_t buffered_len;
+	uint16_t min_multi_recv;
+	char reserved[4];
+
+	atomic_t ref;
+	struct sock_comp comp;
+
+	struct sock_eq *eq;
+	struct sock_av *av;
+	struct sock_domain *domain;	
 
 	struct sock_rx_ctx *rx_ctx;
 	struct sock_tx_ctx *tx_ctx;
@@ -390,7 +396,7 @@ struct sock_rx_entry {
 	uint16_t used;
 	uint8_t is_busy;
 	uint8_t is_claimed;
-	uint8_t reserved[5];
+	uint8_t reserved[3];
 
 	uint64_t flags;
 	uint64_t context;
@@ -398,6 +404,7 @@ struct sock_rx_entry {
 	uint64_t data;
 	uint64_t tag;
 	uint64_t ignore;
+	struct sock_comp *comp;
 	
 	union sock_iov iov[SOCK_EP_MAX_IOV_LIMIT];
 	struct dlist_entry entry;
@@ -418,19 +425,12 @@ struct sock_rx_ctx {
 	uint8_t reserved[7];
 
 	uint64_t addr;
-
-	struct sock_cq *recv_cq;
-	struct sock_cq *rem_read_cq;
-	struct sock_cq *rem_write_cq;
+	struct sock_comp comp;
 
 	struct sock_ep *ep;
 	struct sock_av *av;
 	struct sock_eq *eq;
  	struct sock_domain *domain;
-
-	struct sock_cntr *recv_cntr;
-	struct sock_cntr  *rem_read_cntr;
-	struct sock_cntr  *rem_write_cntr;
 
 	struct dlist_entry pe_entry;
 	struct dlist_entry cq_entry;
@@ -460,25 +460,13 @@ struct sock_tx_ctx {
 	uint8_t enabled;
 	uint8_t progress;
 
-	uint8_t send_cq_event;
-	uint8_t read_cq_event;
-	uint8_t write_cq_event;
-	uint8_t reserved[1];
-
 	uint64_t addr;
-
-	struct sock_cq *send_cq;
-	struct sock_cq *read_cq;
-	struct sock_cq *write_cq;
+	struct sock_comp comp;
 
 	struct sock_ep *ep;
 	struct sock_av *av;
 	struct sock_eq *eq;
  	struct sock_domain *domain;
-
-	struct sock_cntr *send_cntr;
-	struct sock_cntr *read_cntr;
-	struct sock_cntr *write_cntr;
 
 	struct dlist_entry pe_entry;
 	struct dlist_entry cq_entry;
@@ -569,7 +557,8 @@ struct sock_tx_iov {
 };
 
 struct sock_tx_pe_entry{
-	struct sock_op tx_op;	
+	struct sock_op tx_op;
+	struct sock_comp *comp;
 	uint8_t header_sent;
 	uint8_t send_done;
 	uint8_t reserved[6];
@@ -583,6 +572,8 @@ struct sock_tx_pe_entry{
 
 struct sock_rx_pe_entry{
 	struct sock_op rx_op;
+
+	struct sock_comp *comp;
 	uint8_t header_read;
 	uint8_t pending_send;
 	uint8_t reserved[6];
@@ -623,6 +614,7 @@ struct sock_pe_entry{
 	uint64_t data_len;
 	struct sock_ep *ep;
 	struct sock_conn *conn;
+	struct sock_comp *comp;
 
 	struct dlist_entry entry;
 	struct dlist_entry ctx_entry;
@@ -792,8 +784,6 @@ int sock_pe_add_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *ctx);
 int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx);
 int sock_pe_progress_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx);
 void sock_pe_finalize(struct sock_pe *pe);
-int sock_pe_report_rx_completion(struct sock_pe_entry *pe_entry,
-				 struct sock_rx_ctx *rx_ctx);
 
 
 struct sock_rx_entry *sock_rx_new_entry(struct sock_rx_ctx *rx_ctx);

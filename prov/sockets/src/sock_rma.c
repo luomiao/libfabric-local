@@ -67,8 +67,24 @@ static ssize_t sock_ctx_rma_readmsg(struct fid_ep *ep,
 	struct sock_conn *conn;
 	struct sock_tx_ctx *tx_ctx;
 	uint64_t total_len, src_len, dst_len;
+	struct sock_ep *sock_ep;
 
-	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+	switch (ep->fid.fclass) {
+	case FI_CLASS_EP:
+		sock_ep = container_of(ep, struct sock_ep, ep);
+		tx_ctx = sock_ep->tx_ctx;
+		break;
+
+	case FI_CLASS_TX_CTX:
+		tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+		sock_ep = tx_ctx->ep;
+		break;
+
+	default:
+		SOCK_LOG_ERROR("Invalid EP type\n");
+		return -FI_EINVAL;
+	}
+
 	assert(tx_ctx->enabled && 
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
@@ -98,6 +114,7 @@ static ssize_t sock_ctx_rma_readmsg(struct fid_ep *ep,
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->msg_iov[0].iov_base, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &sock_ep, sizeof(uint64_t));
 
 	if (flags & FI_REMOTE_CQ_DATA) {
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
@@ -192,8 +209,24 @@ static ssize_t sock_ctx_rma_writemsg(struct fid_ep *ep,
 	struct sock_conn *conn;
 	struct sock_tx_ctx *tx_ctx;
 	uint64_t total_len, src_len, dst_len;
+	struct sock_ep *sock_ep;
 
-	tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+	switch (ep->fid.fclass) {
+	case FI_CLASS_EP:
+		sock_ep = container_of(ep, struct sock_ep, ep);
+		tx_ctx = sock_ep->tx_ctx;
+		break;
+
+	case FI_CLASS_TX_CTX:
+		tx_ctx = container_of(ep, struct sock_tx_ctx, ctx);
+		sock_ep = tx_ctx->ep;
+		break;
+
+	default:
+		SOCK_LOG_ERROR("Invalid EP type\n");
+		return -FI_EINVAL;
+	}
+
 	assert(tx_ctx->enabled && 
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
@@ -233,6 +266,7 @@ static ssize_t sock_ctx_rma_writemsg(struct fid_ep *ep,
 	sock_tx_ctx_write(tx_ctx, &msg->addr, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &conn, sizeof(uint64_t));
 	sock_tx_ctx_write(tx_ctx, &msg->msg_iov[0].iov_base, sizeof(uint64_t));
+	sock_tx_ctx_write(tx_ctx, &sock_ep, sizeof(uint64_t));
 
 	if (flags & FI_REMOTE_CQ_DATA) {
 		sock_tx_ctx_write(tx_ctx, &msg->data, sizeof(uint64_t));
