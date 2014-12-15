@@ -176,13 +176,13 @@ static int sock_mr_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 	switch (bfid->fclass) {
 	case FI_CLASS_CQ:
 		cq = container_of(bfid, struct sock_cq, cq_fid.fid);
-		assert(mr->dom == cq->domain);
+		assert(mr->domain == cq->domain);
 		mr->cq = cq;
 		break;
 
 	case FI_CLASS_CNTR:
 		cntr = container_of(bfid, struct sock_cntr, cntr_fid.fid);
-		assert(mr->dom == cntr->dom);
+		assert(mr->domain == cntr->domain);
 		mr->cntr = cntr;
 		break;
 

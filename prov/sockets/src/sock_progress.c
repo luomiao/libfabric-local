@@ -190,9 +190,11 @@ void sock_pe_report_mr_completion(struct sock_domain *domain,
 {
 	int i;
 	struct sock_mr *mr;
-	
+
 	for (i = 0; i < pe_entry->msg_hdr.dest_iov_len; i++) {
 		mr = sock_mr_get_entry(domain, pe_entry->rx.rx_iov[i].iov.key);
+		if (!mr || (!mr->cq && !mr->cntr))
+			continue;
 		
 		pe_entry->buf = pe_entry->rx.rx_iov[i].iov.addr;
 		pe_entry->data_len = pe_entry->rx.rx_iov[i].iov.len;

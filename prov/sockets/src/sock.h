@@ -95,7 +95,7 @@
 			   FI_REMOTE_CQ_DATA | FI_COMPLETION | FI_REMOTE_SIGNAL | \
 			   FI_REMOTE_COMPLETE | FI_PEEK)
 
-#define SOCK_DEF_OPS (FI_SEND | FI_RECV | FI_MULTI_RECV |	\
+#define SOCK_DEF_OPS (FI_SEND | FI_RECV |			\
 		      FI_BUFFERED_RECV | FI_READ | FI_WRITE |	\
 		      FI_REMOTE_READ | FI_REMOTE_WRITE )
 
@@ -278,6 +278,7 @@ struct sock_op_send {
 	uint64_t dest_addr;
 	struct sock_conn *conn;
 	uint64_t buf;
+	struct sock_ep *ep;
 };
 
 struct sock_op_tsend {

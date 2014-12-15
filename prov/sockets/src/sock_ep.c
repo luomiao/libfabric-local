@@ -465,10 +465,10 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 	
 	switch (bfid->fclass) {
 	case FI_CLASS_EQ:
-		return -FI_ENOSYS;
+		return -FI_EINVAL;
 
 	case FI_CLASS_MR:
-		return 0;
+		return -FI_EINVAL;
 
 	case FI_CLASS_CQ:
 		cq = container_of(bfid, struct sock_cq, cq_fid.fid);
@@ -540,7 +540,7 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 
 	case FI_CLASS_CNTR:
 		cntr = container_of(bfid, struct sock_cntr, cntr_fid.fid);
-		assert(ep->domain == cntr->dom);
+		assert(ep->domain == cntr->domain);
 
 		if (flags & FI_SEND)
 			ep->comp.send_cntr = cntr;
@@ -590,7 +590,7 @@ static int sock_ep_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
 
 	case FI_CLASS_AV:
 		av = container_of(bfid, struct sock_av, av_fid.fid);
-		assert(ep->domain == av->dom);
+		assert(ep->domain == av->domain);
 
 		ep->av = av;
 		av->cmap = &av->domain->r_cmap;
