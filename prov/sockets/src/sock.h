@@ -45,14 +45,13 @@
 #include <rdma/fi_rma.h>
 #include <rdma/fi_tagged.h>
 #include <rdma/fi_trigger.h>
+#include <netdb.h>
 
 #include <fi.h>
 #include <fi_enosys.h>
 #include <fi_indexer.h>
 #include <fi_rbuf.h>
 #include <fi_list.h>
-
-#include <netdb.h>
 
 #ifndef _SOCK_H_
 #define _SOCK_H_
@@ -64,7 +63,6 @@
 #define SOCK_EP_MAX_ORDER_WAR_SZ (0)
 #define SOCK_EP_MAX_ORDER_WAW_SZ (0)
 #define SOCK_EP_MEM_TAG_FMT (0)
-#define SOCK_EP_MSG_ORDER (0)
 #define SOCK_EP_MAX_EP_CNT (128)
 #define SOCK_EP_MAX_TX_CNT (16)
 #define SOCK_EP_MAX_RX_CNT (16)
@@ -97,7 +95,11 @@
 
 #define SOCK_DEF_OPS (FI_SEND | FI_RECV |			\
 		      FI_BUFFERED_RECV | FI_READ | FI_WRITE |	\
-		      FI_REMOTE_READ | FI_REMOTE_WRITE )
+		      FI_REMOTE_READ | FI_REMOTE_WRITE)
+
+#define SOCK_EP_MSG_ORDER (FI_ORDER_RAR | FI_ORDER_RAW | FI_ORDER_RAS|	\
+			   FI_ORDER_WAR | FI_ORDER_WAW | FI_ORDER_WAS |	\
+			   FI_ORDER_SAR | FI_ORDER_SAW | FI_ORDER_SAS)
 
 #define SOCK_MODE (0)
 
@@ -124,9 +126,9 @@ struct sock_conn {
 
 struct sock_conn_map {
         struct sock_conn *table;
-        int used;
+        volatile int used;
         int size;
-		struct sock_domain *domain;
+	struct sock_domain *domain;
 };
 
 struct sock_domain {
@@ -289,6 +291,7 @@ struct sock_op_tsend {
 	struct sock_conn *conn;
 	uint64_t tag;
 	uint64_t buf;
+	struct sock_ep *ep;
 };
 
 union sock_iov {
