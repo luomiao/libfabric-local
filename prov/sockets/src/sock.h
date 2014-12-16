@@ -85,15 +85,15 @@
 			 FI_INJECT | FI_MULTI_RECV | FI_SOURCE | FI_READ | FI_WRITE | \
 			 FI_RECV | FI_SEND | FI_REMOTE_READ | FI_REMOTE_WRITE |	\
 			 FI_REMOTE_CQ_DATA | FI_COMPLETION | FI_REMOTE_SIGNAL |	\
-			 FI_REMOTE_COMPLETE | FI_PEEK)
+			 FI_REMOTE_COMPLETE | FI_PEEK | FI_CANCEL)
 
 #define SOCK_EP_MSG_CAP SOCK_EP_RDM_CAP
 
-#define SOCK_EP_DGRAM_CAP (FI_MSG | FI_TAGGED | FI_DYNAMIC_MR | FI_NAMED_RX_CTX | \
-			   FI_BUFFERED_RECV | FI_DIRECTED_RECV | FI_INJECT | \
-			   FI_MULTI_RECV | FI_SOURCE | FI_RECV | FI_SEND | \
+#define SOCK_EP_DGRAM_CAP (FI_MSG | FI_TAGGED | FI_DYNAMIC_MR | \
+			   FI_NAMED_RX_CTX | FI_BUFFERED_RECV | FI_DIRECTED_RECV | \
+			   FI_INJECT | FI_MULTI_RECV | FI_SOURCE | FI_RECV | FI_SEND | \
 			   FI_REMOTE_CQ_DATA | FI_COMPLETION | FI_REMOTE_SIGNAL | \
-			   FI_REMOTE_COMPLETE | FI_PEEK)
+			   FI_REMOTE_COMPLETE | FI_PEEK | FI_CANCEL)
 
 #define SOCK_DEF_OPS (FI_SEND | FI_RECV |			\
 		      FI_BUFFERED_RECV | FI_READ | FI_WRITE |	\
@@ -394,10 +394,12 @@ struct sock_ep {
 struct sock_rx_entry {
 	struct sock_op rx_op;
 	uint8_t is_buffered;
-	uint16_t used;
 	uint8_t is_busy;
 	uint8_t is_claimed;
-	uint8_t reserved[3];
+	uint8_t reserved[5];
+
+	uint64_t used;
+	uint64_t total_len;
 
 	uint64_t flags;
 	uint64_t context;

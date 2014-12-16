@@ -52,8 +52,10 @@ struct sock_rx_entry *sock_rx_new_entry(struct sock_rx_ctx *rx_ctx)
 	/* FIXME: pool of rx_entry */
 	struct sock_rx_entry *rx_entry;
 	rx_entry = calloc(1, sizeof(struct sock_rx_entry));
-	SOCK_LOG_INFO("New rx_entry: %p, ctx: %p\n", rx_entry, rx_ctx);
+	if (!rx_entry)
+		return NULL;
 
+	SOCK_LOG_INFO("New rx_entry: %p, ctx: %p\n", rx_entry, rx_ctx);
 	dlist_init(&rx_entry->entry);
 	return rx_entry;
 }
@@ -75,35 +77,28 @@ struct sock_rx_entry *sock_rx_new_buffered_entry(struct sock_rx_ctx *rx_ctx,
 		return NULL;
 	}
 
-	/* FIXME: pool of rx_entry */
 	rx_entry = calloc(1, sizeof(struct sock_rx_entry) + len);
+	if (!rx_entry)
+		return NULL;
+
 	SOCK_LOG_INFO("New buffered entry:%p len: %lu, ctx: %p\n", 
 		       rx_entry, len, rx_ctx);
 
-	dlist_init(&rx_entry->entry);
-
-	if (rx_entry) {
-		rx_entry->is_buffered = 1;
-		rx_entry->rx_op.dest_iov_len = 1;
-		rx_entry->iov[0].iov.len = len;
-		rx_entry->iov[0].iov.addr = (uint64_t)((char*)rx_entry + 
-						       sizeof(struct sock_rx_entry));
-
-		rx_ctx->buffered_len += len;
-		dlist_insert_tail(&rx_entry->entry, &rx_ctx->rx_buffered_list);
-	}
+	rx_entry->is_buffered = 1;
+	rx_entry->rx_op.dest_iov_len = 1;
+	rx_entry->iov[0].iov.len = len;
+	rx_entry->iov[0].iov.addr = (uint64_t)((char*)rx_entry + 
+					       sizeof(struct sock_rx_entry));
+	rx_entry->total_len = len;
+	
+	rx_ctx->buffered_len += len;
+	dlist_insert_tail(&rx_entry->entry, &rx_ctx->rx_buffered_list);
 	return rx_entry;
 }
 
-size_t sock_rx_avail_len(struct sock_rx_entry *rx_entry)
+inline size_t sock_rx_avail_len(struct sock_rx_entry *rx_entry)
 {
-	int i;
-	size_t avail = 0;
-
-	for (i = 0; i < rx_entry->rx_op.dest_iov_len; i++) {
-		avail += rx_entry->iov[i].iov.len;
-	}
-	return avail - rx_entry->used;
+	return rx_entry->total_len - rx_entry->used;
 }
 
 struct sock_rx_entry *sock_rx_get_entry(struct sock_rx_ctx *rx_ctx, 

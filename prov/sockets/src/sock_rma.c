@@ -92,9 +92,9 @@ static ssize_t sock_ep_rma_readmsg(struct fid_ep *ep,
 	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
 	assert(conn);
 
-	total_len = sizeof(struct sock_op_send);
-	total_len += (msg->iov_count * sizeof(union sock_iov));
-	total_len += (msg->rma_iov_count * sizeof(union sock_iov));
+	total_len = sizeof(struct sock_op_send) + 
+		(msg->iov_count * sizeof(union sock_iov)) +
+		(msg->rma_iov_count * sizeof(union sock_iov));
 
 	sock_tx_ctx_start(tx_ctx);
 	if (rbfdavail(&tx_ctx->rbfd) < total_len) {
@@ -251,8 +251,8 @@ static ssize_t sock_ep_rma_writemsg(struct fid_ep *ep,
 		tx_op.src_iov_len = msg->iov_count;
 	}
 
-	total_len += sizeof(struct sock_op_send);
-	total_len += (msg->rma_iov_count * sizeof(union sock_iov));
+	total_len += (sizeof(struct sock_op_send) +
+		      (msg->rma_iov_count * sizeof(union sock_iov)));
 
 	sock_tx_ctx_start(tx_ctx);
 	if (rbfdavail(&tx_ctx->rbfd) < total_len) {

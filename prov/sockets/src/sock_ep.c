@@ -415,10 +415,54 @@ static int sock_ctx_setopt(fid_t fid, int level, int optname,
 	return 0;
 }
 
+static ssize_t sock_ep_cancel(fid_t fid, void *context)
+{
+	int ret;
+	struct sock_rx_ctx *rx_ctx;
+	struct sock_rx_entry *rx_entry;
+	struct sock_ep *sock_ep;
+	struct dlist_entry *entry;
+
+	switch (fid->fclass) {
+	case FI_CLASS_EP:
+		sock_ep = container_of(fid, struct sock_ep, ep.fid);
+		rx_ctx = sock_ep->rx_ctx;
+		break;
+
+	case FI_CLASS_RX_CTX:
+	case FI_CLASS_SRX_CTX:
+		rx_ctx = container_of(fid, struct sock_rx_ctx, ctx.fid);
+		break;
+
+	default:
+		SOCK_LOG_ERROR("Invalid ep type\n");
+		return -FI_EINVAL;
+	}
+
+	ret = -FI_ENOENT;
+	fastlock_acquire(&rx_ctx->lock);
+	for (entry = rx_ctx->rx_entry_list.next;
+	     entry != &rx_ctx->rx_entry_list; entry = entry->next) {
+		
+		rx_entry = container_of(entry, struct sock_rx_entry, entry);
+		if (rx_entry->is_busy || rx_entry->used)
+			continue;
+
+		if ((uint64_t)context == rx_entry->context) {
+			dlist_remove(&rx_entry->entry);
+			sock_rx_release_entry(rx_entry);
+			ret = 0;
+			break;
+		}
+	}		
+	fastlock_release(&rx_ctx->lock);
+	return ret;
+}
+
 struct fi_ops_ep sock_ctx_ep_ops = {
 	.size = sizeof(struct fi_ops_ep),
 	.enable = sock_ctx_enable,
-	.cancel = fi_no_cancel,
+	.cancel = sock_ep_cancel,
 	.getopt = sock_ctx_getopt,
 	.setopt = sock_ctx_setopt,
 	.tx_ctx = fi_no_tx_ctx,
@@ -819,7 +863,7 @@ static int sock_ep_rx_ctx(struct fid_sep *ep, int index, struct fi_rx_attr *attr
 struct fi_ops_ep sock_ep_ops ={
 	.size = sizeof(struct fi_ops_ep),
 	.enable = sock_ep_enable,
-	.cancel = fi_no_cancel,
+	.cancel = sock_ep_cancel,
 	.getopt = sock_ep_getopt,
 	.setopt = sock_ep_setopt,
 	.tx_ctx = sock_ep_tx_ctx,
@@ -1035,6 +1079,8 @@ int sock_alloc_endpoint(struct fid_domain *domain, struct fi_info *info,
 		if (info->tx_attr) {
 			sock_ep->tx_attr = *info->tx_attr;
 			sock_ep->op_flags = info->tx_attr->op_flags;
+			sock_ep->tx_attr.size = sock_ep->tx_attr.size ?
+			  sock_ep->tx_attr.size : SOCK_EP_MAX_TX_CTX_SZ;
 		}
 		
 		if (info->rx_attr) {

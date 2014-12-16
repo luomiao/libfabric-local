@@ -108,10 +108,10 @@ static ssize_t sock_ep_tx_atomic(struct fid_ep *ep,
 		total_len = msg->iov_count * sizeof(union sock_iov);
 	}
 
-	total_len += sizeof(struct sock_op_send);
-	total_len += (msg->rma_iov_count * sizeof(union sock_iov));
-	total_len += (result_count * sizeof (union sock_iov));
-
+	total_len += (sizeof(struct sock_op_send) +
+		      (msg->rma_iov_count * sizeof(union sock_iov)) +
+		      (result_count * sizeof (union sock_iov)));
+	
 	sock_tx_ctx_start(tx_ctx);
 	if (rbfdavail(&tx_ctx->rbfd) < total_len) {
 		ret = -FI_EAGAIN;
@@ -176,6 +176,7 @@ static ssize_t sock_ep_tx_atomic(struct fid_ep *ep,
 		goto err;
 	}
 
+	dst_len = 0;
 	for (i = 0; i< result_count; i++) {
 		tx_iov.ioc.addr = (uint64_t)resultv[i].addr;
 		tx_iov.ioc.count = resultv[i].count;

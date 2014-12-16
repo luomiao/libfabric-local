@@ -100,6 +100,7 @@ static ssize_t sock_ep_recvmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	for (i=0; i< msg->iov_count; i++) {
 		rx_entry->iov[i].iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
 		rx_entry->iov[i].iov.len = (uint64_t)msg->msg_iov[i].iov_len;
+		rx_entry->total_len += rx_entry->iov[i].iov.len;
 	}
 
 	fastlock_acquire(&rx_ctx->lock);
@@ -359,6 +360,7 @@ static ssize_t sock_ep_trecvmsg(struct fid_ep *ep,
 	for (i=0; i< msg->iov_count; i++) {
 		rx_entry->iov[i].iov.addr = (uint64_t)msg->msg_iov[i].iov_base;
 		rx_entry->iov[i].iov.len = (uint64_t)msg->msg_iov[i].iov_len;
+		rx_entry->total_len += rx_entry->iov[i].iov.len;
 	}
 
 	fastlock_acquire(&rx_ctx->lock);
