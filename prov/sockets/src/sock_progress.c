@@ -333,16 +333,18 @@ static void sock_pe_progress_pending_ack(struct sock_pe *pe,
 	case SOCK_OP_ATOMIC_COMPLETE:
 
 		offset = pe_entry->done_len - len;
-		data_len = (pe_entry->msg_hdr.msg_len - len) - offset;
+		data_len = (pe_entry->total_len - len) - offset;
 
-		ret = sock_comm_send(conn, 
-				     (char*)&pe_entry->rx.atomic_cmp[0] + offset,
-				     data_len);
-		if (ret <= 0)
-			return;
-		pe_entry->done_len += ret;
-		if (ret != data_len)
-			return;
+		if (data_len) {
+			ret = sock_comm_send(conn, 
+					     (char*)&pe_entry->rx.atomic_cmp[0] + offset,
+					     data_len);
+			if (ret <= 0)
+				return;
+			pe_entry->done_len += ret;
+			if (ret != data_len)
+				return;
+		}
 		break;
 		
 	default:
@@ -552,7 +554,7 @@ static int sock_pe_handle_atomic_complete(struct sock_pe *pe,
 		response.pe_entry_id = NTOH_16(response.pe_entry_id);
 		assert(response.pe_entry_id <= SOCK_PE_MAX_ENTRIES);
 		waiting_entry = &pe->pe_table[response.pe_entry_id];
-		SOCK_LOG_INFO("Received read complete for PE entry %p (index: %d)\n", 
+		SOCK_LOG_INFO("Received atomic complete for PE entry %p (index: %d)\n", 
 			      waiting_entry, response.pe_entry_id);
 	}
 	
@@ -1136,55 +1138,56 @@ static int sock_pe_process_rx_atomic(struct sock_pe *pe, struct sock_rx_ctx *rx_
 		entry_len += pe_entry->rx.rx_iov[i].ioc.count;
 	}
 	entry_len *= datatype_sz;
-	len += entry_len;
 
 	/* cmp data */
-	if (pe_entry->rx.rx_op.atomic.cmp_iov_len && pe_entry->done_len < len) {
+	if (pe_entry->rx.rx_op.atomic.cmp_iov_len) {
 		offset = pe_entry->done_len - len;
-		data_len = entry_len - offset;
-
-		sock_comm_recv(pe_entry->conn,
-			       &pe_entry->rx.atomic_cmp[0] + offset,
-			       data_len);
-
-		if (ret <= 0)
-			return ret;
-		pe_entry->done_len += ret;
-		if (ret != data_len) {
-			SOCK_LOG_INFO("Incomplete Recv: %d\n", ret);
-			return 0;
-		}
-
-		/* compare */
-		offset = 0;
-		for (i = 0; i < pe_entry->rx.rx_op.dest_iov_len; i++) {
-
-			ret = sock_mr_verify_key(rx_ctx->domain, 
-						 pe_entry->rx.rx_iov[i].ioc.key,
-						 (void*)pe_entry->rx.rx_iov[i].ioc.addr,
-						 pe_entry->rx.rx_iov[i].ioc.count * datatype_sz,
-						 FI_REMOTE_WRITE);
-			if (ret) {
-				SOCK_LOG_ERROR("Remote memory access error: %p, %lu, %lu\n",
-					       (void*)pe_entry->rx.rx_iov[i].ioc.addr,
-					       pe_entry->rx.rx_iov[i].ioc.count * datatype_sz,
-					       pe_entry->rx.rx_iov[i].ioc.key);
-				sock_pe_send_response(pe, pe_entry, SOCK_OP_ATOMIC_ERROR);
-				goto err;
+		len += entry_len;
+	
+		if (pe_entry->done_len < len) {
+			data_len = entry_len - offset;
+			
+			ret = sock_comm_recv(pe_entry->conn,
+					     &pe_entry->rx.atomic_cmp[0] + offset,
+					     data_len);
+			
+			if (ret <= 0)
+				return ret;
+			pe_entry->done_len += ret;
+			if (ret != data_len) {
+				SOCK_LOG_INFO("Incomplete Recv: %d\n", ret);
+				return 0;
+			}
+			
+			/* compare */
+			offset = 0;
+			for (i = 0; i < pe_entry->rx.rx_op.dest_iov_len; i++) {
+				
+				ret = sock_mr_verify_key(rx_ctx->domain, 
+							 pe_entry->rx.rx_iov[i].ioc.key,
+							 (void*)pe_entry->rx.rx_iov[i].ioc.addr,
+							 pe_entry->rx.rx_iov[i].ioc.count * datatype_sz,
+							 FI_REMOTE_WRITE);
+				if (ret) {
+					SOCK_LOG_ERROR("Remote memory access error: %p, %lu, %lu\n",
+						       (void*)pe_entry->rx.rx_iov[i].ioc.addr,
+						       pe_entry->rx.rx_iov[i].ioc.count * datatype_sz,
+						       pe_entry->rx.rx_iov[i].ioc.key);
+					sock_pe_send_response(pe, pe_entry, SOCK_OP_ATOMIC_ERROR);
+					goto err;
+				}
 			}
 		}
 	}
 
 	/* src data */
+	offset = pe_entry->done_len - len;
 	len += entry_len;
 	if (pe_entry->done_len < len) {
-		offset = pe_entry->done_len - len;
 		data_len = entry_len - offset;
+		ret = sock_comm_recv(pe_entry->conn,
+				     &pe_entry->rx.atomic_src[0] + offset, data_len);
 		
-		sock_comm_recv(pe_entry->conn,
-			       &pe_entry->rx.atomic_src[0] + offset,
-			       data_len);
-
 		if (ret <= 0)
 			return ret;
 		pe_entry->done_len += ret;
@@ -1215,7 +1218,8 @@ static int sock_pe_process_rx_atomic(struct sock_pe *pe, struct sock_rx_ctx *rx_
 
 	sock_pe_report_remote_write(rx_ctx, pe_entry);
 	sock_pe_report_mr_completion(rx_ctx->domain, pe_entry);
-	sock_pe_send_atomic_op_response(pe, pe_entry, entry_len);
+	sock_pe_send_atomic_op_response(pe, pe_entry, 
+					pe_entry->rx.rx_op.atomic.res_iov_len ? entry_len : 0);
 	return ret;
 	
 err:
@@ -1339,8 +1343,9 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 		offset = pe_entry->done_len - len;
 		len += sizeof(uint64_t);
 		if (pe_entry->done_len < len) {
-			sock_comm_recv(pe_entry->conn, (char*)&pe_entry->data 
-				     + offset, sizeof(uint64_t) - offset);
+			ret = sock_comm_recv(pe_entry->conn, 
+					     (char*)&pe_entry->data + offset, 
+					     sizeof(uint64_t) - offset);
 			if (ret <= 0)
 				return ret;
 			pe_entry->done_len += ret;
@@ -1570,8 +1575,11 @@ static int sock_pe_progress_tx_atomic(struct sock_pe *pe,
 	offset = pe_entry->done_len;
 	len = sizeof(struct sock_atomic_req);
 	if (pe_entry->done_len < len) {
+		req.op.src_iov_len = 0;
+		req.op.dest_iov_len = pe_entry->tx.tx_op.dest_iov_len;
 		req.op.atomic.op = pe_entry->tx.tx_op.atomic.op;
 		req.op.atomic.datatype = pe_entry->tx.tx_op.atomic.datatype;
+		req.op.atomic.res_iov_len = pe_entry->tx.tx_op.atomic.res_iov_len;
 		req.op.atomic.cmp_iov_len = pe_entry->tx.tx_op.atomic.cmp_iov_len;
 
 		data_len = sizeof(req) - pe_entry->done_len;
@@ -2186,6 +2194,7 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	case SOCK_OP_ATOMIC_READ_WRITE:
 	case SOCK_OP_ATOMIC_COMP_WRITE:
 
+		msg_hdr->msg_len += sizeof(struct sock_op);
 		datatype_sz = fi_datatype_size(pe_entry->tx.tx_op.atomic.datatype);
 		if (pe_entry->flags & FI_INJECT) {
 			rbfdread(&tx_ctx->rbfd, &pe_entry->tx.inject_data[0],
