@@ -78,6 +78,9 @@
 #define SOCK_EQ_DEF_SZ (1<<8)
 #define SOCK_CQ_DEF_SZ (1<<8)
 
+#define SOCK_CQ_DATA_SIZE (sizeof(uint64_t))
+#define SOCK_TAG_SIZE (sizeof(uint64_t))
+
 
 #define SOCK_EP_RDM_CAP (FI_MSG | FI_RMA | FI_TAGGED | FI_ATOMICS | FI_DYNAMIC_MR | \
 			 FI_NAMED_RX_CTX | FI_BUFFERED_RECV | FI_DIRECTED_RECV | \
@@ -787,8 +790,8 @@ int sock_conn_map_clear_pe_entry(struct sock_conn *conn_entry,
 void sock_conn_map_destroy(struct sock_conn_map *cmap);
 
 struct sock_pe *sock_pe_init(struct sock_domain *domain);
-int sock_pe_add_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *ctx);
-int sock_pe_add_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *ctx);
+void sock_pe_add_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *ctx);
+void sock_pe_add_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *ctx);
 int sock_pe_progress_rx_ctx(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx);
 int sock_pe_progress_tx_ctx(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx);
 void sock_pe_finalize(struct sock_pe *pe);

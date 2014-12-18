@@ -69,10 +69,3 @@ extern char host[128];
 
 #endif
 
-#define HTON_16 htons
-#define HTON_32 htonl
-#define HTON_64 htonll
-
-#define NTOH_16 ntohs
-#define NTOH_32 ntohl
-#define NTOH_64 ntohll
