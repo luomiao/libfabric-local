@@ -70,6 +70,7 @@
 #define SOCK_EP_MAX_TX_CTX_SZ (1<<12)
 #define SOCK_EP_MIN_MULTI_RECV (64)
 #define SOCK_EP_MAX_ATOMIC_SZ (512)
+#define SOCK_EP_MAX_CTX_BITS (16)
 
 #define SOCK_PE_POLL_TIMEOUT (100000)
 #define SOCK_PE_MAX_ENTRIES (128)
@@ -121,7 +122,6 @@ struct sock_conn {
         struct sock_pe_entry *tx_pe_entry;
 	struct ringbuf inbuf;
 	struct ringbuf outbuf;
-	int buf_initialised;
 };
 
 struct sock_conn_map {
@@ -170,13 +170,14 @@ struct sock_cntr {
 };
 
 struct sock_mr {
-	struct fid_mr		mr_fid;
-	struct sock_domain	*domain;
-	uint64_t		access;
-	uint64_t		offset;
-	uint64_t		key;
-	size_t			iov_count;
-	struct iovec		mr_iov[1];
+	struct fid_mr mr_fid;
+	struct sock_domain *domain;
+	uint64_t access;
+	uint64_t offset;
+	uint64_t key;
+	uint64_t flags;
+	size_t iov_count;
+	struct iovec mr_iov[1];
 
 	struct sock_cntr *cntr;
 	struct sock_cq *cq;
@@ -495,7 +496,6 @@ struct sock_msg_hdr{
 	uint8_t dest_iov_len;
 	uint8_t reserved[1];
 
-	uint64_t src_addr;
 	uint64_t flags;
 	uint64_t msg_len; /* includes header len */
 };
@@ -698,6 +698,8 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 		struct fid_av **av, void *context);
 fi_addr_t _sock_av_lookup(struct sock_av *av, struct sockaddr *addr);
+fi_addr_t sock_av_get_fiaddr(struct sock_av *av, struct sock_conn *conn);
+fi_addr_t sock_av_lookup_key(struct sock_av *av, int key);
 
 
 int sock_cq_open(struct fid_domain *domain, struct fi_cq_attr *attr,
@@ -741,10 +743,10 @@ int sock_msg_passive_ep(struct fid_fabric *fabric, struct fi_info *info,
 		 struct fid_pep **pep, void *context);
 
 
-int sock_mr_verify_key(struct sock_domain *domain, uint16_t key, 
-		       void *buf, size_t len, uint64_t access);
-int sock_mr_verify_desc(struct sock_domain *domain, void *desc, 
-			void *buf, size_t len, uint64_t access);
+struct sock_mr *sock_mr_verify_key(struct sock_domain *domain, uint16_t key, 
+				   void *buf, size_t len, uint64_t access);
+struct sock_mr *sock_mr_verify_desc(struct sock_domain *domain, void *desc, 
+				    void *buf, size_t len, uint64_t access);
 struct sock_mr * sock_mr_get_entry(struct sock_domain *domain, uint16_t key);
 
 
@@ -772,13 +774,13 @@ int sock_poll_open(struct fid_domain *domain, struct fi_poll_attr *attr,
 int sock_wait_open(struct fid_domain *domain, struct fi_wait_attr *attr,
 		struct fid_wait **waitset);
 
-/* FIXME: handle shared ctx */
 #define SOCK_GET_RX_ID(_addr, _bits) (((uint64_t)_addr) >> (64 - _bits))
 struct sock_conn *sock_av_lookup_addr(struct sock_av *av, fi_addr_t addr);
 struct sock_conn *sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 		uint16_t key);
-uint16_t sock_conn_map_match_or_connect(struct sock_conn_map *map, struct
-		sockaddr_in *addr);
+uint16_t sock_conn_map_match_or_connect(struct sock_conn_map *map, 
+					struct sockaddr_in *addr, 
+					int match_only);
 int sock_conn_listen(struct sock_domain *domain);
 int sock_conn_map_clear_pe_entry(struct sock_conn *conn_entry, 
 		uint16_t key);

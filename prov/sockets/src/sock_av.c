@@ -45,6 +45,35 @@
 #include "sock.h"
 #include "sock_util.h"
 
+fi_addr_t sock_av_lookup_key(struct sock_av *av, int key)
+{
+	int i;
+	struct sock_av_addr *av_addr;
+
+	for (i = 0; i < IDX_MAX_INDEX; i++) {
+		av_addr = idm_lookup(&av->addr_idm, i);
+		if (!av_addr)
+			continue;
+
+		if (!av_addr->key) {
+			av_addr->key = sock_conn_map_match_or_connect(
+				av->cmap,
+				(struct sockaddr_in*)&av_addr->addr, 1);
+			if (!av_addr->key) {
+				continue;
+			}
+		}
+
+		if (av_addr->key == key + 1) {
+			return i;
+		}
+	}
+
+	SOCK_LOG_ERROR("###### failed to do reverse-lookup: %d\n", key);
+	return FI_ADDR_NOTAVAIL;
+}
+
+
 struct sock_conn *sock_av_lookup_addr(struct sock_av *av, 
 		fi_addr_t addr)
 {
@@ -65,8 +94,9 @@ struct sock_conn *sock_av_lookup_addr(struct sock_av *av,
 
 	av_addr = idm_lookup(&av->addr_idm, index);
 	if (!av_addr->key) {
-		av_addr->key = sock_conn_map_match_or_connect(av->cmap, 
-				(struct sockaddr_in*)&av_addr->addr);
+		av_addr->key = sock_conn_map_match_or_connect(
+			av->cmap, 
+			(struct sockaddr_in*)&av_addr->addr, 0);
 		if (!av_addr->key) {
 			SOCK_LOG_ERROR("failed to match or connect to addr %lu\n", addr);
 			errno = EINVAL;
@@ -213,6 +243,20 @@ static int sock_av_close(struct fid *fid)
 	return 0;
 }
 
+int sock_at_insertsvc(struct fid_av *av, const char *node,
+		      const char *service, fi_addr_t *fi_addr,
+		      uint64_t flags, void *context)
+{
+	return 0;
+}
+
+int sock_am_insertsvc(struct fid_av *av, const char *node,
+		      const char *service, fi_addr_t *fi_addr,
+		      uint64_t flags, void *context)
+{
+	return 0;
+}
+
 static struct fi_ops sock_av_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_av_close,
@@ -224,6 +268,7 @@ static struct fi_ops sock_av_fi_ops = {
 static struct fi_ops_av sock_am_ops = {
 	.size = sizeof(struct fi_ops_av),
 	.insert = sock_am_insert,
+	.insertsvc = sock_am_insertsvc,
 	.remove = sock_am_remove,
 	.lookup = sock_am_lookup,
 	.straddr = sock_am_straddr
@@ -232,6 +277,7 @@ static struct fi_ops_av sock_am_ops = {
 static struct fi_ops_av sock_at_ops = {
 	.size = sizeof(struct fi_ops_av),
 	.insert = sock_at_insert,
+	.insertsvc = sock_at_insertsvc,
 	.remove = sock_at_remove,
 	.lookup = sock_at_lookup,
 	.straddr = sock_at_straddr
@@ -274,7 +320,7 @@ int sock_av_open(struct fid_domain *domain, struct fi_av_attr *attr,
 	if (attr->flags)
 		return -FI_ENOSYS;
 
-	if (attr->rx_ctx_bits > 63) {
+	if (attr->rx_ctx_bits > SOCK_EP_MAX_CTX_BITS) {
 		SOCK_LOG_ERROR("Invalid rx_ctx_bits\n");
 		return -EINVAL;
 	}

@@ -205,29 +205,32 @@ struct sock_mr * sock_mr_get_entry(struct sock_domain *domain, uint16_t key)
 	return (struct sock_mr *)idm_lookup(&domain->mr_idm, key);
 }
 
-int sock_mr_verify_key(struct sock_domain *domain, uint16_t key, 
-		       void *buf, size_t len, uint64_t access)
+struct sock_mr *sock_mr_verify_key(struct sock_domain *domain, uint16_t key, 
+				   void *buf, size_t len, uint64_t access)
 {
 	int i;
 	struct sock_mr *mr;
 	mr = idm_lookup(&domain->mr_idm, key);
 	
 	if (!mr)
-		return -FI_EINVAL;
+		return NULL;
+
+	if (mr->flags & FI_MR_OFFSET)
+		buf = (char*)buf + mr->offset;
 	
 	for (i = 0; i < mr->iov_count; i++) {
 		if ((uintptr_t)buf >= (uintptr_t)mr->mr_iov[i].iov_base &&
 		    ((uintptr_t)buf + len <= (uintptr_t) mr->mr_iov[i].iov_base + 
 		     mr->mr_iov[i].iov_len)) {
 			if ((access & mr->access) == access)
-				return 0;
+				return mr;
 		}
 	}
 	SOCK_LOG_ERROR("MR check failed\n");
-	return -FI_EINVAL;
+	return NULL;
 }
 
-int sock_mr_verify_desc(struct sock_domain *domain, void *desc, 
+struct sock_mr *sock_mr_verify_desc(struct sock_domain *domain, void *desc, 
 			void *buf, size_t len, uint64_t access)
 {
 	uint64_t key = (uint64_t)desc;
@@ -258,6 +261,7 @@ static int sock_regattr(struct fid_domain *domain, const struct fi_mr_attr *attr
 
 	_mr->domain = dom;
 	_mr->access = attr->access;
+	_mr->flags = flags;
 	_mr->offset = (flags & FI_MR_OFFSET) ?
 		      attr->offset : (uintptr_t) attr->mr_iov[0].iov_base;
 

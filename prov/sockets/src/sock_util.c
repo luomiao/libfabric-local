@@ -55,3 +55,4 @@
 #include "sock_util.h"
 
 int sock_log_level = SOCK_ERROR;
+char host[128] = {0};

@@ -248,7 +248,7 @@ struct fi_provider sock_prov = {
 
 static void __attribute__((constructor)) sock_ini(void)
 {
-	char *tmp = getenv("SFI_SOCK_LOG_LEVEL");
+	char *tmp = getenv("OFI_SOCK_LOG_LEVEL");
 	if (tmp) {
 		sock_log_level = atoi(tmp);
 	} else {
@@ -256,6 +256,7 @@ static void __attribute__((constructor)) sock_ini(void)
 	}
 
 	(void) fi_register(&sock_prov);
+	gethostname(host, 128);
 }
 
 static void __attribute__((destructor)) sock_fini(void)

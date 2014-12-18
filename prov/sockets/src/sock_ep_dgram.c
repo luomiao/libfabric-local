@@ -65,8 +65,8 @@ const struct fi_ep_attr sock_dgram_ep_attr = {
 	.max_order_waw_size = SOCK_EP_MAX_ORDER_WAW_SZ,
 	.mem_tag_format = SOCK_EP_MEM_TAG_FMT,
 	.msg_order = SOCK_EP_MSG_ORDER,
-	.tx_ctx_cnt = SOCK_EP_MAX_TX_CNT,
-	.rx_ctx_cnt = SOCK_EP_MAX_RX_CNT,
+	.tx_ctx_cnt = 0,
+	.rx_ctx_cnt = 0,
 };
 
 const struct fi_tx_attr sock_dgram_tx_attr = {
@@ -177,11 +177,11 @@ int sock_dgram_verify_ep_attr(struct fi_ep_attr *ep_attr,
 		if ((ep_attr->msg_order | SOCK_EP_MSG_ORDER) != SOCK_EP_MSG_ORDER)
 			return -FI_ENODATA;
 
-		if ((ep_attr->tx_ctx_cnt > sock_dgram_ep_attr.tx_ctx_cnt) &&
+		if ((ep_attr->tx_ctx_cnt > SOCK_EP_MAX_TX_CNT) &&
 		    ep_attr->tx_ctx_cnt != FI_SHARED_CONTEXT)
 			return -FI_ENODATA;
 
-		if ((ep_attr->rx_ctx_cnt > sock_dgram_ep_attr.rx_ctx_cnt) &&
+		if ((ep_attr->rx_ctx_cnt > SOCK_EP_MAX_RX_CNT) &&
 		    ep_attr->rx_ctx_cnt != FI_SHARED_CONTEXT)
 			return -FI_ENODATA;
 	}
