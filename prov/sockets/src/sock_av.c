@@ -69,7 +69,7 @@ fi_addr_t sock_av_lookup_key(struct sock_av *av, int key)
 		}
 	}
 
-	SOCK_LOG_ERROR("###### failed to do reverse-lookup: %d\n", key);
+	SOCK_LOG_INFO("Reverse-lookup failed: %d\n", key);
 	return FI_ADDR_NOTAVAIL;
 }
 
