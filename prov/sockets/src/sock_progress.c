@@ -57,6 +57,7 @@
 
 
 #define PE_INDEX(_pe, _e) (_e - &_pe->pe_table[0])
+#define SOCK_GET_RX_ID(_addr, _bits) (((uint64_t)_addr) >> (64 - _bits))
 
 
 static void sock_pe_release_entry(struct sock_pe *pe, 
@@ -1226,13 +1227,6 @@ int sock_pe_progress_buffered_rx(struct sock_rx_ctx *rx_ctx)
 		} else {
 			dlist_remove(&rx_posted->entry);
 		}
-
-/* CLEAN ME
-		SOCK_LOG_ERROR("RX-DONE: buf: %p, len: %llu, tag: %p, ignore: %p, (Report Buffered)\n",
-			       (void*)rx_posted->iov[0].iov.addr, 
-			       (long long unsigned int)rx_posted->used, (void*)pe_entry.tag,
-			       (void*)rx_posted->ignore);
-*/
 	
 		if (rem) {
 			SOCK_LOG_INFO("Not enough space in posted recv buffer\n");
@@ -1372,14 +1366,6 @@ static int sock_pe_process_rx_send(struct sock_pe *pe, struct sock_rx_ctx *rx_ct
 
 	pe_entry->is_complete = 1;
 	rx_entry->is_busy = 0;
-
-/* CLEAN ME:
-	SOCK_LOG_ERROR("RX-DONE: buf: %p, len: %llu, tag: %p, ignore: %p, (Buffered:%d)\n",
-		      (void*)rx_entry->iov[0].iov.addr, 
-		      (long long unsigned int)rx_entry->used, (void*)pe_entry->tag,
-		       (void*)rx_entry->ignore,
-		       rx_entry->is_buffered);
-*/
 
 	/* report error, if any */
 	if (rem) {
@@ -1903,13 +1889,6 @@ static int sock_pe_progress_tx_send(struct sock_pe *pe,
 		pe_entry->tx.send_done = 1;
 		pe_entry->conn->tx_pe_entry = NULL;
 		SOCK_LOG_INFO("Send complete\n");
-
-/* CLEAN ME
-		SOCK_LOG_INFO("TX-DONE: buf: %p, len: %llu, tag: %p\n",
-			      (void*)pe_entry->tx.tx_iov[0].src.iov.addr,
-			      (long long unsigned int)pe_entry->tx.tx_iov[0].src.iov.len,
-			      (void*)pe_entry->tag);
-*/
 
 		if (!(pe_entry->flags & FI_REMOTE_COMPLETE)) {
 			sock_pe_report_tx_completion(pe_entry);

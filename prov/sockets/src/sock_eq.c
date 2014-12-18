@@ -218,7 +218,7 @@ int sock_eq_fi_close(struct fid *fid)
 	fastlock_destroy(&sock_eq->lock);
 	atomic_dec(&sock_eq->sock_fab->ref);
 
-	if (sock_eq->signal && sock_eq->attr.wait_obj == FI_WAIT_MUT_COND)
+	if (sock_eq->signal && sock_eq->attr.wait_obj == FI_WAIT_MUTEX_COND)
 		sock_wait_close(&sock_eq->waitset->fid);
 	
 	free(sock_eq);
@@ -229,7 +229,6 @@ int sock_eq_control(struct fid *fid, int command, void *arg)
 {
 	int ret = 0;
 	struct sock_eq *eq;
-	struct fi_wait_obj_set waitobj;
 
 	eq = container_of(fid, struct sock_eq, eq.fid);	
 	switch (command) {
@@ -242,9 +241,8 @@ int sock_eq_control(struct fid *fid, int command, void *arg)
 			break;
 
 		case FI_WAIT_SET:
-		case FI_WAIT_MUT_COND:
-			waitobj.obj = arg;
-			sock_wait_get_obj(eq->waitset, &waitobj);
+		case FI_WAIT_MUTEX_COND:
+			sock_wait_get_obj(eq->waitset, arg);
 			break;
 		
 		default:
@@ -277,7 +275,7 @@ static int _sock_eq_verify_attr(struct fi_eq_attr *attr)
 	case FI_WAIT_NONE:
 	case FI_WAIT_FD:
 	case FI_WAIT_SET:
-	case FI_WAIT_MUT_COND:
+	case FI_WAIT_MUTEX_COND:
 		break;
 	case FI_WAIT_UNSPEC:
 		attr->wait_obj = FI_WAIT_FD;
@@ -344,9 +342,9 @@ int sock_eq_open(struct fid_fabric *fabric, struct fi_eq_attr *attr,
 		sock_eq->signal = 0;
 		break;
 
-	case FI_WAIT_MUT_COND:
+	case FI_WAIT_MUTEX_COND:
 		wait_attr.flags = 0;
-		wait_attr.wait_obj = FI_WAIT_MUT_COND;
+		wait_attr.wait_obj = FI_WAIT_MUTEX_COND;
 		/* FIXME: waitset is a domain object, but not EQ. This needs to be 
 		 updated based on #394 */
 		ret = sock_wait_open(NULL, &wait_attr, &sock_eq->waitset);

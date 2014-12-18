@@ -98,15 +98,13 @@ struct sock_conn *sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 }
 
 uint16_t sock_conn_map_match_or_connect(struct sock_conn_map *map, struct
-					sockaddr_in *addr, int match_only)
+		sockaddr_in *addr, int match_only)
 {
 	int i, conn_fd, arg, optval;
 	socklen_t optlen;
 	char entry_ip[INET_ADDRSTRLEN];
 	char sa_ip[INET_ADDRSTRLEN];
 	struct sockaddr_in *entry;
-	struct addrinfo *c_res = NULL;
-	struct addrinfo hints;
 	struct timeval tv;
 	fd_set fds;
 	struct sock_conn *conn;
@@ -125,18 +123,14 @@ uint16_t sock_conn_map_match_or_connect(struct sock_conn_map *map, struct
 		return 0;
 
 	/* no matching entry, connect */
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	getaddrinfo(sa_ip, map->domain->service, &hints, &c_res);
-	conn_fd = socket(c_res->ai_family, c_res->ai_socktype, 0);
+	conn_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (conn_fd < 0) {
 		SOCK_LOG_ERROR("failed to create conn_fd, errno: %d\n", errno);
 		return 0;
 	}
 	fcntl(conn_fd, F_SETFL, O_NONBLOCK);
 
-	if (connect(conn_fd, c_res->ai_addr, c_res->ai_addrlen) < 0) {
+	if (connect(conn_fd, addr, sizeof *addr) < 0) {
 		if (errno == EINPROGRESS) {
 			/* timeout after 5 secs */
 			tv.tv_sec = 5;
@@ -171,10 +165,12 @@ uint16_t sock_conn_map_match_or_connect(struct sock_conn_map *map, struct
 	arg &= (~O_NONBLOCK);
 	fcntl(conn_fd, F_SETFL, arg);
 
-	memcpy(&map->table[map->used].addr, c_res->ai_addr, c_res->ai_addrlen);
+	memcpy(&map->table[map->used].addr, addr, sizeof *addr);
 	map->table[map->used].sock_fd = conn_fd;
+
 	conn = &map->table[map->used];
 	sock_comm_buffer_init(conn);
+
 	map->used++;
 	return map->used;
 
@@ -244,8 +240,8 @@ static void * _sock_conn_listen(void *arg)
 		map->table[map->used].sock_fd = conn_fd;
 
 		conn = &map->table[map->used];
-		conn->sock_fd = conn_fd;
 		sock_comm_buffer_init(conn);
+
 		map->used++;
 	}
 

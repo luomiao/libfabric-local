@@ -48,43 +48,27 @@ enum {
 
 int sock_wait_get_obj(struct fid_wait *fid, void *arg)
 {
-	int obj_size;
-	void *obj_ptr;
-	enum fi_wait_obj obj_type;
-	struct fi_wait_obj_set *wait_obj_set;
-	struct fi_mut_cond *mut_cond;
+	struct fi_mutex_cond mut_cond;
 	struct sock_wait *wait;
 
 	wait = container_of(fid, struct sock_wait, wait_fid.fid);
-	wait_obj_set = (struct fi_wait_obj_set*)arg;
-	mut_cond = wait_obj_set->obj;
-
-	if (!arg)
-		return -EINVAL;
-
+	
 	switch (wait->type) {
 	case FI_WAIT_FD:
-		obj_size = sizeof(wait->fd[WAIT_READ_FD]);
-		obj_type = wait->type;
-		obj_ptr = &wait->fd[WAIT_READ_FD];
+		memcpy(arg,&wait->fd[WAIT_READ_FD], sizeof(int));
 		break;
 		
-	case FI_WAIT_MUT_COND:
-		mut_cond->mut = &wait->mutex;
-		mut_cond->cond = &wait->cond;
-		obj_size = sizeof(mut_cond);
-		obj_type = wait->type;
-		obj_ptr = &mut_cond;
+	case FI_WAIT_MUTEX_COND:
+		mut_cond.mutex = &wait->mutex;
+		mut_cond.cond = &wait->cond;
+		memcpy(arg, &mut_cond, sizeof(mut_cond));
 		break;
 		
 	default:
 		SOCK_LOG_ERROR("Invalid wait obj type\n");
 		return -FI_EINVAL;
 	}
-
-	memcpy(wait_obj_set->obj, obj_ptr, obj_size);
-	wait_obj_set->count = 1;
-	wait_obj_set->wait_obj = obj_type;
+	
 	return 0;
 }
 
@@ -106,7 +90,7 @@ static int sock_wait_init(struct sock_wait *wait, enum fi_wait_obj type)
 		}
 		break;
 		
-	case FI_WAIT_MUT_COND:
+	case FI_WAIT_MUTEX_COND:
 		pthread_mutex_init(&wait->mutex, NULL);
 		pthread_cond_init(&wait->cond, NULL);
 		break;
@@ -172,7 +156,7 @@ static int sock_wait_wait(struct fid_wait *wait_fid, int timeout)
 			err = -FI_ETIMEDOUT;
 		break;
 		
-	case FI_WAIT_MUT_COND:
+	case FI_WAIT_MUTEX_COND:
 		err = fi_wait_cond(&wait->cond,
 				   &wait->mutex, timeout);
 		break;
@@ -196,7 +180,7 @@ void sock_wait_signal(struct fid_wait *wait_fid)
 		write(wait->fd[WAIT_WRITE_FD], &c, 1);
 		break;
 		
-	case FI_WAIT_MUT_COND:
+	case FI_WAIT_MUTEX_COND:
 		pthread_cond_signal(&wait->cond);
 		break;
 	default:
@@ -264,7 +248,7 @@ static int sock_verify_wait_attr(struct fi_wait_attr *attr)
 	switch (attr->wait_obj) {
 	case FI_WAIT_UNSPEC:
 	case FI_WAIT_FD:
-	case FI_WAIT_MUT_COND:
+	case FI_WAIT_MUTEX_COND:
 		break;
 		
 	default:

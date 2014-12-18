@@ -230,7 +230,7 @@ struct fi_cq_tagged_entry {
   CQ, in order to use it in other system calls.  The following values
   may be used to specify the type of wait object associated with an
   CQ: FI_WAIT_NONE, FI_WAIT_UNSPEC, FI_WAIT_SET, FI_WAIT_FD, and
-  FI_WAIT_MUT_COND.
+  FI_WAIT_MUTEX_COND.
 
 - *FI_WAIT_NONE*
 : Used to indicate that the user will not block (wait) for completions
@@ -256,7 +256,7 @@ struct fi_cq_tagged_entry {
   poll, and epoll routines.  However, a provider may signal an FD wait
   object by marking it as readable, writable, or with an error.
 
-- *FI_WAIT_MUT_COND*
+- *FI_WAIT_MUTEX_COND*
 : Specifies that the CQ should use a pthread mutex and cond variable
   as a wait object.
 
@@ -314,9 +314,9 @@ commands are usable with an CQ.
 *FI_GETWAIT (void **)*
 : This command allows the user to retrieve the low-level wait object
   associated with the CQ.  The format of the wait-object is specified
-  during CQ creation, through the CQ attributes.  The fi_control arg
-  parameter should be an address where a pointer to the returned wait
-  object will be written.
+  during CQ creation, through the CQ attributes.
+  See fi_eq.3 for addition details using control with FI_GETWAIT.
+
 
 ## fi_cq_read / fi_cq_readfrom
 
@@ -400,6 +400,21 @@ a multiple of the size of the event to insert.
 User events inserted into a CQ with be associated with the source address
 FI_ADDR_NOTAVAIL.
 
+# COMPLETION FLAGS
+
+Completion flags provide additional details regarding the completed
+operation.  The following completion flags are defined.
+
+*FI_REMOTE_CQ_DATA
+: This indicates that remote CQ data is available as part of the
+  completion.
+
+*FI_MULTI_RECV*
+: This flag applies to receive buffers that were posted with the
+  FI_MULTI_RECV flag set.  This completion flag indicates that the
+  receive buffer referenced by the completion has been consumed and
+  was released by the provider.
+ 
 # RETURN VALUES
 
 fi_cq_open

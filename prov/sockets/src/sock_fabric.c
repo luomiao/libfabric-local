@@ -37,6 +37,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "prov.h"
+
 #include "sock.h"
 #include "sock_util.h"
 
@@ -129,28 +131,12 @@ static int sock_fabric_close(fid_t fid)
 	return 0;
 }
 
-int sock_fabric_bind(struct fid *fid, struct fid *bfid, uint64_t flags)
-{
-	return -FI_ENOSYS;
-}
-
-int sock_fabric_control(struct fid *fid, int command, void *arg)
-{
-	return -FI_ENOSYS;
-}
-
-int sock_fabric_ops_open(struct fid *fid, const char *name,
-		    uint64_t flags, void **ops, void *context)
-{
-	return -FI_ENOSYS;
-}
-
 static struct fi_ops sock_fab_fi_ops = {
 	.size = sizeof(struct fi_ops),
 	.close = sock_fabric_close,
-	.bind = sock_fabric_bind,
-	.control = sock_fabric_control,
-	.ops_open = sock_fabric_ops_open,
+	.bind = fi_no_bind,
+	.control = fi_no_control,
+	.ops_open = fi_no_ops_open,
 };
 
 static int sock_fabric(struct fi_fabric_attr *attr,
@@ -237,14 +223,21 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 	return ret;
 }
 
+static void fi_sockets_fini(void)
+{
+}
+
 struct fi_provider sock_prov = {
 	.name = "IP",
 	.version = FI_VERSION(SOCK_MAJOR_VERSION, SOCK_MINOR_VERSION), 
+	.fi_version = FI_VERSION(FI_MAJOR_VERSION, FI_MINOR_VERSION),
 	.getinfo = sock_getinfo,
 	.fabric = sock_fabric,
+	.cleanup = fi_sockets_fini
 };
 
-static void __attribute__((constructor)) sock_ini(void)
+
+SOCKETS_INI
 {
 	char *tmp = getenv("OFI_SOCK_LOG_LEVEL");
 	if (tmp) {
@@ -253,10 +246,5 @@ static void __attribute__((constructor)) sock_ini(void)
 		sock_log_level = SOCK_ERROR;
 	}
 
-	(void) fi_register(&sock_prov);
-	gethostname(host, 128);
-}
-
-static void __attribute__((destructor)) sock_fini(void)
-{
+	return (&sock_prov);
 }

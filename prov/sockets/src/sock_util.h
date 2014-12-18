@@ -44,25 +44,24 @@
 #define SOCK_INFO (3)
 
 extern int sock_log_level;
-extern char host[128];
 
 #define SOCK_LOG_INFO(...) do {						\
 		if (sock_log_level >= SOCK_INFO) {			\
-		  fprintf(stderr, "%s-[SOCK_INFO - %s:%d]: ", host,__func__, __LINE__); \
+			fprintf(stderr, "[SOCK_INFO - %s:%d]: ", __func__, __LINE__); \
 			fprintf(stderr, __VA_ARGS__);			\
 		}							\
 	} while (0)
 
-#define SOCK_LOG_WARN(...) do {					\
+#define SOCK_LOG_WARN(...) do {						\
 		if (sock_log_level >= SOCK_WARN) {			\
-		  fprintf(stderr, "%s-[SOCK_WARN - %s:%d]: ", host, __func__, __LINE__); \
+			fprintf(stderr, "[SOCK_WARN - %s:%d]: ", __func__, __LINE__); \
 			fprintf(stderr, __VA_ARGS__);			\
 		}							\
 	} while (0)
 
 #define SOCK_LOG_ERROR(...) do {					\
 		if (sock_log_level >= SOCK_ERROR) {			\
-		  fprintf(stderr, "%s-[SOCK_ERROR - %s:%d]: ", host,__func__, __LINE__); \
+			fprintf(stderr, "[SOCK_ERROR - %s:%d]: ", __func__, __LINE__); \
 			fprintf(stderr, __VA_ARGS__);			\
 		}							\
 	} while (0)

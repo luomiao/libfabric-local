@@ -340,12 +340,6 @@ static ssize_t sock_ep_trecvmsg(struct fid_ep *ep,
 		return -FI_EINVAL;
 	}
 
-	SOCK_LOG_ERROR("TRECV: buf:%p, len: %llu, tag: %p, ignore: %p, from: %p\n",
-		      msg->msg_iov[0].iov_base, 
-		      (long long unsigned int)msg->msg_iov[0].iov_len, 
-		       (void*)msg->tag, (void*)msg->ignore,
-		       (void *)msg->addr);
-
 	assert(rx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 
 	rx_entry = sock_rx_new_entry(rx_ctx);
@@ -412,7 +406,7 @@ static ssize_t sock_ep_trecvv(struct fid_ep *ep, const struct iovec *iov,
 }
 
 static ssize_t sock_ep_tsendmsg(struct fid_ep *ep, 
-				const struct fi_msg_tagged *msg, uint64_t flags)
+				 const struct fi_msg_tagged *msg, uint64_t flags)
 {
 	int ret, i;
 	uint64_t total_len;
@@ -437,11 +431,6 @@ static ssize_t sock_ep_tsendmsg(struct fid_ep *ep,
 		SOCK_LOG_ERROR("Invalid EP type\n");
 		return -FI_EINVAL;
 	}
-
-	SOCK_LOG_ERROR("TSEND: buf:%p, len: %llu, tag: %p\n",
-		      msg->msg_iov[0].iov_base, 
-		      (long long unsigned int)msg->msg_iov[0].iov_len, 
-		      (void*)msg->tag);
 
 	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
 	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
