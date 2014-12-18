@@ -97,36 +97,8 @@ struct sock_conn *sock_conn_map_lookup_key(struct sock_conn_map *conn_map,
 	return &conn_map->table[key-1];
 }
 
-fi_addr_t sock_conn_get_addr(struct sock_av *av, struct sock_conn *conn)
-{
-	int i;
-	struct sockaddr_in *entry;
-	char entry_ip[INET_ADDRSTRLEN];
-	char sa_ip[INET_ADDRSTRLEN];
-	struct sock_av_addr *av_addr;
-	struct sockaddr_in* saddr;
-
-	entry = (struct sockaddr_in *)&conn->addr;
-	for (i = 0; i < av->cmap->used; i++) {
-
-		av_addr = idm_lookup(&av->addr_idm, i);
-		if (!av_addr)
-			continue;
-
-		saddr = (struct sockaddr_in *)&av_addr->addr;
-
-		memcpy(sa_ip, inet_ntoa(saddr->sin_addr), INET_ADDRSTRLEN);
-		memcpy(entry_ip, inet_ntoa(entry->sin_addr), INET_ADDRSTRLEN);
-		if(!strcmp(entry_ip, sa_ip)) {
-			return i;
-		}
-	}
-	return FI_ADDR_UNSPEC;
-}
-
-uint16_t sock_conn_map_match_or_connect(struct sock_conn_map *map, 
-					struct sockaddr_in *addr,
-					int match_only)
+uint16_t sock_conn_map_match_or_connect(struct sock_conn_map *map, struct
+					sockaddr_in *addr, int match_only)
 {
 	int i, conn_fd, arg, optval;
 	socklen_t optlen;
