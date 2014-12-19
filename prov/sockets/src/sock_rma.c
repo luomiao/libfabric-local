@@ -209,8 +209,8 @@ static ssize_t sock_ep_rma_writemsg(struct fid_ep *ep,
 	union sock_iov tx_iov;
 	struct sock_conn *conn;
 	struct sock_tx_ctx *tx_ctx;
-	uint64_t total_len, src_len, dst_len;
 	struct sock_ep *sock_ep;
+	uint64_t total_len, src_len, dst_len;
 
 	switch (ep->fid.fclass) {
 	case FI_CLASS_EP:
@@ -231,8 +231,22 @@ static ssize_t sock_ep_rma_writemsg(struct fid_ep *ep,
 	assert(tx_ctx->enabled && 
 	       msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT &&
 	       msg->rma_iov_count <= SOCK_EP_MAX_IOV_LIMIT);
+	sock_ep = tx_ctx->ep;
 
-	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
+	if (sock_ep->connected) {
+		if (!sock_ep->key) {
+			sock_ep->key = sock_conn_map_match_or_connect(&sock_ep->domain->r_cmap, 
+					sock_ep->dest_addr, 0);
+			if (!sock_ep->key) {
+				SOCK_LOG_ERROR("failed to match or connect to addr\n");
+				errno = EINVAL;
+				goto err;
+			}
+		}
+		conn = sock_conn_map_lookup_key(&sock_ep->domain->r_cmap, sock_ep->key);
+	} else {
+		conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
+	}
 	assert(conn);
 
 	flags |= tx_ctx->attr.op_flags;

@@ -171,9 +171,20 @@ static ssize_t sock_ep_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 		return -FI_EINVAL;
 	}
 
-	assert(tx_ctx->enabled && msg->iov_count <= SOCK_EP_MAX_IOV_LIMIT);
-
-	conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
+	if (sock_ep->connected) {
+		if (!sock_ep->key) {
+			sock_ep->key = sock_conn_map_match_or_connect(&sock_ep->domain->r_cmap, 
+					sock_ep->dest_addr, 0);
+			if (!sock_ep->key) {
+				SOCK_LOG_ERROR("failed to match or connect to addr\n");
+				errno = EINVAL;
+				goto err;
+			}
+		}
+		conn = sock_conn_map_lookup_key(&sock_ep->domain->r_cmap, sock_ep->key);
+	} else {
+		conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
+	}
 	assert(conn);
 
 	SOCK_LOG_INFO("New sendmsg on TX: %p using conn: %p\n", 
@@ -631,4 +642,3 @@ struct fi_ops_tagged sock_ep_tagged = {
 	.senddata = sock_ep_tsenddata,
 	.search = sock_ep_tsearch,
 };
-

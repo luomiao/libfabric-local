@@ -1986,6 +1986,7 @@ static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	pe_entry->is_complete = 0;
 	pe_entry->done_len = 0;
 
+	fprintf(stderr, "!!!!!! ep->ep_type = %d\n", ep->ep_type);
 	if (ep->ep_type == FI_EP_MSG)
 		pe_entry->addr = FI_ADDR_NOTAVAIL;
 	else
@@ -2181,8 +2182,12 @@ static int sock_pe_new_tx_entry(struct sock_pe *pe, struct sock_tx_ctx *tx_ctx)
 	/* prepare message header */
 	msg_hdr->version = SOCK_WIRE_PROTO_VERSION;
 
-	rx_id = (uint16_t)SOCK_GET_RX_ID(pe_entry->addr, tx_ctx->av->rx_ctx_bits);
-	msg_hdr->rx_id = htons(rx_id);
+	if (tx_ctx->av) {
+		rx_id = (uint16_t)SOCK_GET_RX_ID(pe_entry->addr, tx_ctx->av->rx_ctx_bits);
+		msg_hdr->rx_id = htons(rx_id);
+	} else {
+		msg_hdr->rx_id = 0;
+	}
 	msg_hdr->dest_iov_len = pe_entry->tx.tx_op.src_iov_len;
 	msg_hdr->flags = htonll(pe_entry->flags);
 	pe_entry->total_len = msg_hdr->msg_len;

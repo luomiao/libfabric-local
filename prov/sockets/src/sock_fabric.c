@@ -178,7 +178,6 @@ static int sock_getinfo(uint32_t version, const char *node, const char *service,
 		case FI_EP_DGRAM:
 			return sock_dgram_getinfo(version, node, service, flags,
 						hints, info);
-		
 		case FI_EP_MSG:
 			return sock_msg_getinfo(version, node, service, flags,
 						hints, info);
