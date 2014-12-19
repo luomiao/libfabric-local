@@ -1986,7 +1986,6 @@ static int sock_pe_new_rx_entry(struct sock_pe *pe, struct sock_rx_ctx *rx_ctx,
 	pe_entry->is_complete = 0;
 	pe_entry->done_len = 0;
 
-	fprintf(stderr, "!!!!!! ep->ep_type = %d\n", ep->ep_type);
 	if (ep->ep_type == FI_EP_MSG)
 		pe_entry->addr = FI_ADDR_NOTAVAIL;
 	else

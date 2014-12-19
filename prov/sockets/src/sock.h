@@ -740,6 +740,7 @@ int sock_domain(struct fid_fabric *fabric, struct fi_info *info,
 
 int sock_alloc_endpoint(struct fid_domain *domain, struct fi_info *info,
 			struct sock_ep **ep, void *context, size_t fclass);
+struct sock_conn *sock_ep_lookup_conn(struct sock_ep *ep);
 int sock_rdm_ep(struct fid_domain *domain, struct fi_info *info,
 		struct fid_ep **ep, void *context);
 int sock_rdm_sep(struct fid_domain *domain, struct fi_info *info,

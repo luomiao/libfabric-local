@@ -1115,3 +1115,18 @@ err:
 	free(sock_ep);
 	return -FI_EAVAIL;
 }
+
+struct sock_conn *sock_ep_lookup_conn(struct sock_ep *ep)
+{
+	if (!ep->key) {
+		ep->key = sock_conn_map_match_or_connect(&ep->domain->r_cmap,
+				ep->dest_addr, 0);
+		if (!ep->key) {
+			SOCK_LOG_ERROR("failed to match or connect to addr\n");
+			errno = EINVAL;
+			return NULL;
+		}
+	}
+	return sock_conn_map_lookup_key(&ep->domain->r_cmap, ep->key);
+}
+

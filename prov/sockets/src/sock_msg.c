@@ -172,16 +172,7 @@ static ssize_t sock_ep_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	}
 
 	if (sock_ep->connected) {
-		if (!sock_ep->key) {
-			sock_ep->key = sock_conn_map_match_or_connect(&sock_ep->domain->r_cmap, 
-					sock_ep->dest_addr, 0);
-			if (!sock_ep->key) {
-				SOCK_LOG_ERROR("failed to match or connect to addr\n");
-				errno = EINVAL;
-				goto err;
-			}
-		}
-		conn = sock_conn_map_lookup_key(&sock_ep->domain->r_cmap, sock_ep->key);
+		conn = sock_ep_lookup_conn(sock_ep);
 	} else {
 		conn = sock_av_lookup_addr(tx_ctx->av, msg->addr);
 	}
