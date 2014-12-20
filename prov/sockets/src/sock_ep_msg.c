@@ -404,11 +404,6 @@ static int sock_ep_cm_getpeer(struct fid_ep *ep, void *addr, size_t *addrlen)
 static int sock_ep_cm_connect(struct fid_ep *ep, const void *addr,
 			   const void *param, size_t paramlen)
 {
-	fprintf(stderr, "[sock_msg_ep_cm_connect] enter\n");
-	fd_set writefds;
-	struct timeval tv;
-	socklen_t optlen;
-	int optval;
 	struct sock_conn_req req;
 	struct sock_ep *_ep;
 	struct sock_eq *_eq;
@@ -436,43 +431,15 @@ static int sock_ep_cm_connect(struct fid_ep *ep, const void *addr,
 	memcpy(&req.domain_attr, _ep->info.domain_attr, sizeof(struct fi_domain_attr));
 	memcpy(&req.fabric_attr, _ep->info.fabric_attr, sizeof(struct fi_fabric_attr));
 
-	if (sendto(_eq->wait_fd, &req, sizeof(struct sock_conn_req), 0, addr, 
-				sizeof(struct sockaddr_in)) < 0) {
-		SOCK_LOG_ERROR("sendto failed with error %d - %s\n", errno,
-				strerror(errno));
-		return -FI_EINVAL;
-	}
-
-	tv.tv_sec = 5;
-	tv.tv_usec = 0;
-	FD_ZERO(&writefds);
-	FD_SET(_eq->wait_fd, &writefds);
-	if (select(_eq->wait_fd+1, NULL, &writefds, NULL, &tv) > 0) {
-		optlen = sizeof(int);
-		getsockopt(_eq->wait_fd, SOL_SOCKET, SO_ERROR, &optval, &optlen);
-
-		if (optval) {
-			SOCK_LOG_ERROR("failed to sendto %d - %s\n", optval,
-					strerror(optval));
-			close(_eq->wait_fd);
-			return 0;
-		}
-	} else {
-		SOCK_LOG_ERROR("Timeout or error to sendto %d - %s\n", optval,
-				strerror(optval));
-		close(_eq->wait_fd);
-		return -FI_ETIMEDOUT;
-	}
+	if (sock_util_sendto(_eq->wait_fd, &req, sizeof(struct sock_conn_req),
+				(struct sockaddr_in *)addr, sizeof(struct sockaddr_in), 0))
+		return -errno;
 
 	return 0;
 }
 
 static int sock_ep_cm_accept(struct fid_ep *ep, const void *param, size_t paramlen)
 {
-	fd_set writefds;
-	struct timeval tv;
-	socklen_t optlen;
-	int optval;
 	struct sock_conn_req *req;
 	struct sock_domain *_dom;
 	struct sockaddr_in *addr;
@@ -504,33 +471,9 @@ static int sock_ep_cm_accept(struct fid_ep *ep, const void *param, size_t paraml
 	req->type = SOCK_ACCEPT;
 	req->s_fid = &ep->fid;
 
-	if (sendto(_eq->wait_fd, req, sizeof(req->type) + sizeof(req->c_fid) +
-				sizeof(req->s_fid), 0, addr, addrlen) < 0) {
-		SOCK_LOG_ERROR("sendto failed with error %d - %s\n", errno,
-				strerror(errno));
-		return -FI_EINVAL;
-	}
-
-	tv.tv_sec = 5;
-	tv.tv_usec = 0;
-	FD_ZERO(&writefds);
-	FD_SET(_eq->wait_fd, &writefds);
-	if (select(_eq->wait_fd+1, NULL, &writefds, NULL, &tv) > 0) {
-		optlen = sizeof(int);
-		getsockopt(_eq->wait_fd, SOL_SOCKET, SO_ERROR, &optval, &optlen);
-
-		if (optval) {
-			SOCK_LOG_ERROR("failed to sendto %d - %s\n", optval,
-					strerror(optval));
-			close(_eq->wait_fd);
-			return 0;
-		}
-	} else {
-		SOCK_LOG_ERROR("Timeout or error to sendto %d - %s\n", optval,
-				strerror(optval));
-		close(_eq->wait_fd);
-		return -FI_ETIMEDOUT;
-	}
+	if (sock_util_sendto(_eq->wait_fd, req, sizeof(req->type) +
+				sizeof(req->c_fid) + sizeof(req->s_fid), addr, addrlen, 0))
+		return -errno;
 
 	return 0;
 }

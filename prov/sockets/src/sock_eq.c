@@ -235,44 +235,9 @@ ssize_t sock_eq_fd_sread(struct fid_eq *eq, uint32_t *event, void *buf,
 	}
 	sock_eq = container_of(eq, struct sock_eq, eq);
 
-	if (timeout < 0) {
-		/* negative timeout means an infinite timeout */
-		tv_ptr = NULL;
-	} else {
-		tv.tv_sec = 0;
-		tv.tv_usec = timeout;
-		tv_ptr = &tv;
-	}
-
-	FD_ZERO(&readfds);
-	FD_SET(sock_eq->wait_fd, &readfds);
-	if (select(sock_eq->wait_fd+1, &readfds, NULL, NULL, tv_ptr) > 0) {
-		optlen = sizeof(int);
-		getsockopt(sock_eq->wait_fd, SOL_SOCKET, SO_ERROR, &optval, &optlen);
-
-		if (optval) {
-			SOCK_LOG_ERROR("failed to connect %d - %s\n", optval,
-					strerror(optval));
-			close(sock_eq->wait_fd);
-			return 0;
-		}
-
-	} else {
-		SOCK_LOG_ERROR("Timeout or error to connect %d - %s\n", optval,
-				strerror(optval));
-		close(sock_eq->wait_fd);
-		errno=ETIMEDOUT;
-		return 0;
-	}
-
-	/* read */
 	addrlen = sizeof(struct sockaddr_in);
-	ret = recvfrom(sock_eq->wait_fd, req, sizeof *req, 0, &addr, &addrlen);
-	if (ret < 0) {
-		SOCK_LOG_ERROR("error recvfrom for sread: %d - %s\n", errno,
-				strerror(errno));
-		return 0;
-	} 
+	ret = sock_util_recvfrom(sock_eq->wait_fd, req, sizeof *req, &addr, &addrlen,
+			timeout);
 
 	entry = (struct fi_eq_cm_entry *)buf;
 	switch (req->type) {
@@ -289,33 +254,9 @@ ssize_t sock_eq_fd_sread(struct fid_eq *eq, uint32_t *event, void *buf,
 		sock_ep = container_of(fid_ep, struct sock_ep, ep);
 		sock_ep->connected = 1;
 		req->type = SOCK_CONNECTED;
-
-		if (sendto(sock_eq->wait_fd, req, sizeof(req->type) + sizeof(req->c_fid) +
-					sizeof(req->s_fid), 0, &addr, addrlen) < 0) {
-			SOCK_LOG_ERROR("sendto failed with error %d - %s\n", errno,
-					strerror(errno));
-			return -FI_EINVAL;
-		}
-		tv.tv_sec = 5;
-		tv.tv_usec = 0;
-		FD_ZERO(&writefds);
-		FD_SET(sock_eq->wait_fd, &writefds);
-		if (select(sock_eq->wait_fd+1, NULL, &writefds, NULL, &tv) > 0) {
-			optlen = sizeof(int);
-			getsockopt(sock_eq->wait_fd, SOL_SOCKET, SO_ERROR, &optval, &optlen);
-
-			if (optval) {
-				SOCK_LOG_ERROR("failed to sendto %d - %s\n", optval,
-						strerror(optval));
-				close(sock_eq->wait_fd);
-				return 0;
-			}
-		} else {
-			SOCK_LOG_ERROR("Timeout or error to sendto %d - %s\n", optval,
-					strerror(optval));
-			close(sock_eq->wait_fd);
-			return -FI_ETIMEDOUT;
-		}
+		if (sock_util_sendto(sock_eq->wait_fd, req, sizeof(req->type) +
+				sizeof(req->c_fid) + sizeof(req->s_fid), &addr, addrlen, 0))
+			return 0;
 
 		break;
 	case SOCK_CONNREQ:
